@@ -1,3 +1,4 @@
+using GeoPoint.Core.Operations;
 using GeoPoint.Core.Calc;
 using GeoPoint.Core.Geometry;
 using GeoPoint.Core.Memorial;
@@ -76,6 +77,57 @@ public class SheetAndAnnotationTests
         Assert.All(plan.Texts.Where(t => t.Kind == AnnoTextKind.Confrontante && t.Text.StartsWith("Lote 1")), t => Assert.True(t.At.Y > 30 + 2));
     }
 
+    /// <summary>Lote da imagem enviada pelo usuário (736,92 m²), desmembrado em dois por uma divisa interna.</summary>
+    private static (LotRecord a, LotRecord b) UserLotSplit()
+    {
+        var p1 = new Vec2(47.651, 22.458); var p2 = new Vec2(18.643, 0); var p3 = new Vec2(0, 24.473);
+        var p4 = new Vec2(23.897, 25.553); var p5 = new Vec2(39.733, 33.831);
+        // Divisa interna de um ponto da divisa P-01/P-02 até um ponto da divisa P-02/P-03.
+        var c1 = Vec2.Lerp(p1, p2, 0.45); var c2 = Vec2.Lerp(p2, p3, 0.52);
+        var a = TestProjects.Poly("01", c2, p3, p4, p5, p1, c1);
+        var b = TestProjects.Poly("02", c1, p2, c2);
+        a.EdgeInfos.Add(new EdgeInfo { MX = (p3.X + p4.X) / 2, MY = (p3.Y + p4.Y) / 2, Confrontante = "Rua 1" });
+        a.EdgeInfos.Add(new EdgeInfo { MX = (p4.X + p5.X) / 2, MY = (p4.Y + p5.Y) / 2, Confrontante = "Bemeval" });
+        a.EdgeInfos.Add(new EdgeInfo { MX = (p5.X + p1.X) / 2, MY = (p5.Y + p1.Y) / 2, Confrontante = "Coité" });
+        return (a, b);
+    }
+
+    [Fact]
+    public void Annotation_NoOverlapOnUserLot()
+    {
+        var (a, b) = UserLotSplit();
+        var ctx = TestProjects.Context(TestProjects.Project(a, b));
+        var reps = new[] { ctx.Report(a), ctx.Report(b) };
+        // Escala 1:250, texto de 2 mm.
+        var o = new AnnotationPlanOptions { TextM = 0.5, OffsetM = 0.375, DotRadiusM = 0.15, PadM = 0.1 };
+        var plan = AnnotationPlanner.Plan(reps, new ValueFormatter(ctx.Settings.Format), o);
+        Assert.Equal(0, plan.Conflicts);
+        var boxes = plan.Texts.Select(t => t.Box).ToList();
+        for (int i = 0; i < boxes.Count; i++)
+            for (int j = i + 1; j < boxes.Count; j++)
+                Assert.False(boxes[i].Intersects(boxes[j]), $"\"{plan.Texts[i].Text}\" sobre \"{plan.Texts[j].Text}\"");
+        var edges = reps.SelectMany(r => r.Segments.Select(s => s.Curve)).ToList();
+        foreach (var t in plan.Texts)
+            Assert.DoesNotContain(edges, e => t.Box.Intersects(e.Start, e.End));
+        // Rotação sempre legível e textos das divisas alinhados com a divisa.
+        Assert.All(plan.Texts, t => Assert.InRange(t.Rotation, -Math.PI / 2 - 1e-9, Math.PI / 2 + 1e-9));
+        Assert.Contains(plan.Texts, t => t.Kind == AnnoTextKind.Confrontante && t.Text == "Coité");
+    }
+
+    [Fact]
+    public void Obb_IntersectionTests()
+    {
+        var a = Obb.Of(new Vec2(0, 0), 0, 2, 1);
+        Assert.True(a.Intersects(Obb.Of(new Vec2(3, 0), 0, 1.5, 1)));
+        Assert.False(a.Intersects(Obb.Of(new Vec2(4, 0), 0, 1.5, 1)));
+        Assert.True(a.Intersects(Obb.Of(new Vec2(2.5, 2.5), Math.PI / 4, 2, 0.5)));
+        Assert.True(a.Intersects(new Vec2(-5, 0.5), new Vec2(5, 0.5)));
+        Assert.False(a.Intersects(new Vec2(-5, 1.5), new Vec2(5, 1.5)));
+        Assert.False(a.Intersects(new Vec2(2.5, -5), new Vec2(2.5, 5)));
+        Assert.Equal(-Math.PI / 4, AnnotationPlanner.Readable(3 * Math.PI / 4), 9);
+        Assert.Equal(Math.PI / 2, AnnotationPlanner.Readable(-Math.PI / 2), 9);
+    }
+
     [Theory]
     [InlineData(SheetOrientation.Retrato, 210, 297)]
     [InlineData(SheetOrientation.Paisagem, 297, 210)]
@@ -147,5 +199,49 @@ public class EdgeSplitTests
         Assert.Equal(300, lot.ToRegion().Area, 6);
         // Um canto do desenho não é removido.
         Assert.False(GeoPoint.Core.Topology.EdgeSplitter.Merge(lot, new Vec2(0, 0)));
+    }
+}
+
+public class DesmembramentoFlowTests
+{
+    [Fact]
+    public void Split_InheritsAllConfrontantesAndSnapsToVertex()
+    {
+        var p1 = new Vec2(47.651, 22.458); var p2 = new Vec2(18.643, 0); var p3 = new Vec2(0, 24.473);
+        var p4 = new Vec2(23.897, 25.553); var p5 = new Vec2(39.733, 33.831);
+        var parent = TestProjects.Poly("01", p1, p2, p3, p4, p5);
+        var via = new ViaRecord { Nome = "Rua 1" };
+        void Info(Vec2 a, Vec2 b, EdgeInfo i) { var m = Vec2.Lerp(a, b, 0.5); i.MX = m.X; i.MY = m.Y; parent.EdgeInfos.Add(i); }
+        Info(p1, p2, new EdgeInfo { Confrontante = "Juca" });
+        Info(p2, p3, new EdgeInfo { Confrontante = "Aaaa" });
+        Info(p3, p4, new EdgeInfo { Tipo = ConfrontanteTipo.Via, ViaId = via.Id, Testada = true });
+        Info(p4, p5, new EdgeInfo { Confrontante = "Bemeval" });
+        Info(p5, p1, new EdgeInfo { Confrontante = "Coité" });
+        var project = TestProjects.Project(parent);
+        project.Vias.Add(via);
+        var ctx = TestProjects.Context(project);
+
+        // Divisa que termina a 12 cm do vértice P-04 (deve encaixar nele).
+        var nearP4 = p4 + (p3 - p4).Normalized() * 0.12;
+        var cuts = new List<LineCurve> { new(Vec2.Lerp(p1, p2, 0.45), nearP4) };
+        Assert.Equal(1, SubdivisionPlanner.SnapCuts(parent, cuts, 0.30));
+        Assert.True(cuts[0].End.DistanceTo(p4) < 1e-9);
+
+        var pieces = SubdivisionPlanner.FromCuts(parent, cuts.Select(c => ((Curve2)c, (string?)null)).ToList());
+        Assert.Equal(2, pieces.Count);
+        Assert.Equal(parent.ToRegion().Area, pieces.Sum(p => p.Area), 6);
+        var kids = pieces.Select((p, i) => new LotRecord { Nome = $"0{i + 1}", Numero = $"0{i + 1}", Quadra = "A", Outer = p.Outer, Holes = p.Holes }).ToList();
+        foreach (var k in kids) k.EdgeInfos = ConfrontanteInheritance.Inherit(new[] { parent }, k, kids, ctx);
+        parent.Status = LotStatus.Arquivado;
+        project.Lots.AddRange(kids);
+        ctx.Invalidate();
+        foreach (var k in kids)
+        {
+            var rep = ctx.Report(k);
+            Assert.All(rep.Segments, s => Assert.False(string.IsNullOrWhiteSpace(s.Confrontante), $"{k.DisplayName} {s.From.Name}-{s.To.Name} sem confrontante"));
+            Assert.Contains(rep.Segments, s => s.Confrontante.StartsWith("Lote 0"));
+            Assert.DoesNotContain(rep.Segments, s => s.Curve.Length < 0.5);
+        }
+        Assert.Contains(ctx.Report(kids.First(k => ctx.Report(k).Segments.Any(s => s.ConfrontanteViaId == via.Id))).Segments, s => s.Confrontante == "Rua 1" && s.Lado == LadoLote.Frente);
     }
 }

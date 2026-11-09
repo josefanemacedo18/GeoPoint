@@ -41,22 +41,41 @@ public static class RevitStyles
     }
 
     /// <summary>Tipo de texto com tamanho (mm) e fonte. Deve ser chamado dentro de transação.</summary>
+    /// <summary>Margem (mm no papel) entre o texto e a borda da caixa nos tipos de texto do GeoPoint.</summary>
+    public const double TextPadMm = 0.4;
+
+    /// <summary>Altura de uma linha de texto em relação ao tamanho do texto.</summary>
+    public const double LineFactor = 1.5;
+
+    /// <summary>Meia altura (mm no papel) da caixa de um texto do GeoPoint.</summary>
+    public static double HalfHeightMm(double sizeMm, int lines = 1) => (sizeMm * LineFactor * lines) / 2 + TextPadMm;
+
+    /// <summary>Tipo de texto com tamanho (mm) e fonte. Deve ser chamado dentro de transação.</summary>
     public static ElementId TextType(Document doc, double sizeMm, string font, bool opaque = false, bool bold = false, Color? color = null)
     {
         string name = $"GeoPoint {sizeMm.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} mm {font}"
                       + (opaque ? " opaco" : "") + (bold ? " negrito" : "") + (color is null ? "" : $" #{color.Red:X2}{color.Green:X2}{color.Blue:X2}");
-        var existing = new FilteredElementCollector(doc).OfClass(typeof(TextNoteType)).Cast<TextNoteType>().FirstOrDefault(t => t.Name == name);
-        if (existing is not null) return existing.Id;
-        var defId = doc.GetDefaultElementTypeId(ElementTypeGroup.TextNoteType);
-        var baseType = (defId != ElementId.InvalidElementId ? doc.GetElement(defId) as TextNoteType : null)
-                       ?? new FilteredElementCollector(doc).OfClass(typeof(TextNoteType)).Cast<TextNoteType>().First();
-        var nt = (TextNoteType)baseType.Duplicate(name);
-        nt.get_Parameter(BuiltInParameter.TEXT_SIZE)?.Set(sizeMm / 304.8);
-        try { nt.get_Parameter(BuiltInParameter.TEXT_FONT)?.Set(font); } catch { }
-        try { nt.get_Parameter(BuiltInParameter.TEXT_BACKGROUND)?.Set(opaque ? 0 : 1); } catch { } // 0 = opaco, 1 = transparente
-        try { nt.get_Parameter(BuiltInParameter.TEXT_STYLE_BOLD)?.Set(bold ? 1 : 0); } catch { }
-        try { nt.get_Parameter(BuiltInParameter.TEXT_BOX_VISIBILITY)?.Set(0); } catch { }
-        if (color is not null) { try { nt.get_Parameter(BuiltInParameter.LINE_COLOR)?.Set(color.Red + color.Green * 256 + color.Blue * 65536); } catch { } }
+        var nt = new FilteredElementCollector(doc).OfClass(typeof(TextNoteType)).Cast<TextNoteType>().FirstOrDefault(t => t.Name == name);
+        if (nt is null)
+        {
+            var defId = doc.GetDefaultElementTypeId(ElementTypeGroup.TextNoteType);
+            var baseType = (defId != ElementId.InvalidElementId ? doc.GetElement(defId) as TextNoteType : null)
+                           ?? new FilteredElementCollector(doc).OfClass(typeof(TextNoteType)).Cast<TextNoteType>().First();
+            nt = (TextNoteType)baseType.Duplicate(name);
+        }
+        // Os parâmetros são reaplicados sempre (tipos criados por versões anteriores ficam iguais).
+        void SetD(BuiltInParameter bip, double v) { try { var p = nt.get_Parameter(bip); if (p is not null && !p.IsReadOnly && Math.Abs(p.AsDouble() - v) > 1e-9) p.Set(v); } catch { } }
+        void SetI(BuiltInParameter bip, int v) { try { var p = nt.get_Parameter(bip); if (p is not null && !p.IsReadOnly && p.AsInteger() != v) p.Set(v); } catch { } }
+        SetD(BuiltInParameter.TEXT_SIZE, sizeMm / 304.8);
+        try { var pf = nt.get_Parameter(BuiltInParameter.TEXT_FONT); if (pf is not null && pf.AsString() != font) pf.Set(font); } catch { }
+        SetI(BuiltInParameter.TEXT_BACKGROUND, opaque ? 0 : 1); // 0 = opaco, 1 = transparente
+        SetI(BuiltInParameter.TEXT_STYLE_BOLD, bold ? 1 : 0);
+        SetI(BuiltInParameter.TEXT_STYLE_ITALIC, 0);
+        SetI(BuiltInParameter.TEXT_STYLE_UNDERLINE, 0);
+        SetI(BuiltInParameter.TEXT_BOX_VISIBILITY, 0);
+        SetD(BuiltInParameter.TEXT_WIDTH_SCALE, 1.0);
+        SetD(BuiltInParameter.LEADER_OFFSET_SHEET, TextPadMm / 304.8);
+        SetI(BuiltInParameter.LINE_COLOR, color is null ? 0 : color.Red + color.Green * 256 + color.Blue * 65536);
         return nt.Id;
     }
 

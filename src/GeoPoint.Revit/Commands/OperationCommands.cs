@@ -26,6 +26,26 @@ internal static class OpHelpers
             return new LotRow(l, a);
         }).ToList();
 
+    /// <summary>Anota e hachura os lotes novos nas vistas em que os lotes originais estavam anotados/hachurados. Dentro de transação.</summary>
+    public static void Redraw(GpSession s, ProjectContext ctx, IEnumerable<string> annotViews, IEnumerable<string> hatchViews, List<LotRecord> lots)
+    {
+        if (lots.Count == 0) return;
+        var fmt = new ValueFormatter(s.Settings.Format);
+        foreach (var uid in annotViews.Distinct())
+        {
+            if (ElementUtil.ByUniqueId(s.Doc, uid) is not View v || v is ViewSheet) continue;
+            try { Annotator.Annotate(s.Doc, v, lots, ctx, fmt, Annotator.Options.From(s.Settings.Annotation)); }
+            catch (Exception ex) { Logger.Error("Anotar lotes novos", ex); }
+        }
+        var order = ProjectContext.SortLots(lots).ToList();
+        foreach (var uid in hatchViews.Distinct())
+        {
+            if (ElementUtil.ByUniqueId(s.Doc, uid) is not View v || v is ViewSheet) continue;
+            try { Hatcher.Apply(s.Doc, v, order, l => order.IndexOf(l)); }
+            catch (Exception ex) { Logger.Error("Hachurar lotes novos", ex); }
+        }
+    }
+
     public static void InheritOwner(LotRecord target, LotRecord from)
     {
         if (string.IsNullOrWhiteSpace(target.Proprietario)) target.Proprietario = from.Proprietario;
@@ -42,6 +62,7 @@ public sealed class CmdDesmembramento : CommandBase
     protected override Result Run(GpSession s)
     {
         if (!s.Project.ActiveLots.Any()) { Ui.Info("Nenhum lote ativo", "Use 'Reconhecer Lotes' primeiro."); return Result.Cancelled; }
+        if (!NorthGuard.Ensure(s)) return Result.Cancelled;
         var state = new DesmembramentoState { ParentId = LotServices.LotsFromSelection(s).FirstOrDefault() };
         DesmembramentoWindow w;
         while (true)
@@ -171,6 +192,11 @@ public sealed class CmdDesmembramento : CommandBase
             foreach (var c in children) if (!s.Project.Lots.Contains(c)) s.Project.Lots.Add(c);
             parent.Status = LotStatus.Arquivado;
             parent.History.Add(new HistoryEntry { Description = "Desmembrado (arquivado)", Area = parent.ToRegion().Area });
+            // As anotações do original saem da planta (a situação atual fica nas pranchas, em cópias da vista);
+            // os lotes novos são anotados/hachurados nas mesmas vistas.
+            var annotViews = parent.Annotations.Select(a => a.ViewId).Concat(merges.SelectMany(m => m.target.Annotations.Select(a => a.ViewId))).Distinct().ToList();
+            var hatchViews = parent.Hatches.Select(a => a.ViewId).Distinct().ToList();
+            Annotator.ClearEverywhere(doc, parent);
             s.Project.Operations.Add(op);
             var archived = new List<string> { parent.Id };
             var newLots = new List<LotRecord>(children);
@@ -178,6 +204,8 @@ public sealed class CmdDesmembramento : CommandBase
             {
                 piece.Status = LotStatus.Arquivado;
                 target.Status = LotStatus.Arquivado;
+                Annotator.ClearEverywhere(doc, piece);
+                Annotator.ClearEverywhere(doc, target);
                 piece.History.Add(new HistoryEntry { Description = $"Anexado a {target.DisplayName}", Area = piece.ToRegion().Area });
                 target.History.Add(new HistoryEntry { Description = "Remembrado (arquivado)", Area = target.ToRegion().Area });
                 s.Project.Lots.Add(result);
@@ -188,6 +216,9 @@ public sealed class CmdDesmembramento : CommandBase
             ConfrontanteInheritance.Retarget(s.Project, archived, newLots.Where(l => l.Status == LotStatus.Ativo).ToList());
             var ctx2 = s.NewContext();
             VertexRegistry.Register(ctx2, children.Concat(merges.Select(m => m.result)));
+            ctx2.Invalidate();
+            var shown = newLots.Where(l => l.Status == LotStatus.Ativo).ToList();
+            OpHelpers.Redraw(s, ctx2, annotViews, hatchViews, shown);
             ProjectStore.Save(doc, s.Project);
             t.Commit();
         }
@@ -237,7 +268,16 @@ public sealed class CmdRemembramento : CommandBase
         s.Project.Operations.Add(op);
         ConfrontanteInheritance.Retarget(s.Project, lots.Select(l => l.Id).ToList(), new[] { result });
         VertexRegistry.Register(s.NewContext(), new[] { result });
-        s.SaveProject("GeoPoint: registrar remembramento");
+        using (var t = new Transaction(s.Doc, "GeoPoint: registrar remembramento"))
+        {
+            t.Start();
+            var annotViews = lots.SelectMany(l => l.Annotations.Select(a => a.ViewId)).Distinct().ToList();
+            var hatchViews = lots.SelectMany(l => l.Hatches.Select(a => a.ViewId)).Distinct().ToList();
+            foreach (var l in lots) Annotator.ClearEverywhere(s.Doc, l);
+            OpHelpers.Redraw(s, s.NewContext(), annotViews, hatchViews, new List<LotRecord> { result });
+            ProjectStore.Save(s.Doc, s.Project);
+            t.Commit();
+        }
         if (w.SheetsValue) CmdPranchas.GenerateForOperation(s, op, ask: true);
         if (Ui.Confirm("Remembramento registrado",
                 $"{string.Join(", ", lots.Select(l => l.DisplayName))} → {result.DisplayName} ({Fmt.N(u.Area, 2)} m²).\n\n" +

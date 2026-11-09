@@ -7,6 +7,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
 using GeoPoint.Core.Calc;
+using GeoPoint.Core.Geodesy;
 using GeoPoint.Core.Geometry;
 using GeoPoint.Core.Memorial;
 using GeoPoint.Core.Model;
@@ -47,6 +48,7 @@ public sealed class CmdAnotar : CommandBase
             return Result.Cancelled;
         }
         if (!s.Project.ActiveLots.Any()) { Ui.Info("Nenhum lote ativo", "Use 'Reconhecer Lotes' primeiro."); return Result.Cancelled; }
+        if (!NorthGuard.Ensure(s)) return Result.Cancelled;
         var a = s.Settings.Annotation;
         var opts = new List<OptionItem>
         {
@@ -61,6 +63,7 @@ public sealed class CmdAnotar : CommandBase
             new("size", "Altura do texto no papel (mm)", a.TextSizeMm),
             new("offset", "Afastamento das linhas no papel (mm)", a.OffsetMm),
             new("dot", "Diâmetro do ponto no papel (mm)", a.DotMm),
+            new("clear", "Somente remover as anotações do GeoPoint dos lotes marcados nesta vista", false),
         };
         var w = new LotPickerWindow("Anotar lotes na vista atual", $"Vista: {view.Name} (escala 1:{view.Scale}). Anotações anteriores do GeoPoint nesta vista são substituídas. Divisas e vértices compartilhados entre os lotes marcados são anotados uma vez só.",
             PickerRows.Build(s, true), opts, "Anotar");
@@ -80,7 +83,18 @@ public sealed class CmdAnotar : CommandBase
         using (var t = new Transaction(s.Doc, "GeoPoint: anotar lotes"))
         {
             t.Start();
-            total = Annotator.Annotate(s.Doc, view, w.SelectedLots, ctx, fmt, o, failed);
+            // Anotações de lotes arquivados (ex.: lote original de um desmembramento) saem desta vista.
+            foreach (var arch in s.Project.Lots.Where(l => l.Status == LotStatus.Arquivado))
+            {
+                Annotator.Clear(s.Doc, arch, view);
+                Hatcher.Clear(s.Doc, arch, view);
+            }
+            if (w.Option("clear"))
+            {
+                foreach (var l in w.SelectedLots) Annotator.Clear(s.Doc, l, view);
+                total = 0;
+            }
+            else total = Annotator.Annotate(s.Doc, view, w.SelectedLots, ctx, fmt, o, failed);
             ProjectStore.Save(s.Doc, s.Project);
             t.Commit();
         }
@@ -97,6 +111,7 @@ public sealed class CmdTabelaCoordenadas : CommandBase
     protected override Result Run(GpSession s)
     {
         if (!s.Project.Lots.Any()) { Ui.Info("Nenhum lote cadastrado", "Use 'Reconhecer Lotes' primeiro."); return Result.Cancelled; }
+        if (!NorthGuard.Ensure(s)) return Result.Cancelled;
         var opts = new List<OptionItem> { new("size", "Altura do texto (mm)", s.Settings.Annotation.TextSizeMm) };
         var w = new LotPickerWindow("Tabela de coordenadas", "Cria (ou atualiza) uma vista de desenho por lote com o quadro de coordenadas, azimutes, distâncias e confrontantes. Arraste a vista para a prancha.",
             PickerRows.Build(s, false), opts, "Criar tabelas");
@@ -226,14 +241,29 @@ public sealed class CmdVerificar : CommandBase
             Categoria = i.Category, Lote = i.LotName, Mensagem = i.Message, LotId = i.LotId,
         }).ToList();
 
-        // Orientação: para onde o topo da vista atual aponta.
-        string viewNorth = CmdReferencia.ViewNorthText(s, out _);
-        if (!string.IsNullOrWhiteSpace(viewNorth))
+        // Orientação: para onde o topo da vista atual aponta pelo norte usado pelo GeoPoint.
+        var av = s.ActiveView;
+        if (s.Project.Reference.IsSet && av is not ViewSheet && ElementUtil.IsPlanLike(av) && Math.Abs(av.UpDirection.Z) < 0.5)
+        {
+            var up = av.UpDirection;
+            double azTop = ctx.Coords.TrueAzimuth(Vec2.Zero, new Vec2(up.X, up.Y));
+            string mode = s.Project.Reference.Mode switch
+            {
+                OrientationMode.ViewUp => "topo da tela",
+                OrientationMode.EdgeAzimuth => "azimute de uma divisa",
+                OrientationMode.TwoPoints => "dois pontos",
+                _ => "norte verdadeiro do Revit",
+            };
+            bool ok = Math.Min(azTop, 360 - azTop) < 0.5;
             rows.Add(new ReportRow
             {
-                Nivel = "Info", Categoria = "Norte",
-                Mensagem = viewNorth + $" Modo de orientação da referência: {s.Project.Reference.Mode}. Rotação usada: {Fmt.N(AngleUtil.ToDeg(ctx.Coords.Rotation), 4)}°.",
+                Nivel = ok ? "Info" : "Atenção", Categoria = "Norte",
+                Mensagem = ok
+                    ? $"O norte usado nos azimutes, coordenadas e no Google Earth aponta para o topo da vista \"{av.Name}\" (orientação: {mode})."
+                    : $"Na vista \"{av.Name}\" o topo da tela aponta para {AngleText.FormatDms(azTop, 0, AngleKind.Azimuth)} ({NorthGuard.DirectionName(azTop)}) pelo norte usado pelo GeoPoint (orientação: {mode}). " +
+                      "Se você desenhou com o norte para cima, use Definir Referência › 'O topo da tela é o norte'.",
             });
+        }
 
         // Verificações que dependem do desenho do Revit.
         var sync = LotServices.ComputeSync(s, s.Project.ActiveLots);

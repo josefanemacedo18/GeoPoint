@@ -43,6 +43,7 @@ public partial class PranchasWindow : Window
         Anotacoes.IsChecked = st.Anotacoes;
         Hachuras.IsChecked = st.Hachuras;
         Quadro.IsChecked = st.Quadro;
+        Coordenadas.IsChecked = st.Coordenadas;
         Vias.IsChecked = st.Vias;
         Norte.IsChecked = st.NorteParaCima;
         Orientation.SelectedIndex = st.Orientation == 1 ? 1 : 0;
@@ -64,6 +65,7 @@ public partial class PranchasWindow : Window
     {
         Atual = Atual.IsChecked == true, Proposta = Proposta.IsChecked == true, IndividualAtual = IndAtual.IsChecked == true,
         IndividualProposta = IndProposta.IsChecked == true, Quadro = Quadro.IsChecked == true, Hachuras = Hachuras.IsChecked == true,
+        Coordenadas = Coordenadas.IsChecked == true,
     };
 
     public void Apply(SheetSettings st, ProjectInfo info)
@@ -71,6 +73,7 @@ public partial class PranchasWindow : Window
         st.SituacaoAtual = Atual.IsChecked == true; st.Proposta = Proposta.IsChecked == true;
         st.IndividualAtual = IndAtual.IsChecked == true; st.IndividualProposta = IndProposta.IsChecked == true;
         st.Anotacoes = Anotacoes.IsChecked == true; st.Hachuras = Hachuras.IsChecked == true; st.Quadro = Quadro.IsChecked == true;
+        st.Coordenadas = Coordenadas.IsChecked == true;
         st.Vias = Vias.IsChecked == true; st.NorteParaCima = Norte.IsChecked == true;
         st.Orientation = Orientation.SelectedIndex == 1 ? 1 : 0;
         st.AutoScale = Scale.SelectedIndex <= 0;

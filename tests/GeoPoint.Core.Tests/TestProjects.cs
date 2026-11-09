@@ -16,6 +16,14 @@ internal static class TestProjects
         return lot;
     }
 
+    public static LotRecord Poly(string name, params Vec2[] pts)
+    {
+        var lot = new LotRecord { Nome = name, Numero = name, Quadra = "A" };
+        for (int i = 0; i < pts.Length; i++)
+            lot.Outer.Add(EdgeDto.FromCurve(new LineCurve(pts[i], pts[(i + 1) % pts.Length]), new[] { $"src-{name}-{i}" }));
+        return lot;
+    }
+
     public static LotRecord FromCurves(IEnumerable<Curve2> curves, string name)
     {
         var lot = new LotRecord { Nome = name, Numero = name };

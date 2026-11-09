@@ -439,6 +439,8 @@ public sealed class GeoReferenceRecord
 
     public PrecisionClass Precision { get; set; } = PrecisionClass.GoogleMapsEarth;
     public DateTime SetAt { get; set; } = DateTime.Now;
+    /// <summary>O usuário já confirmou qual é o norte do desenho (tela x norte do Revit).</summary>
+    public bool NorthConfirmed { get; set; }
 }
 
 public sealed class ProjectInfo

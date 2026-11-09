@@ -95,13 +95,17 @@ e o **perfil urbanístico** usado nas verificações.
    - **Altitude** aproximada do terreno (influencia o fator de escala: 100 m ≈ 1,6 cm por km).
    - **Origem da coordenada** – declarada no memorial com a precisão estimada.
 3. Orientação:
-   - **Norte verdadeiro do projeto** (recomendado – o que está em *Gerenciar › Localização do projeto*);
+   - **O topo da tela é o norte – como você desenhou** (padrão): o "para cima" da vista em que você clicou é o norte.
+     É o jeito certo quando você desenha com o norte para cima na tela;
+   - **Norte verdadeiro gravado no Revit** (*Gerenciar › Localização do projeto*): use só se você ajustou o norte verdadeiro do Revit;
    - **Azimute de uma linha** que parte do ponto (depois do OK, clique na linha);
    - **Para cima na vista atual** – o topo da tela é o norte (útil quando o desenho foi feito "com o norte para cima" sem ajustar o norte verdadeiro do Revit);
    - **Dois pontos** com coordenadas conhecidas – o GeoPoint mostra a diferença de distância e de rotação entre o desenho e as coordenadas e pergunta qual orientação usar.
    A janela mostra para onde aponta o topo da vista atual pelo norte verdadeiro do projeto (ex.: "o topo da vista aponta para 270° – Oeste").
-   Se no Google Earth o desenho aparecer girado, o norte verdadeiro do Revit não está onde você imagina: use *Para cima na vista atual*
-   ou *Dois pontos*, ou corrija em *Gerenciar › Localização do projeto › Girar norte verdadeiro*. **Verificar Projeto** também mostra essa informação.
+   Se o norte verdadeiro gravado no Revit não aponta para o topo da tela, a janela mostra um aviso em vermelho.
+   **Projetos já referenciados:** na primeira vez que você gerar anotações, memorial, Google Earth, Excel, pranchas ou anuência,
+   o GeoPoint pergunta qual é o norte do desenho (o topo da tela ou o norte do Revit) e grava a escolha – não é preciso refazer a referência.
+   **Verificar Projeto** mostra para onde aponta o topo da vista pelo norte usado.
 
 A partir desse ponto, todas as coordenadas são calculadas pelas **distâncias e azimutes do desenho** (o desenho é tratado como um
 plano topográfico local, com distâncias horizontais verdadeiras).
@@ -127,9 +131,12 @@ e desenha as linhas a partir de um ponto clicado ou do ponto de referência. Arc
 2. **Prévia** colorida com área e testada de cada parte, atualizada a cada mudança.
 3. Na tabela das partes: **nome**, **Lote Remanescente** (você escolhe um), **proprietário** de cada parte e, se for o caso,
    **Anexar a** um lote vizinho (a parte é remembrada com ele automaticamente).
+   Em *Encaixar no vértice existente a menos de (m)* (padrão 0,30 m), uma divisa que terminaria a poucos centímetros de um vértice
+   é levada até ele (evita vértices "colados" e trechos minúsculos); a tabela já mostra as áreas com o ajuste.
 4. Ao registrar: as divisas são desenhadas (estilo *GeoPoint - Divisa proposta*), os lotes resultantes são criados com os confrontantes
    herdados (a divisa entre duas partes vira confrontante "Lote X"), os vizinhos passam a confrontar com os novos lotes, o original é
-   arquivado e, se marcado, as **pranchas A4** da situação atual e proposta são geradas.
+   arquivado (as anotações dele saem da planta) e, se o original estava anotado/hachurado numa vista, os lotes novos são anotados/hachurados
+   nela automaticamente. Se marcado, as **pranchas A4** da situação atual e proposta são geradas.
 
 **Remembramento** – marque os lotes contíguos e veja a **prévia** do lote unificado (contorno vermelho). Informe nome, quadra, uso,
 matrícula e proprietário. O contorno é calculado com arcos e divisas em "T"; os confrontantes e os números dos vértices são herdados.
@@ -147,7 +154,11 @@ arredondados, como manda a definição de afastamento) e desenha o contorno (est
 - **confrontantes**: nome do confrontante do lado de fora e, quando uma divisa tem vários confrontantes, a **extensão de cada um**
   (cota vermelha com marcas tracejadas nos pontos de mudança);
 - divisas e vértices compartilhados entre lotes vizinhos são anotados **uma vez só**;
-- fundo opaco nos textos (legíveis sobre hachuras).
+- **nenhum texto fica sobre outro ou sobre as linhas**: o GeoPoint testa várias posições ao longo de cada divisa e em volta de cada vértice;
+  em divisas muito curtas fica só a distância, afastada e com linha de chamada (o azimute continua no memorial e nos quadros);
+- textos sempre legíveis (nunca de cabeça para baixo) e fundo opaco (legíveis sobre hachuras);
+- anotações de lotes **arquivados** (ex.: o original de um desmembramento) são removidas da vista;
+- opção *Somente remover as anotações* limpa a vista.
 O tamanho é dado em mm no papel e acompanha a escala da vista. Executar de novo substitui as anotações anteriores do lote nesta vista.
 
 **Hachuras** – hachura cada lote com uma cor (o **remanescente** recebe hachura cruzada), com bordas invisíveis.
@@ -189,7 +200,9 @@ inclui as vias (declaração do poder público).
 - carimbo com título, situação, proprietário, imóvel, município/UF, matrícula, área, perímetro, coordenada de referência,
   responsável técnico (com RRT/ART), assinaturas, **imagem de localização** (escolha um PNG/JPG, ex.: print do Google Earth),
   escala, data, folha 01/03 e número da prancha;
-- escala automática (a menor escala usual em que o desenho cabe) ou fixa; seta do **norte verdadeiro**; quadro de áreas;
+- escala automática (a menor escala usual em que o desenho cabe) ou fixa; seta do **norte**; quadro de áreas (vários lotes) ou
+  **quadro de coordenadas** (prancha de um lote só: vértice, E, N, azimute, distância e confrontante);
+- a cópia da vista é girada para o mesmo norte usado nos azimutes e no Google Earth;
 - anotações, hachuras e vias de cada situação; as divisas internas que não pertencem à situação ficam ocultas na cópia.
 Para PDF use o recurso nativo do Revit (*Arquivo › Exportar › PDF*), em A4. Se preferir o seu carimbo (família), informe-o em
 Configurações e o GeoPoint coloca a vista e o quadro na prancha com o seu carimbo.

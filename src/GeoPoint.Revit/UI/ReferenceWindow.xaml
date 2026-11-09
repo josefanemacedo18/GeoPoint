@@ -76,10 +76,11 @@
 
                 <GroupBox x:Name="OrientationBox" Header="Orientação (norte)">
                     <StackPanel>
-                        <RadioButton x:Name="OriProject" GroupName="ori" IsChecked="True" Content="Usar o norte verdadeiro definido no projeto (recomendado)"/>
-                        <TextBlock x:Name="ProjectNorthInfo" Style="{StaticResource Hint}" Margin="22,0,0,4"/>
-                        <RadioButton x:Name="OriView" GroupName="ori" Content="O topo da vista atual é o norte (desenho feito com o norte para cima)"/>
+                        <TextBlock x:Name="NorthWarning" TextWrapping="Wrap" Foreground="#B00020" FontWeight="SemiBold" Margin="0,0,0,6" Visibility="Collapsed"/>
+                        <RadioButton x:Name="OriView" GroupName="ori" IsChecked="True" Content="O topo da tela é o norte – como você desenhou (recomendado)"/>
                         <TextBlock x:Name="ViewNorthInfo" Style="{StaticResource Hint}" Margin="22,0,0,4"/>
+                        <RadioButton x:Name="OriProject" GroupName="ori" Content="Usar o norte verdadeiro gravado no Revit (Gerenciar › Localização do projeto)"/>
+                        <TextBlock x:Name="ProjectNorthInfo" Style="{StaticResource Hint}" Margin="22,0,0,4"/>
                         <RadioButton x:Name="OriEdge" GroupName="ori" Content="Informar o azimute de uma linha que parte deste ponto"/>
                         <StackPanel Orientation="Horizontal" Margin="22,0,0,4">
                             <Label Content="Azimute verdadeiro:"/>

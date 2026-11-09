@@ -50,7 +50,7 @@ public sealed class SheetLayout
     {
         const double W = 210, H = 297;
         var frame = new PaperRect(LeftMargin, Margin, W - Margin, H - Margin);
-        double top = frame.Y0 + 64;                  // carimbo com 64 mm de altura
+        double top = frame.Y0 + 70;                  // carimbo com 70 mm de altura
         var l = new SheetLayout
         {
             Orientation = SheetOrientation.Retrato, Width = W, Height = H, Frame = frame,
@@ -74,21 +74,21 @@ public sealed class SheetLayout
             l.Lines.Add((new Vec2(xa, y), new Vec2(xm, y)));
         }
         Row("titulo", "", 12, 3.2, true);
-        Row("proprietario", "PROPRIETÁRIO(S)", 7);
-        Row("imovel", "IMÓVEL / ENDEREÇO", 7);
-        Row("municipio", "MUNICÍPIO / UF", 7, split: xs, key2: "matricula", label2: "MATRÍCULA / INSCRIÇÃO");
-        Row("area", "ÁREA", 7, split: xs, key2: "perimetro", label2: "PERÍMETRO");
-        Row("coordenada", "COORDENADA DE REFERÊNCIA", 8, 1.9);
+        Row("proprietario", "PROPRIETÁRIO(S)", 8, 2.0);
+        Row("imovel", "IMÓVEL / ENDEREÇO", 8, 2.0);
+        Row("municipio", "MUNICÍPIO / UF", 8, 2.0, split: xs, key2: "matricula", label2: "MATRÍCULA / INSCRIÇÃO");
+        Row("area", "ÁREA", 8, 2.0, split: xs, key2: "perimetro", label2: "PERÍMETRO");
+        Row("coordenada", "COORDENADA DE REFERÊNCIA", 10, 1.8);
         // Assinaturas (restante do bloco A).
         l.Cells.Add(new SheetCell { Key = "resp", Label = "RESPONSÁVEL TÉCNICO", Rect = new PaperRect(xa, frame.Y0, xs, y), ValueMm = 1.9, Centered = true });
         l.Cells.Add(new SheetCell { Key = "assprop", Label = "PROPRIETÁRIO(S)", Rect = new PaperRect(xs, frame.Y0, xm, y), ValueMm = 1.9, Centered = true });
         l.Lines.Add((new Vec2(xs, frame.Y0), new Vec2(xs, y)));
         // Bloco B: localização, escala/data, folha.
         l.Lines.Add((new Vec2(xm, frame.Y0), new Vec2(xm, top)));
-        double yLoc = frame.Y0 + 24;
+        double yLoc = frame.Y0 + 26;
         l.Cells.Add(new SheetCell { Key = "localizacao", Label = "LOCALIZAÇÃO (SEM ESCALA)", Rect = new PaperRect(xm, yLoc, xb, top) });
         l.Lines.Add((new Vec2(xm, yLoc), new Vec2(xb, yLoc)));
-        double yEsc = frame.Y0 + 12;
+        double yEsc = frame.Y0 + 13;
         l.Cells.Add(new SheetCell { Key = "escala", Label = "ESCALA", Rect = new PaperRect(xm, yEsc, xr, yLoc), ValueMm = 2.5, Bold = true, Centered = true });
         l.Cells.Add(new SheetCell { Key = "data", Label = "DATA", Rect = new PaperRect(xr, yEsc, xb, yLoc), ValueMm = 2.2, Centered = true });
         l.Lines.Add((new Vec2(xm, yEsc), new Vec2(xb, yEsc)));
@@ -125,14 +125,14 @@ public sealed class SheetLayout
             if (y > frame.Y0 + 0.01) l.Lines.Add((new Vec2(xa, y), new Vec2(xb, y)));
         }
         Row("titulo", "", 16, 3.0, true);
-        Row("proprietario", "PROPRIETÁRIO(S)", 9);
-        Row("imovel", "IMÓVEL / ENDEREÇO", 9);
-        Row("municipio", "MUNICÍPIO / UF", 8, split: true, key2: "matricula", label2: "MATRÍCULA / INSCRIÇÃO");
-        Row("area", "ÁREA", 8, split: true, key2: "perimetro", label2: "PERÍMETRO");
-        Row("coordenada", "COORDENADA DE REFERÊNCIA", 10, 1.9);
-        Row("localizacao", "LOCALIZAÇÃO (SEM ESCALA)", 50);
-        Row("resp", "RESPONSÁVEL TÉCNICO", 18, 1.9, centered: true);
-        Row("assprop", "PROPRIETÁRIO(S)", 16, 1.9, centered: true);
+        Row("proprietario", "PROPRIETÁRIO(S)", 9, 2.0);
+        Row("imovel", "IMÓVEL / ENDEREÇO", 9, 2.0);
+        Row("municipio", "MUNICÍPIO / UF", 9, 2.0, split: true, key2: "matricula", label2: "MATRÍCULA / INSCRIÇÃO");
+        Row("area", "ÁREA", 9, 2.0, split: true, key2: "perimetro", label2: "PERÍMETRO");
+        Row("coordenada", "COORDENADA DE REFERÊNCIA", 11, 1.8);
+        Row("localizacao", "LOCALIZAÇÃO (SEM ESCALA)", 62);
+        Row("resp", "RESPONSÁVEL TÉCNICO", 22, 1.9, centered: true);
+        Row("assprop", "PROPRIETÁRIO(S)", 20, 1.9, centered: true);
         Row("escala", "ESCALA", 10, 2.5, true, split: true, key2: "data", label2: "DATA", centered: true);
         Row("folha", "FOLHA", y - frame.Y0, 2.5, true, split: true, key2: "prancha", label2: "PRANCHA", centered: true);
         return l;

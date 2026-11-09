@@ -67,4 +67,31 @@ public static class SubdivisionPlanner
     /// <summary>Ordena de cima para baixo, da esquerda para a direita (no desenho).</summary>
     public static List<PlannedPiece> OrderReading(List<PlannedPiece> pieces) =>
         pieces.OrderByDescending(p => Math.Round(p.Region.InteriorPoint().Y, 0)).ThenBy(p => p.Region.InteriorPoint().X).ToList();
+
+    /// <summary>
+    /// Leva as pontas das divisas que terminam a menos de <paramref name="tolerance"/> de um vértice do lote até esse vértice
+    /// (evita trechos de poucos centímetros e vértices "colados"). Devolve quantas pontas foram movidas.
+    /// </summary>
+    public static int SnapCuts(LotRecord parent, IList<LineCurve> cuts, double tolerance)
+    {
+        if (tolerance <= 0) return 0;
+        var verts = parent.Outer.Select(e => new Vec2(e.X1, e.Y1)).Concat(parent.Holes.SelectMany(h => h).Select(e => new Vec2(e.X1, e.Y1))).ToList();
+        int moved = 0;
+        for (int i = 0; i < cuts.Count; i++)
+        {
+            var c = cuts[i];
+            Vec2 Snap(Vec2 p)
+            {
+                var best = verts.OrderBy(v => v.DistanceTo(p)).FirstOrDefault();
+                double d = best.DistanceTo(p);
+                if (verts.Count == 0 || d <= 1e-6 || d > tolerance) return p;
+                moved++;
+                return best;
+            }
+            var a = Snap(c.Start);
+            var b = Snap(c.End);
+            if (a.DistanceTo(b) > tolerance * 2) cuts[i] = new LineCurve(a, b);
+        }
+        return moved;
+    }
 }

@@ -83,7 +83,15 @@ public sealed class SheetBuilder
         var regions = lots.Select(l => l.ToRegion()).ToList();
 
         // ---- Quadro de áreas: ocupa uma faixa acima do carimbo.
-        double quadroH = spec.QuadroIds.Count > 0 ? 6 + 4.6 * (spec.QuadroIds.Count + 1) : 0;
+        double quadroH = spec.QuadroIds.Count > 0 ? 6 + 4.6 * (spec.QuadroIds.Count + 2) : 0;
+        LotReport? coordRep = null;
+        if (spec.CoordTable && lots.Count == 1)
+        {
+            try { coordRep = _ctx.Report(lots[0]); } catch { }
+            // Lotes com muitos vértices: o quadro não cabe na folha A4 (fica no memorial e na Tabela de Coordenadas).
+            if (coordRep is not null && coordRep.Vertices.Count <= 24) quadroH = 6 + 4.2 * (coordRep.Vertices.Count + 1);
+            else coordRep = null;
+        }
         var area = layout.Drawing;
         var vpArea = new PaperRect(area.X0, area.Y0 + quadroH, area.X1, area.Y1);
 
@@ -131,7 +139,8 @@ public sealed class SheetBuilder
         var c = vpArea.Center;
         var vp = Viewport.Create(_doc, sheet.Id, view.Id, P(c.X, c.Y));
         NoTitle(vp);
-        if (spec.QuadroIds.Count > 0) DrawQuadro(sheet, new PaperRect(area.X0, area.Y0, area.X1, area.Y0 + quadroH), spec);
+        if (coordRep is not null) DrawCoordTable(sheet, new PaperRect(area.X0, area.Y0, area.X1, area.Y0 + quadroH), coordRep);
+        else if (spec.QuadroIds.Count > 0) DrawQuadro(sheet, new PaperRect(area.X0, area.Y0, area.X1, area.Y0 + quadroH), spec);
         DrawNorth(sheet, view, new Vec2(area.X1 - 10, area.Y1 - 16));
         return sheet;
     }
@@ -146,11 +155,18 @@ public sealed class SheetBuilder
         _created.Add(view.UniqueId);
         view.Name = UniqueViewName($"GP - {spec.Title} - {string.Join(", ", lots.Select(l => l.Nome)).Truncate(60)}");
         try { view.ViewTemplateId = ElementId.InvalidElementId; } catch { }
-        if (_o.NorteParaCima)
+        try
         {
-            // Norte verdadeiro para cima (orientação da vista; o modelo não é girado).
-            try { view.get_Parameter(BuiltInParameter.PLAN_VIEW_NORTH)?.Set(1); } catch { }
+            // Orientação da cópia: a que deixa o norte do GeoPoint (o mesmo dos azimutes e do Google Earth) mais perto do topo.
+            // Sem "norte para cima" mantém a orientação da vista original.
+            if (_o.NorteParaCima)
+            {
+                int north = NorthGuard.BestPlanNorth(_ctx, out double residual);
+                view.get_Parameter(BuiltInParameter.PLAN_VIEW_NORTH)?.Set(north);
+                if (residual > 0.5) Logger.Info($"Prancha: o norte fica a {residual:0.##}° do topo (indicado pela seta do norte).");
+            }
         }
+        catch { }
         try { view.SetCategoryHidden(new ElementId(BuiltInCategory.OST_SiteProperty), true); } catch { }
         _doc.Regenerate();
 
@@ -281,10 +297,16 @@ public sealed class SheetBuilder
         VerticalTextAlignment v = VerticalTextAlignment.Top, double? widthMm = null)
     {
         var type = RevitStyles.TextType(_doc, sizeMm, _o.Font, false, bold);
-        var opts = new TextNoteOptions(type) { HorizontalAlignment = h, VerticalAlignment = v };
+        var opts = new TextNoteOptions(type) { HorizontalAlignment = h };
+        // O Revit insere o texto pela borda superior da caixa: converte o alinhamento pedido.
+        int lines = text.Split('\n').Length;
+        if (widthMm is double ww && ww > 2) lines = Math.Max(lines, (int)Math.Ceiling(AnnotationPlanner.TextWidth(text, sizeMm, bold) / Math.Max(1, ww - 1)));
+        double boxH = 2 * RevitStyles.HalfHeightMm(sizeMm, lines);
+        double top = v switch { VerticalTextAlignment.Middle => y + boxH / 2, VerticalTextAlignment.Bottom => y + boxH, _ => y };
+        text = text.Replace("\n", "\r");
         return widthMm is double w && w > 2
-            ? TextNote.Create(_doc, sheet.Id, P(x, y), w / Ft, text, opts)
-            : TextNote.Create(_doc, sheet.Id, P(x, y), text, opts);
+            ? TextNote.Create(_doc, sheet.Id, P(x, top), w / Ft, text, opts)
+            : TextNote.Create(_doc, sheet.Id, P(x, top), text, opts);
     }
 
     private void DrawFrame(ViewSheet sheet, SheetLayout layout, SheetSpec spec, List<LotRecord> lots, int scale, int index, int count)
@@ -335,7 +357,7 @@ public sealed class SheetBuilder
                 if (sub.Length > 0) Text(sheet, r.X0 + 2, r.Y0 + 1.2, sub, 1.9, false, v: VerticalTextAlignment.Bottom, widthMm: r.Width - 4);
                 continue;
             }
-            if (cell.Label.Length > 0) Text(sheet, r.X0 + 1.2, r.Y1 - 0.8, cell.Label, 1.4);
+            if (cell.Label.Length > 0) Text(sheet, r.X0 + 1.2, r.Y1 - 0.4, cell.Label, 1.4);
             switch (cell.Key)
             {
                 case "localizacao":
@@ -363,8 +385,12 @@ public sealed class SheetBuilder
                 default:
                     if (values.TryGetValue(cell.Key, out var val) && !string.IsNullOrWhiteSpace(val))
                     {
-                        if (cell.Centered) Text(sheet, r.Center.X, r.Y0 + 1.0, val, cell.ValueMm, cell.Bold, HorizontalTextAlignment.Center, VerticalTextAlignment.Bottom, r.Width - 2);
-                        else Text(sheet, r.X0 + 1.2, r.Y0 + 1.0, val, cell.ValueMm, cell.Bold, v: VerticalTextAlignment.Bottom, widthMm: r.Width - 2.4);
+                        // Texto longo: reduz a altura até caber numa linha (mínimo 1,5 mm); se ainda não couber, quebra a linha.
+                        double size = cell.ValueMm, avail = r.Width - 2.4;
+                        foreach (var line in val.Split('\n'))
+                            while (size > 1.5 && AnnotationPlanner.TextWidth(line, size, cell.Bold) > avail) size = Math.Round(size - 0.1, 2);
+                        if (cell.Centered) Text(sheet, r.Center.X, r.Y0 + 0.6, val, size, cell.Bold, HorizontalTextAlignment.Center, VerticalTextAlignment.Bottom, r.Width - 2);
+                        else Text(sheet, r.X0 + 1.2, r.Y0 + 0.6, val, size, cell.Bold, v: VerticalTextAlignment.Bottom, widthMm: r.Width - 2.4);
                     }
                     break;
             }
@@ -455,6 +481,44 @@ public sealed class SheetBuilder
             Row(i + 1, new[] { l.DisplayName, rep is null ? "—" : _fmt.Number(rep.AreaLocal, _s.Settings.Format.AreaDecimals), rep is null ? "—" : _fmt.DistanceValue(rep.PerimeterLocal), owner.Truncate(48) }, l.IsRemanescente);
         }
         Row(lots.Count + 1, new[] { "TOTAL", _fmt.Number(total, _s.Settings.Format.AreaDecimals), "", "" }, true);
+    }
+
+    private void DrawCoordTable(ViewSheet sheet, PaperRect band, LotReport rep)
+    {
+        var thin = RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (linhas)", new Color(0, 0, 0), 1);
+        var def = _ctx.Coords.HasGeoreference ? (_s.Settings.Memorial.CoordinateSystems.FirstOrDefault() ?? CrsDef.Utm()) : CrsDef.ProjectLocalDef();
+        var (ta, tb) = _fmt.ColumnTitles(def);
+        string[] heads = { "VÉRTICE", ta.ToUpperInvariant(), tb.ToUpperInvariant(), _s.Settings.Format.AngleStyle == AngleStyle.Rumo ? "RUMO" : "AZIMUTE", "DIST. (m)", "CONFRONTANTE" };
+        double[] cols = { 0, 0.09, 0.25, 0.41, 0.57, 0.67, 1.0 };
+        double rowH = 4.2, x0 = band.X0 + 3, x1 = band.X1 - 3, top = band.Y1 - 2;
+        double X(int c) => x0 + (x1 - x0) * cols[c];
+        Text(sheet, x0, top + 0.2, $"QUADRO DE COORDENADAS – {rep.Lot.DisplayName.ToUpperInvariant()} ({def.ShortName(_ctx.Coords.AutoZone)})", 1.8, true, v: VerticalTextAlignment.Bottom);
+        int n = rep.Vertices.Count;
+        double bottom = top - rowH * (n + 1);
+        for (int r = 0; r <= n + 1; r++) Line(sheet, new Vec2(x0, top - r * rowH), new Vec2(x1, top - r * rowH), thin);
+        for (int c = 0; c < cols.Length; c++) Line(sheet, new Vec2(X(c), top), new Vec2(X(c), bottom), thin);
+        void Row(int r, string[] cells, bool bold)
+        {
+            double y = top - r * rowH - rowH / 2;
+            for (int c = 0; c < cells.Length; c++)
+            {
+                if (string.IsNullOrEmpty(cells[c])) continue;
+                double size = 1.7, avail = (X(c + 1) - X(c)) - 1.5;
+                while (size > 1.3 && AnnotationPlanner.TextWidth(cells[c], size, bold) > avail) size = Math.Round(size - 0.1, 2);
+                bool left = c == cells.Length - 1;
+                Text(sheet, left ? X(c) + 0.8 : (X(c) + X(c + 1)) / 2, y, cells[c], size, bold, left ? HorizontalTextAlignment.Left : HorizontalTextAlignment.Center, VerticalTextAlignment.Middle);
+            }
+        }
+        Row(0, heads, true);
+        for (int i = 0; i < n; i++)
+        {
+            var v = rep.Vertices[i];
+            var sgm = rep.Segments[i];
+            var c = _ctx.Coords.ToCrs(v.Internal, def);
+            var (a, b) = c is { } cc ? _fmt.Columns(cc, def) : ("–", "–");
+            string dist = sgm.IsArc ? $"{_fmt.DistanceValue(sgm.LengthHorizontal)} (R={_fmt.DistanceValue(sgm.Radius ?? 0)})" : _fmt.DistanceValue(sgm.LengthHorizontal);
+            Row(i + 1, new[] { v.Name, a, b, _fmt.Angle(sgm.AzimuthTrue), dist, $"{sgm.From.Name}–{sgm.To.Name}: {(string.IsNullOrWhiteSpace(sgm.Confrontante) ? "–" : sgm.Confrontante)}" }, false);
+        }
     }
 
     private void DrawNorth(ViewSheet sheet, View view, Vec2 at)

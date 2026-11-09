@@ -61,6 +61,7 @@ public sealed class CmdMemorial : CommandBase
     internal static Result Open(GpSession s, MemorialKind? kind, OperationRecord? operation)
     {
         if (!s.Project.Lots.Any()) { Ui.Info("Nenhum lote cadastrado", "Use 'Reconhecer Lotes' primeiro."); return Result.Cancelled; }
+        if (!NorthGuard.Ensure(s)) return Result.Cancelled;
         var ctx = s.NewContext();
         var pre = LotServices.LotsFromSelection(s);
         var w = new MemorialWindow(s.Project, s.Settings, ctx, pre, s.MainWindow, kind, operation);
@@ -161,6 +162,7 @@ public sealed class CmdExportarSig : CommandBase
             Ui.Warn("Ponto de referência não definido", "Para exportar para o Google Earth ou QGIS é preciso informar a coordenada de um vértice (Georreferência › Definir Referência).");
             return Result.Cancelled;
         }
+        if (!NorthGuard.Ensure(s)) return Result.Cancelled;
         if (!s.Project.Lots.Any()) { Ui.Info("Nenhum lote cadastrado", "Use 'Reconhecer Lotes' primeiro."); return Result.Cancelled; }
         var ctx = s.NewContext();
         var pre = LotServices.LotsFromSelection(s);
@@ -210,6 +212,7 @@ public sealed class CmdExportarSig : CommandBase
     /// <summary>Exporta todos os lotes ativos para um KMZ temporário e abre no Google Earth.</summary>
     internal static void QuickKmz(GpSession s)
     {
+        if (!NorthGuard.Ensure(s)) return;
         try
         {
             var ctx = s.NewContext();
@@ -237,6 +240,7 @@ public sealed class CmdExportarExcel : CommandBase
     protected override Result Run(GpSession s)
     {
         if (!s.Project.Lots.Any()) { Ui.Info("Nenhum lote cadastrado", "Use 'Reconhecer Lotes' primeiro."); return Result.Cancelled; }
+        if (!NorthGuard.Ensure(s)) return Result.Cancelled;
         var ctx = s.NewContext();
         var pre = LotServices.LotsFromSelection(s);
         var rows = ProjectContext.SortLots(s.Project.Lots).Select(l =>

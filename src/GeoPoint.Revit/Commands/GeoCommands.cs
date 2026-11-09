@@ -38,8 +38,9 @@ public sealed class CmdReferencia : CommandBase
         string label = FindVertexLabel(ctx, a, out string where);
         string north = ProjectNorthText(ctx);
         string viewInfo = ViewNorthText(s, out double viewRotation);
+        string warning = NorthGuard.MismatchText(s);
         string info = $"Ponto clicado: X = {Fmt.Raw(a.X, 3)} m, Y = {Fmt.Raw(a.Y, 3)} m (coordenadas do desenho)" + (where.Length > 0 ? $" – {where}" : "");
-        var w = new ReferenceWindow("Coordenada do ponto de referência", info, true, north, s.Project.Reference, viewInfo);
+        var w = new ReferenceWindow("Coordenada do ponto de referência", info, true, north, s.Project.Reference, viewInfo, warning);
         if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
 
         var r = new GeoReferenceRecord
@@ -53,6 +54,7 @@ public sealed class CmdReferencia : CommandBase
             Mode = OrientationMode.ProjectTrueNorth,
             RotationRad = s.Project.Frame.AngleRad,
             SetAt = DateTime.Now,
+            NorthConfirmed = true,
         };
 
         string extra = "";
@@ -107,10 +109,15 @@ public sealed class CmdReferencia : CommandBase
             string msg = $"Distância no desenho: {Fmt.N(dDraw, 3)} m\nDistância pelas coordenadas: {Fmt.N(dCoord, 3)} m\nDiferença: {Fmt.N(dCoord - dDraw, 3)} m ({Fmt.N((dCoord - dDraw) / dDraw * 100, 3)}%)\n" +
                          $"Rotação calculada x norte verdadeiro do projeto: {Fmt.N(rotDiff, 4)}°\n\n" +
                          "Coordenadas do Google/GPS de navegação costumam ter erro de alguns metros; diferenças grandes indicam ponto trocado ou desenho fora de escala.";
-            if (Ui.Confirm("Conferência com dois pontos", msg, "Usar a orientação calculada pelos dois pontos", "Manter o norte verdadeiro do projeto"))
+            if (Ui.Confirm("Conferência com dois pontos", msg, "Usar a orientação calculada pelos dois pontos", "Manter o topo da tela como norte"))
             {
                 r.Mode = OrientationMode.TwoPoints;
                 r.RotationRad = rot;
+            }
+            else
+            {
+                r.Mode = OrientationMode.ViewUp;
+                r.RotationRad = viewRotation;
             }
             extra = $"\nDiferença de distância entre os dois pontos: {Fmt.N(dCoord - dDraw, 3)} m.";
             _ = label2;

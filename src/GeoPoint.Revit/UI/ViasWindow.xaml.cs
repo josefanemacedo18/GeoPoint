@@ -127,7 +127,7 @@ public partial class ViasWindow : Window
 
     private void AddVia_Click(object sender, RoutedEventArgs e)
     {
-        var v = new ViaRecord { Nome = $"Rua {_vias.Count + 1}", Largura = _st.Largura, Calcada = _st.Calcada };
+        var v = new ViaRecord { Nome = $"Rua {_vias.Count + 1}", Largura = _st.Largura, Calcada = _st.Calcada, Prolongamento = 6 };
         var row = new ViaRow(v);
         row.PropertyChanged += (_, _) => RefreshViaOptions();
         _vias.Add(row);

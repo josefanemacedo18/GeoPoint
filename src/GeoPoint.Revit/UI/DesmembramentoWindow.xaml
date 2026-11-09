@@ -87,6 +87,10 @@
                                     <RadioButton x:Name="DirAz" GroupName="d" Content="Azimute verdadeiro:" Checked="Any_Checked"/>
                                     <TextBox x:Name="AzText" Width="120" Text="0°00'00&quot;" TextChanged="Any_Text"/>
                                 </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0" ToolTip="Quando a nova divisa termina muito perto de um vértice existente, ela é levada até o vértice (evita trechos de poucos centímetros). A área de cada parte mostrada na tabela já considera o ajuste. 0 = não encaixar.">
+                                    <Label Content="Encaixar no vértice existente a menos de (m):"/>
+                                    <TextBox x:Name="SnapTol" Width="60" Text="0,30" TextChanged="Any_Text"/>
+                                </StackPanel>
                             </StackPanel>
                         </GroupBox>
                     </StackPanel>

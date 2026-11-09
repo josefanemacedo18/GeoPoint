@@ -15,6 +15,8 @@ public sealed class SheetSpec
     /// <summary>Lotes listados no quadro de áreas (vazio = sem quadro).</summary>
     public List<string> QuadroIds { get; init; } = new();
     public bool Hatch { get; init; }
+    /// <summary>Quadro de coordenadas do lote (pranchas de um lote só).</summary>
+    public bool CoordTable { get; init; }
     /// <summary>Índice de cor de cada lote (o mesmo em todas as pranchas da operação).</summary>
     public Dictionary<string, int> Colors { get; init; } = new();
 }
@@ -27,6 +29,7 @@ public sealed class SheetRequest
     public bool IndividualProposta { get; set; } = true;
     public bool Quadro { get; set; } = true;
     public bool Hachuras { get; set; } = true;
+    public bool Coordenadas { get; set; } = true;
 }
 
 public static class SheetPlanner
@@ -54,26 +57,28 @@ public static class SheetPlanner
             {
                 Kind = SheetKind.Atual, Title = "SITUAÇÃO ATUAL", Subtitle = subParents, LotIds = parents.Select(l => l.Id).ToList(),
                 QuadroIds = r.Quadro && parents.Count > 1 ? parents.Select(l => l.Id).ToList() : new(), Hatch = r.Hachuras && parents.Count > 1, Colors = colors,
+                CoordTable = r.Coordenadas && parents.Count == 1,
             });
         if (r.IndividualAtual && parents.Count > 1)
             foreach (var l in parents)
                 res.Add(new SheetSpec
                 {
                     Kind = SheetKind.IndividualAtual, Title = "SITUAÇÃO ATUAL – " + l.DisplayName.ToUpperInvariant(), Subtitle = subParents,
-                    LotIds = { l.Id }, Hatch = r.Hachuras, Colors = colors,
+                    LotIds = { l.Id }, Hatch = r.Hachuras, Colors = colors, CoordTable = r.Coordenadas,
                 });
         if (r.Proposta && children.Count > 0)
             res.Add(new SheetSpec
             {
                 Kind = SheetKind.Proposta, Title = "SITUAÇÃO PROPOSTA", Subtitle = subParents, LotIds = children.Select(l => l.Id).ToList(),
-                QuadroIds = r.Quadro ? children.Select(l => l.Id).ToList() : new(), Hatch = r.Hachuras, Colors = colors,
+                QuadroIds = r.Quadro && children.Count > 1 ? children.Select(l => l.Id).ToList() : new(), Hatch = r.Hachuras, Colors = colors,
+                CoordTable = r.Coordenadas && children.Count == 1,
             });
         if (r.IndividualProposta && children.Count > 1)
             foreach (var l in children)
                 res.Add(new SheetSpec
                 {
                     Kind = SheetKind.IndividualProposta, Title = "SITUAÇÃO PROPOSTA – " + l.DisplayName.ToUpperInvariant(), Subtitle = subParents,
-                    LotIds = { l.Id }, Hatch = r.Hachuras, Colors = colors,
+                    LotIds = { l.Id }, Hatch = r.Hachuras, Colors = colors, CoordTable = r.Coordenadas,
                 });
         return res;
     }
@@ -91,13 +96,14 @@ public static class SheetPlanner
             {
                 Kind = SheetKind.Atual, Title = "PLANTA DE SITUAÇÃO", Subtitle = sub, LotIds = sorted.Select(l => l.Id).ToList(),
                 QuadroIds = r.Quadro && sorted.Count > 1 ? sorted.Select(l => l.Id).ToList() : new(), Hatch = r.Hachuras && sorted.Count > 1, Colors = colors,
+                CoordTable = r.Coordenadas && sorted.Count == 1,
             });
         if (r.IndividualAtual && sorted.Count > 1)
             foreach (var l in sorted)
                 res.Add(new SheetSpec
                 {
                     Kind = SheetKind.IndividualAtual, Title = "PLANTA DE SITUAÇÃO – " + l.DisplayName.ToUpperInvariant(), Subtitle = sub,
-                    LotIds = { l.Id }, Hatch = r.Hachuras, Colors = colors,
+                    LotIds = { l.Id }, Hatch = r.Hachuras, Colors = colors, CoordTable = r.Coordenadas,
                 });
         return res;
     }

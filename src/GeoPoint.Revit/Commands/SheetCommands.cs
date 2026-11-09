@@ -28,6 +28,7 @@ public sealed class CmdPranchas : CommandBase
     /// <summary>Abre a janela de pranchas (pré-selecionando a operação) e gera as pranchas.</summary>
     internal static bool GenerateForOperation(GpSession s, OperationRecord? op, bool ask)
     {
+        if (!NorthGuard.Ensure(s)) return false;
         var source = SourceView(s);
         if (source is null)
         {
@@ -138,6 +139,7 @@ public sealed class CmdAnuencia : CommandBase
     protected override Result Run(GpSession s)
     {
         if (!s.Project.ActiveLots.Any()) { Ui.Info("Nenhum lote ativo", "Use 'Reconhecer Lotes' primeiro."); return Result.Cancelled; }
+        if (!NorthGuard.Ensure(s)) return Result.Cancelled;
         var opts = new List<OptionItem>
         {
             new("vias", "Incluir as vias públicas (declaração do poder público)", false),

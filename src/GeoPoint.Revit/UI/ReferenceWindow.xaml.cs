@@ -19,7 +19,7 @@ public partial class ReferenceWindow : Window
 
     private readonly bool _orientation;
 
-    public ReferenceWindow(string header, string pointInfo, bool showOrientation, string projectNorthInfo, GeoReferenceRecord? existing, string viewNorthInfo = "")
+    public ReferenceWindow(string header, string pointInfo, bool showOrientation, string projectNorthInfo, GeoReferenceRecord? existing, string viewNorthInfo = "", string northWarning = "")
     {
         InitializeComponent();
         Header.Text = header;
@@ -29,6 +29,8 @@ public partial class ReferenceWindow : Window
         ProjectNorthInfo.Text = projectNorthInfo;
         ViewNorthInfo.Text = viewNorthInfo;
         ViewNorthInfo.Visibility = string.IsNullOrWhiteSpace(viewNorthInfo) ? Visibility.Collapsed : Visibility.Visible;
+        NorthWarning.Text = northWarning;
+        NorthWarning.Visibility = string.IsNullOrWhiteSpace(northWarning) ? Visibility.Collapsed : Visibility.Visible;
         DatumBox.ItemsSource = new List<DatumChoice>
         {
             new(DatumId.Wgs84, "WGS 84 – GPS, Google Maps/Earth (≈ SIRGAS 2000)"),
@@ -45,10 +47,11 @@ public partial class ReferenceWindow : Window
             DatumBox.SelectedIndex = 1;
             Altitude.Text = Fmt.Raw(existing.Height, 2);
             PrecisionBox.SelectedIndex = (int)existing.Precision;
-            OriProject.IsChecked = existing.Mode == OrientationMode.ProjectTrueNorth;
+            // O norte do Revit só fica marcado se o usuário o confirmou; senão o padrão é o topo da tela.
+            OriProject.IsChecked = existing.Mode == OrientationMode.ProjectTrueNorth && existing.NorthConfirmed;
             OriEdge.IsChecked = existing.Mode == OrientationMode.EdgeAzimuth;
             OriTwo.IsChecked = existing.Mode == OrientationMode.TwoPoints;
-            OriView.IsChecked = existing.Mode == OrientationMode.ViewUp;
+            OriView.IsChecked = existing.Mode == OrientationMode.ViewUp || (existing.Mode == OrientationMode.ProjectTrueNorth && !existing.NorthConfirmed);
             if (existing.EdgeAzimuthDeg is double az) EdgeAz.Text = AngleText.FormatDms(az, 2, AngleKind.Azimuth);
         }
         UpdatePreview();

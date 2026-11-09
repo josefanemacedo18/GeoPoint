@@ -17,6 +17,7 @@ public static class Annotator
     public static readonly Color Red = new(192, 0, 0);
     public const string LineConfrontante = "GeoPoint - Extensão do confrontante";
     public const string LineCotaConfrontante = "GeoPoint - Cota do confrontante";
+    public const string LineChamada = "GeoPoint - Linha de chamada";
 
     public sealed class Options
     {
@@ -52,6 +53,20 @@ public static class Annotator
         }
     }
 
+    /// <summary>Remove anotações e hachuras do lote em todas as vistas (lote arquivado: o desenho mostra a situação nova). Dentro de transação.</summary>
+    public static int ClearEverywhere(Document doc, LotRecord lot)
+    {
+        var uids = lot.Annotations.SelectMany(a => a.ElementIds).Concat(lot.Hatches.SelectMany(h => h.ElementIds)).ToList();
+        var ids = ElementUtil.ExistingIds(doc, uids);
+        foreach (var id in ids)
+        {
+            try { if (doc.GetElement(id) is not null) doc.Delete(id); } catch { }
+        }
+        lot.Annotations.Clear();
+        lot.Hatches.Clear();
+        return ids.Count;
+    }
+
     /// <summary>Anota um conjunto de lotes de uma vez (divisas e vértices compartilhados uma vez só). Dentro de transação.</summary>
     public static int Annotate(Document doc, View view, IReadOnlyList<LotRecord> lots, ProjectContext ctx, ValueFormatter fmt, Options o, IList<string>? failures = null)
     {
@@ -77,18 +92,21 @@ public static class Annotator
         {
             Edges = o.Edges, EdgeAngle = o.EdgeAngle, Vertices = o.Vertices, Area = o.Area, Dots = o.Dots, Outside = o.Outside,
             Confrontantes = o.Confrontantes, TextM = textM, OffsetM = o.OffsetMm / 1000.0 * scale, DotRadiusM = o.DotMm / 2000.0 * scale,
+            PadM = RevitStyles.TextPadMm / 1000.0 * scale, LineFactor = RevitStyles.LineFactor,
         }, existing);
+        if (plan.Conflicts > 0) Logger.Info($"Anotação: {plan.Conflicts} texto(s) sem espaço livre na vista {view.Name} (posição de menor conflito).");
 
         var normal = RevitStyles.TextType(doc, o.TextMm, o.Font, o.Opaque);
         var label = RevitStyles.TextType(doc, Math.Round(o.TextMm * 1.25, 2), o.Font, o.Opaque, bold: true);
         var red = RevitStyles.TextType(doc, o.TextMm, o.Font, o.Opaque, color: Red);
         var dotType = plan.Dots.Count > 0 ? RevitStyles.FillType(doc, LotUse.Lote, "GeoPoint - Ponto de vértice", (0, 0, 0)) : ElementId.InvalidElementId;
-        GraphicsStyle? tickStyle = null, dimStyle = null;
+        GraphicsStyle? tickStyle = null, dimStyle = null, leaderStyle = null;
         if (plan.Lines.Count > 0)
         {
             var dash = RevitStyles.DashPattern(doc, "GeoPoint tracejado", 1.5, 1.0);
             tickStyle = RevitStyles.LineStyle(doc, LineConfrontante, Red, 1, dash);
             dimStyle = RevitStyles.LineStyle(doc, LineCotaConfrontante, Red, 1);
+            leaderStyle = RevitStyles.LineStyle(doc, LineChamada, new Color(90, 90, 90), 1);
         }
         var byLot = lots.ToDictionary(l => l.Id, l => new List<string>());
         double zDefault = ElementUtil.ViewPlaneZ(view);
@@ -103,14 +121,14 @@ public static class Annotator
             try
             {
                 var type = t.Kind switch { AnnoTextKind.LotLabel => label, AnnoTextKind.Confrontante or AnnoTextKind.Measure => red, _ => normal };
+                // O Revit posiciona o texto centralizado pelo meio da borda SUPERIOR da caixa; a rotação já vem legível.
                 var opts = new TextNoteOptions(type)
                 {
                     HorizontalAlignment = HorizontalTextAlignment.Center,
-                    VerticalAlignment = VerticalTextAlignment.Middle,
                     Rotation = t.Rotation,
-                    KeepRotatedTextReadable = true,
+                    KeepRotatedTextReadable = false,
                 };
-                var tn = TextNote.Create(doc, view.Id, RvtUnits.ToXyz(t.At, Z(t.Owner)), t.Text, opts);
+                var tn = TextNote.Create(doc, view.Id, RvtUnits.ToXyz(t.TopCenter, Z(t.Owner)), t.Text.Replace("\n", "\r"), opts);
                 byLot[t.Owner].Add(tn.UniqueId);
             }
             catch (Exception ex) { Logger.Error("Texto de anotação", ex); }
@@ -130,7 +148,7 @@ public static class Annotator
             {
                 if (ln.A.DistanceTo(ln.B) < 0.002) continue;
                 var dc = doc.Create.NewDetailCurve(view, Line.CreateBound(RvtUnits.ToXyz(ln.A, Z(ln.Owner)), RvtUnits.ToXyz(ln.B, Z(ln.Owner))));
-                var st = ln.Kind == AnnoLineKind.ConfrontanteTick ? tickStyle : dimStyle;
+                var st = ln.Kind switch { AnnoLineKind.ConfrontanteTick => tickStyle, AnnoLineKind.Leader => leaderStyle, _ => dimStyle };
                 if (st is not null) dc.LineStyle = st;
                 byLot[ln.Owner].Add(dc.UniqueId);
             }
@@ -275,9 +293,12 @@ public static class StreetDrawer
         {
             try
             {
-                var tn = TextNote.Create(doc, view.Id, RvtUnits.ToXyz(l.Position, z), l.Text.ToUpperInvariant(), new TextNoteOptions(textType)
+                double ang = AnnotationPlanner.Readable(l.AngleRad);
+                double hh = RevitStyles.HalfHeightMm(st.NomeMm) / 1000.0 * Math.Max(1, view.Scale);
+                var top = l.Position + Vec2.FromAngle(ang).PerpLeft * hh;
+                var tn = TextNote.Create(doc, view.Id, RvtUnits.ToXyz(top, z), l.Text.ToUpperInvariant(), new TextNoteOptions(textType)
                 {
-                    HorizontalAlignment = HorizontalTextAlignment.Center, VerticalAlignment = VerticalTextAlignment.Middle, Rotation = l.AngleRad, KeepRotatedTextReadable = true,
+                    HorizontalAlignment = HorizontalTextAlignment.Center, Rotation = ang, KeepRotatedTextReadable = false,
                 });
                 ids.Add(tn.UniqueId);
             }

@@ -39,6 +39,7 @@ public sealed class DesmembramentoState
     public string Width { get; set; } = "10";
     public string Fronts { get; set; } = "12; 12; 6";
     public string MinRem { get; set; } = "125";
+    public string Snap { get; set; } = "0,30";
     public int Direcao { get; set; }
     public int ParIndex { get; set; } = -1;
     public string Az { get; set; } = "0°00'00\"";
@@ -96,7 +97,7 @@ public partial class DesmembramentoWindow : Window
         ModeLots.IsChecked = state.Modo == DesmModo.Lotes;
         FromStart.IsChecked = state.FromStart; FromEnd.IsChecked = !state.FromStart;
         (state.Criterio switch { 1 => CArea, 2 => CAreas, 3 => CFront, 4 => CFronts, _ => CEqual }).IsChecked = true;
-        Parts.Text = state.Parts; Target.Text = state.Target; Areas.Text = state.Areas; Width1.Text = state.Width; Fronts.Text = state.Fronts; MinRem.Text = state.MinRem;
+        Parts.Text = state.Parts; Target.Text = state.Target; Areas.Text = state.Areas; Width1.Text = state.Width; Fronts.Text = state.Fronts; MinRem.Text = state.MinRem; SnapTol.Text = state.Snap;
         (state.Direcao switch { 1 => DirPar, 2 => DirAz, _ => DirPerp }).IsChecked = true;
         AzText.Text = state.Az;
         StartNumber.Text = state.StartNumber;
@@ -245,6 +246,11 @@ public partial class DesmembramentoWindow : Window
                     var res = AreaSplitter.Split(req!);
                     if (res.Pieces.Count > 300) { msg = "Mais de 300 partes – revise os valores."; break; }
                     AutoResult = res;
+                    if (Fmt.TryNum(SnapTol.Text, out double snap) && snap > 0)
+                    {
+                        int moved = SubdivisionPlanner.SnapCuts(parent, res.Cuts, Math.Min(snap, 5));
+                        if (moved > 0) res.Warnings.Add($"{moved} ponta(s) de divisa encaixada(s) em vértice existente (áreas da tabela já ajustadas).");
+                    }
                     pieces = SubdivisionPlanner.OrderAlong(SubdivisionPlanner.FromCuts(parent, res.Cuts.Select(c => ((Curve2)c, (string?)null)).ToList()), along);
                     foreach (var c in res.Cuts) items.Add(new PreviewItem { Line = new List<Vec2> { c.Start, c.End }, Stroke = Color.FromRgb(220, 40, 30), StrokeWidth = 2, Dashed = true });
                     if (res.Warnings.Count > 0) msg = string.Join(" ", res.Warnings);
@@ -328,7 +334,7 @@ public partial class DesmembramentoWindow : Window
         _st.ParIndex = ParBox.SelectedIndex;
         _st.FromStart = FromStart.IsChecked == true;
         _st.Criterio = CArea.IsChecked == true ? 1 : CAreas.IsChecked == true ? 2 : CFront.IsChecked == true ? 3 : CFronts.IsChecked == true ? 4 : 0;
-        _st.Parts = Parts.Text; _st.Target = Target.Text; _st.Areas = Areas.Text; _st.Width = Width1.Text; _st.Fronts = Fronts.Text; _st.MinRem = MinRem.Text;
+        _st.Parts = Parts.Text; _st.Target = Target.Text; _st.Areas = Areas.Text; _st.Width = Width1.Text; _st.Fronts = Fronts.Text; _st.MinRem = MinRem.Text; _st.Snap = SnapTol.Text;
         _st.Direcao = DirPar.IsChecked == true ? 1 : DirAz.IsChecked == true ? 2 : 0;
         _st.Az = AzText.Text;
         _st.ChildLotIds = _childRows.Where(r => r.Selected).Select(r => r.Lot.Id).ToHashSet();

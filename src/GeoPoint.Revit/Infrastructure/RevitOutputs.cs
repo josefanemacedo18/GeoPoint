@@ -91,8 +91,9 @@ public static class CoordinateTableBuilder
 
         void Text(double cx, double cy, string t, HorizontalTextAlignment al)
         {
-            var o = new TextNoteOptions(typeId) { HorizontalAlignment = al, VerticalAlignment = VerticalTextAlignment.Middle };
-            TextNote.Create(doc, view.Id, new XYZ(cx, cy, 0), t, o);
+            // Ponto de inserção = borda superior da caixa: centraliza na linha da tabela.
+            var o = new TextNoteOptions(typeId) { HorizontalAlignment = al };
+            TextNote.Create(doc, view.Id, new XYZ(cx, cy + RevitStyles.HalfHeightMm(textMm) / 304.8, 0), t, o);
         }
         string title = $"QUADRO DE COORDENADAS – {lot.DisplayName.ToUpperInvariant()}  (Área: {fmt.Area(rep.AreaLocal)} – Perímetro: {fmt.Distance(rep.PerimeterLocal)})";
         Text(totalW / 2, -rowH / 2, title, HorizontalTextAlignment.Center);

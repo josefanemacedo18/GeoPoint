@@ -56,7 +56,8 @@
                     <StackPanel>
                         <CheckBox x:Name="Anotacoes" Content="Anotações (distâncias, azimutes, vértices com ponto, confrontantes)"/>
                         <CheckBox x:Name="Hachuras" Content="Hachuras (cores por lote; remanescente com hachura cruzada)"/>
-                        <CheckBox x:Name="Quadro" Content="Quadro de áreas"/>
+                        <CheckBox x:Name="Quadro" Content="Quadro de áreas (pranchas com vários lotes)" Click="Changed"/>
+                        <CheckBox x:Name="Coordenadas" Content="Quadro de coordenadas (pranchas de um lote só)" Click="Changed"/>
                         <CheckBox x:Name="Vias" Content="Desenho esquemático das vias (testadas associadas a vias)"/>
                         <CheckBox x:Name="Norte" Content="Girar a cópia para o norte verdadeiro ficar para cima"/>
                     </StackPanel>
