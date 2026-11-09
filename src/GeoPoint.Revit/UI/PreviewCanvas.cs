@@ -41,6 +41,9 @@ public sealed class PreviewCanvas : FrameworkElement
         Color.FromRgb(150, 70, 200), Color.FromRgb(20, 160, 180), Color.FromRgb(200, 60, 140), Color.FromRgb(120, 120, 40),
     };
 
+    /// <summary>Mostra a seta do norte (desligar quando a prévia não está orientada).</summary>
+    public bool ShowNorth { get; set; } = true;
+
     /// <summary>Define os itens. <paramref name="rotationRad"/> leva o desenho para leste/norte (norte para cima).</summary>
     public void SetItems(IEnumerable<PreviewItem> items, double rotationRad)
     {
@@ -104,6 +107,7 @@ public sealed class PreviewCanvas : FrameworkElement
             dc.DrawRoundedRectangle(new SolidColorBrush(Color.FromArgb(215, 255, 255, 255)), null, box, 3, 3);
             dc.DrawText(ft, new Point(p.X - ft.Width / 2, p.Y - ft.Height / 2));
         }
+        if (!ShowNorth) return;
         // Seta do norte.
         var n0 = new Point(w - 22, 40); var n1 = new Point(w - 22, 14);
         dc.DrawLine(new Pen(Brushes.Black, 1.5), n0, n1);

@@ -6,7 +6,11 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
+using GeoPoint.Core.Calc;
+using GeoPoint.Core.Geometry;
+using GeoPoint.Core.Memorial;
 using GeoPoint.Core.Model;
+using GeoPoint.Core.Operations;
 using GeoPoint.Core.Topology;
 using GeoPoint.Revit.Infrastructure;
 using GeoPoint.Revit.UI;
@@ -353,6 +357,128 @@ public sealed class CmdDadosImovel : CommandBase
         if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
         s.Project.Fase.Situacao = s.Project.Info.Situacao;
         s.SaveProject("GeoPoint: dados do imóvel");
+        return Result.Succeeded;
+    }
+}
+
+[Transaction(TransactionMode.Manual)]
+public sealed class CmdGerarLote : CommandBase
+{
+    protected override string Title => "Gerar lote";
+
+    protected override Result Run(GpSession s)
+    {
+        var view = s.ActiveView;
+        if (view is ViewSheet || !ElementUtil.IsPlanLike(view))
+        {
+            Ui.Warn("Vista inadequada", "Abra uma vista de planta para gerar o lote.");
+            return Result.Cancelled;
+        }
+        var w = new LotGeneratorWindow(Numberer.Suggest(s.Project), s.Settings.Recognition.DefaultQuadra);
+        if (Ui.ShowDialog(w, s.MainWindow) != true || w.Result is not { Ok: true } shape || w.Shape is null) return Result.Cancelled;
+        if (w.Detail && !ElementUtil.SupportsDetails(view))
+        {
+            Ui.Warn("Vista inadequada", "Esta vista não aceita linhas de detalhe. Use linhas de modelo ou abra uma planta.");
+            return Result.Cancelled;
+        }
+        var ctx = s.NewContext();
+
+        // 1º clique: canto frente / lateral esquerda.
+        XYZ p0;
+        try
+        {
+            p0 = s.UiDoc.Selection.PickPoint(ObjectSnapTypes.Endpoints | ObjectSnapTypes.Intersections | ObjectSnapTypes.Midpoints | ObjectSnapTypes.Nearest,
+                "GeoPoint: clique no canto FRENTE / LATERAL ESQUERDA do lote");
+        }
+        catch (Autodesk.Revit.Exceptions.OperationCanceledException) { return Result.Cancelled; }
+        catch (Autodesk.Revit.Exceptions.InvalidOperationException) { Ui.Warn("Vista sem plano de trabalho", "Abra uma vista de planta."); return Result.Cancelled; }
+        var origin = RvtUnits.ToVec(p0);
+        double angle;
+        switch (w.Direction)
+        {
+            case GenDirection.Pick:
+                try
+                {
+                    var p1 = RvtUnits.ToVec(s.UiDoc.Selection.PickPoint(ObjectSnapTypes.Endpoints | ObjectSnapTypes.Intersections | ObjectSnapTypes.Nearest | ObjectSnapTypes.Perpendicular,
+                        "GeoPoint: clique um ponto na direção da FRENTE (para o lado direito do lote)"));
+                    if (p1.DistanceTo(origin) < 0.01) { Ui.Warn("Direção", "O segundo ponto coincide com o primeiro."); return Result.Cancelled; }
+                    angle = Math.Atan2(p1.Y - origin.Y, p1.X - origin.X);
+                }
+                catch (Autodesk.Revit.Exceptions.OperationCanceledException) { return Result.Cancelled; }
+                break;
+            case GenDirection.Azimuth:
+            {
+                var d = ctx.Coords.DirectionFromAzimuth(w.AzimuthDeg);
+                angle = Math.Atan2(d.Y, d.X);
+                break;
+            }
+            default:
+                angle = Math.Atan2(view.RightDirection.Y, view.RightDirection.X);
+                break;
+        }
+
+        var lotsCurves = Enumerable.Range(0, w.CountValue).Select(k => LotShapes.Place(shape.Edges, origin, angle, k * shape.FrontWidth)).ToList();
+        string Key(Curve2 c)
+        {
+            string P(Vec2 v) => $"{Math.Round(v.X, 3)};{Math.Round(v.Y, 3)}";
+            string a = P(c.Start), b = P(c.End);
+            return (string.CompareOrdinal(a, b) < 0 ? a + "|" + b : b + "|" + a) + "|" + P(c.Mid);
+        }
+        var unique = new Dictionary<string, Curve2>();
+        foreach (var c in lotsCurves.SelectMany(x => x)) unique.TryAdd(Key(c), c);
+
+        var created = new List<LotRecord>();
+        using (var t = new Transaction(s.Doc, "GeoPoint: gerar lote"))
+        {
+            t.Start();
+            var target = CurveTarget.ForActiveView(s.Doc, view, w.Detail);
+            var keys = unique.Keys.ToList();
+            var els = target.Create(s.Doc, keys.Select(k => unique[k]), null);
+            if (els.Count != keys.Count) { t.RollBack(); Ui.Error("Gerar lote", "Não foi possível desenhar todas as linhas."); return Result.Failed; }
+            var uidByKey = keys.Select((k, i) => (k, els[i].UniqueId)).ToDictionary(x => x.k, x => x.UniqueId);
+            if (w.RegisterLots)
+            {
+                var numberer = new Numberer(w.StartName);
+                var now = DateTime.Now;
+                for (int k = 0; k < lotsCurves.Count; k++)
+                {
+                    string name = w.UseValue == LotUse.Lote ? numberer.Next() : $"{LotUseInfo.Label(w.UseValue)} {numberer.Next()}";
+                    var curves = lotsCurves[k];
+                    var lot = new LotRecord
+                    {
+                        Nome = name, Numero = name, Quadra = w.QuadraText, Uso = w.UseValue,
+                        Outer = curves.Select(c => EdgeDto.FromCurve(c, new[] { uidByKey[Key(c)] })).ToList(),
+                        ZFeet = target.ZFeet,
+                        SourceKind = w.Detail ? "DetailLine" : "ModelLine",
+                        SourceViewId = w.Detail ? view.UniqueId : "",
+                        SketchPlaneId = target.Sketch?.UniqueId ?? "",
+                        Created = now.AddMilliseconds(k),
+                    };
+                    if (w.MarkTestada)
+                    {
+                        var m = curves[0].Mid;
+                        lot.EdgeInfos.Add(new EdgeInfo { MX = m.X, MY = m.Y, Testada = true });
+                    }
+                    var reg = lot.ToRegion();
+                    lot.History.Add(new HistoryEntry { Description = $"Gerado pelo formato \"{w.Shape.Nome}\"", Area = reg.Area, Perimeter = reg.Outer.Perimeter });
+                    created.Add(lot);
+                    s.Project.Lots.Add(lot);
+                }
+                ctx = s.NewContext();
+                VertexRegistry.Register(ctx, created);
+                if (w.AnnotateNow && ElementUtil.SupportsDetails(view))
+                {
+                    try { Annotator.Annotate(s.Doc, view, created, ctx, new ValueFormatter(s.Settings.Format), Annotator.Options.From(s.Settings.Annotation)); }
+                    catch (Exception ex) { Logger.Error("Anotar lote gerado", ex); }
+                }
+                ProjectStore.Save(s.Doc, s.Project);
+            }
+            t.Commit();
+        }
+        string msg = w.RegisterLots
+            ? $"{created.Count} lote(s) gerado(s) e cadastrado(s) na {s.Project.Fase.Label}: {string.Join(", ", created.Select(l => l.DisplayName))}.\nÁrea de cada lote: {Fmt.N(shape.Area, 2)} m²."
+            : $"Linhas do formato \"{w.Shape.Nome}\" desenhadas ({unique.Count} linha(s)). Use 'Reconhecer Lotes' para cadastrar.";
+        Ui.Info("Gerar lote", msg + "\n\nAs linhas são nativas do Revit: podem ser editadas depois (use 'Atualizar Lotes').");
         return Result.Succeeded;
     }
 }

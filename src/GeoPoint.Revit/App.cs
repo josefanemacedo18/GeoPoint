@@ -26,6 +26,7 @@ public sealed class App : IExternalApplication
 
             var lotes = app.CreateRibbonPanel(TabName, "Lotes");
             Add(lotes, "Reconhecer\nLotes", typeof(Commands.CmdReconhecer), "Reconhece lotes a partir das linhas desenhadas (linhas de modelo, de detalhe ou CAD). Os encontros das linhas viram vértices.", IconKind.Recognize);
+            Add(lotes, "Gerar\nLote", typeof(Commands.CmdGerarLote), "Gera lotes pelo formato (quadrado, retângulo, triângulo, trapézio, quadrilátero, em L, esquina com chanfro ou curva, polígono) digitando a medida de cada lado.", IconKind.Generate);
             Add(lotes, "Gerenciar\nLotes", typeof(Commands.CmdGerenciar), "Nome, quadra, uso, matrícula, confrontantes, testada, vértice inicial e sentido de cada lote.", IconKind.Manager);
             Add(lotes, "Atualizar\nLotes", typeof(Commands.CmdAtualizar), "Atualiza os lotes depois de editar as linhas no desenho.", IconKind.Sync);
             Add(lotes, "Fases", typeof(Commands.CmdFases), "Fases do projeto (ex.: situação atual → remembramento → desmembramento). Cada fase tem seus lotes, numeração de vértices, memoriais, pranchas e vista de trabalho.", IconKind.Phases);
@@ -105,7 +106,7 @@ public sealed class App : IExternalApplication
     }
 }
 
-public enum IconKind { Recognize, Manager, Sync, Info, Reference, Traverse, Split, Merge, Divide, Setback, Annotate, Table, Native, Memorial, Globe, Excel, Chart, Check, Topo, Settings, Help, Hatch, Street, Signature, Sheet, Phases, Import }
+public enum IconKind { Recognize, Manager, Sync, Info, Reference, Traverse, Split, Merge, Divide, Setback, Annotate, Table, Native, Memorial, Globe, Excel, Chart, Check, Topo, Settings, Help, Hatch, Street, Signature, Sheet, Phases, Import, Generate }
 
 /// <summary>Ícones vetoriais desenhados em código (sem arquivos externos).</summary>
 public static class Icons
@@ -146,6 +147,11 @@ public static class Icons
     {
         switch (k)
         {
+            case IconKind.Generate:
+                dc.DrawGeometry(Light, P(Blue, 2), Geometry.Parse("M 4,28 L 4,10 L 18,10 L 18,28 Z"));
+                dc.DrawGeometry(null, P(Gray, 1.2), Geometry.Parse("M 4,6 L 18,6 M 4,4 L 4,8 M 18,4 L 18,8"));
+                dc.DrawGeometry(Green, null, Geometry.Parse("M 21,16 L 25,16 L 25,12 L 28,12 L 28,16 L 32,16 L 32,19 L 28,19 L 28,23 L 25,23 L 25,19 L 21,19 Z"));
+                break;
             case IconKind.Phases:
                 dc.DrawRectangle(Brushes.White, P(Gray, 1.4), new Rect(3, 13, 16, 16));
                 dc.DrawRectangle(Brushes.White, P(Gray, 1.4), new Rect(8, 8, 16, 16));

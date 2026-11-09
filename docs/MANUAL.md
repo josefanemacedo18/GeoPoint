@@ -28,7 +28,17 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 1. **Desenhe as divisas** com linhas nativas do Revit (linhas de modelo ou de detalhe) usando snap nos encontros.
    Também é possível usar linhas de um **CAD vinculado/importado** (DWG/DXF) ou um **PDF** importado como base para traçar.
 2. **Reconhecer Lotes** – selecione as linhas e clique dentro de cada lote (ou crie todos de uma vez).
-3. **Gerenciar Lotes** – informe nome/número, quadra, uso, matrícula, **confrontantes** e marque as **testadas**.
+3. **Gerar Lote** – gera o lote pelo formato, digitando a medida de cada lado:
+- formatos: **quadrado**, **retângulo**, **triângulo** (3 lados), **trapézio retângulo**, **trapézio**, **quadrilátero** pelos 4 lados
+  da matrícula + ângulo do canto (90° se não souber) ou + diagonal, **lote em L**, **esquina com chanfro**, **esquina com curva**
+  (raio de concordância) e **polígono** por lados e ângulos internos (qualquer formato, com conferência do fechamento);
+- prévia com a medida de cada lado, área e perímetro (vista da rua: frente embaixo, lateral direita à direita);
+- quadrado e retângulo podem ser gerados **vários lado a lado** (as divisas comuns são uma linha só);
+- posição: clique no canto **frente / lateral esquerda**; a frente fica na horizontal da tela, na direção de um 2º clique ou num azimute;
+- desenha **linhas nativas** (de modelo ou de detalhe), cadastra o(s) lote(s) com nome/quadra/uso, marca a frente como testada e
+  anota na vista. As linhas podem ser editadas depois (*Atualizar Lotes*).
+
+**Gerenciar Lotes** – informe nome/número, quadra, uso, matrícula, **confrontantes** e marque as **testadas**.
 4. **Dados do Imóvel** – proprietário, município, matrícula, RRT/ART, perfil urbanístico.
 5. **Definir Referência** – cole a coordenada de **um** vértice (Google Maps/Earth, QGIS, GPS ou UTM).
 6. **Google Earth / QGIS** – confira o desenho sobre a imagem de satélite.
@@ -38,8 +48,11 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 
 ### Fases do projeto
 Use **Fases** (painel Lotes) para separar as etapas, ex.: *Fase 0 – Situação atual* → *Fase 1 – Remembramento* → *Fase 2 – Desmembramento*.
-- **Nova fase**: parte dos lotes **ativos** da fase escolhida (cópias independentes, com confrontantes e testadas). A situação atual
-  de cada fase é a proposta da fase anterior.
+**Você define as fases**: o projeto pode ter uma fase só; na tabela edite o **número**, o **nome**, o **tipo** (Regularização,
+Desmembramento, Remembramento, Loteamento, Usucapião…) e a **descrição** de cada fase – inclusive da primeira.
+- **Nova fase**: escolha o nome, o tipo e de qual fase ela parte, e marque **quais lotes ativos entram** (cópias independentes,
+  com confrontantes e testadas) – ou escolha *(nenhuma – fase vazia)* para começar sem lotes. A fase de partida não muda.
+- **Excluir fase**: qualquer fase pode ser excluída (inclusive a primeira), desde que não seja a única e nenhuma outra fase parta dela.
 - Cada fase tem seus **lotes, operações, numeração de vértices (começa em P-01)**, memoriais e pranchas (número `GP-F1-01`…).
 - Cada fase tem uma **vista de trabalho** ("F1 – Remembramento"), cópia da planta. Nela as divisas internas dos lotes da fase ficam
   ocultas (só linhas de divisa são ocultadas; outras linhas do seu desenho continuam visíveis). A vista em que você estava passa a

@@ -34,14 +34,14 @@ public sealed class CmdFases : CommandBase
             {
                 case FaseAction.Create:
                 {
-                    var baseF = sel ?? s.Project.Fase;
+                    var baseF = w.BaseId.Length > 0 ? s.Project.FindFase(w.BaseId) ?? s.Project.Fase : s.Project.Fase;
                     var source = PlanSource(s, baseF);
                     // A vista de origem passa a ser a vista da fase de partida (se ela ainda não tiver vista).
                     if (source is not null && baseF.ViewIds.Count == 0) baseF.ViewIds.Add(source.UniqueId);
                     var oldAnnotated = s.Project.Lots.Where(l => l.FaseId == baseF.Id && l.Status == LotStatus.Ativo)
                         .GroupBy(l => (l.Nome, l.Quadra))
                         .ToDictionary(g => g.Key, g => (ann: g.Any(l => l.Annotations.Any(a => a.ViewId == source?.UniqueId)), hat: g.Any(l => l.Hatches.Any(h => h.ViewId == source?.UniqueId))));
-                    var f = FaseService.Create(s.Project, w.NewNameText, w.NewSituacaoText, baseF.Id);
+                    var f = FaseService.Create(s.Project, w.NewNameText, w.NewSituacaoText, w.BaseId, w.BaseId.Length > 0 ? w.LotIds : null);
                     var ctx = s.NewContext();
                     VertexRegistry.EnsureAll(ctx);
                     if (w.CreateViewValue && source is not null)
@@ -56,7 +56,8 @@ public sealed class CmdFases : CommandBase
                         if (hat.Count > 0) Hatcher.Apply(doc, open, hat, l => hat.IndexOf(l));
                     }
                     if (source is not null) foreach (var uid in baseF.ViewIds) if (ElementUtil.ByUniqueId(doc, uid) is View bv) PhaseViews.Refresh(s, baseF, bv);
-                    msg = $"{f.Label} criada com {s.Project.ActiveLots.Count()} lote(s) da {baseF.Label}. A numeração dos vértices começa em P-01." +
+                    msg = (w.BaseId.Length == 0 ? $"{f.Label} criada vazia: desenhe, gere ou reconheça os lotes nela." : $"{f.Label} criada com {s.Project.ActiveLots.Count()} lote(s) da {baseF.Label}.") +
+                          " A numeração dos vértices começa em P-01." +
                           (open is not null ? $"\nVista de trabalho: \"{open.Name}\"." : "");
                     break;
                 }

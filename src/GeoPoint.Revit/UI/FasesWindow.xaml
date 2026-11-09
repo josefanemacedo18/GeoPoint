@@ -1,7 +1,9 @@
 <Window x:Class="GeoPoint.Revit.UI.FasesWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="GeoPoint – Fases do projeto" Width="900" Height="600" MinWidth="720" MinHeight="460"
+        xmlns:ui="clr-namespace:GeoPoint.Revit.UI"
+        xmlns:m="clr-namespace:GeoPoint.Core.Model;assembly=GeoPoint.Core"
+        Title="GeoPoint – Fases do projeto" Width="1060" Height="720" MinWidth="860" MinHeight="560"
         FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterOwner">
     <Window.Resources>
         <ResourceDictionary>
@@ -12,42 +14,77 @@
     </Window.Resources>
     <DockPanel Margin="14">
         <TextBlock DockPanel.Dock="Top" Style="{StaticResource H1}" Text="Fases do projeto"/>
-        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Text="Cada fase parte dos lotes ativos da fase anterior (ex.: 0 – Situação atual → 1 – Remembramento → 2 – Desmembramento) e tem seus próprios lotes, operações, numeração de vértices (começa em P-01), memoriais e pranchas. Cada fase tem uma vista de trabalho; abrir a vista de uma fase torna essa fase a ativa."/>
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Text="Você define as fases: quantas (pode ser uma só), o número, o nome e o tipo de cada uma – inclusive a primeira. Cada fase tem seus lotes, operações, numeração de vértices (começa em P-01), memoriais, pranchas e vista de trabalho. Clique nas células da tabela para editar; abrir a vista de uma fase torna essa fase a ativa."/>
         <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="False">
             <Button DockPanel.Dock="Right" Content="Fechar" IsCancel="True"/>
-            <Button DockPanel.Dock="Right" Content="Salvar nomes" Click="Save_Click" ToolTip="Grava os nomes e situações editados na tabela."/>
+            <Button DockPanel.Dock="Right" Content="Salvar alterações" Style="{StaticResource Primary}" Click="Save_Click" ToolTip="Grava números, nomes, tipos e descrições editados na tabela."/>
         </DockPanel>
-        <GroupBox DockPanel.Dock="Bottom" Header="Nova fase (a partir da fase selecionada)">
+        <GroupBox DockPanel.Dock="Bottom" Header="Nova fase">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="200"/><ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="380"/>
+                    <ColumnDefinition Width="12"/>
+                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
-                <Label Content="Nome:"/>
-                <TextBox Grid.Column="1" x:Name="NewName" Text="Desmembramento"/>
-                <Label Grid.Column="2" Content="  Situação:"/>
-                <ComboBox Grid.Column="3" x:Name="NewSituacao" IsEditable="True"/>
-                <Button Grid.Column="4" Content="Criar fase" Style="{StaticResource Primary}" Click="Create_Click"/>
-                <CheckBox Grid.Row="1" Grid.ColumnSpan="5" x:Name="NewView" IsChecked="True" Margin="0,6,0,0"
-                          Content="Criar a vista de trabalho da fase (cópia da vista atual) e abri-la"/>
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                        <Label Content="Nome:"/>
+                        <TextBox Grid.Column="1" x:Name="NewName" Text="Desmembramento"/>
+                        <Label Grid.Row="1" Content="Tipo:"/>
+                        <ComboBox Grid.Row="1" Grid.Column="1" x:Name="NewSituacao" IsEditable="True"/>
+                        <Label Grid.Row="2" Content="Partir de:"/>
+                        <ComboBox Grid.Row="2" Grid.Column="1" x:Name="BaseBox" DisplayMemberPath="Text" SelectionChanged="Base_Changed"/>
+                    </Grid>
+                    <CheckBox x:Name="NewView" IsChecked="True" Margin="0,6,0,0" Content="Criar a vista de trabalho da fase (cópia da vista atual) e abri-la"/>
+                    <Button Content="Criar fase" Style="{StaticResource Primary}" HorizontalAlignment="Left" Margin="0,8,0,0" Click="Create_Click"/>
+                </StackPanel>
+                <DockPanel Grid.Column="2">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
+                        <TextBlock x:Name="LotsTitle" FontWeight="SemiBold" VerticalAlignment="Center" Text="Lotes que entram na nova fase"/>
+                        <Button Content="Todos" Margin="10,0,0,0" Click="All_Click"/>
+                        <Button Content="Nenhum" Click="None_Click"/>
+                    </StackPanel>
+                    <DataGrid x:Name="LotsGrid" Height="150" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" Margin="0,4,0,0">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="" Width="34">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding Selected, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Lote" Binding="{Binding Nome}" Width="*" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Área (m²)" Binding="{Binding AreaText}" Width="90" IsReadOnly="True"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
             </Grid>
         </GroupBox>
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,6">
             <Button Margin="0" Content="Ativar e abrir a vista" Click="Activate_Click"/>
-            <Button Content="Criar vista da fase" Click="CreateView_Click" ToolTip="Para fases sem vista de trabalho (ex.: a Fase 0): cria uma cópia da vista atual."/>
+            <Button Content="Criar vista da fase" Click="CreateView_Click" ToolTip="Para fases sem vista de trabalho: cria uma cópia da vista atual."/>
             <Button Content="Atualizar vistas" Click="Refresh_Click" ToolTip="Reaplica a visibilidade das linhas em todas as vistas de fase."/>
             <Button Content="Excluir fase" Click="Delete_Click"/>
         </StackPanel>
         <DataGrid x:Name="Grid" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Single">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="" Binding="{Binding Ativa}" Width="28" IsReadOnly="True"/>
-                <DataGridTextColumn Header="Fase" Binding="{Binding Numero}" Width="45" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Ativa" Binding="{Binding Ativa}" Width="45" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Nº" Binding="{Binding Numero, UpdateSourceTrigger=PropertyChanged}" Width="45"/>
                 <DataGridTextColumn Header="Nome" Binding="{Binding Nome, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
-                <DataGridTextColumn Header="Situação" Binding="{Binding Situacao, UpdateSourceTrigger=PropertyChanged}" Width="150"/>
-                <DataGridTextColumn Header="Parte de" Binding="{Binding Base}" Width="120" IsReadOnly="True"/>
-                <DataGridTextColumn Header="Lotes ativos" Binding="{Binding Lotes}" Width="80" IsReadOnly="True"/>
-                <DataGridTextColumn Header="Operações" Binding="{Binding Operacoes}" Width="75" IsReadOnly="True"/>
-                <DataGridTextColumn Header="Vistas" Binding="{Binding Vistas}" Width="160" IsReadOnly="True"/>
+                <DataGridTemplateColumn Header="Tipo" Width="170">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <ComboBox IsEditable="True" ItemsSource="{x:Static m:ProjectInfo.Situacoes}" Text="{Binding Situacao, UpdateSourceTrigger=PropertyChanged}"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Descrição" Binding="{Binding Notes, UpdateSourceTrigger=PropertyChanged}" Width="180"/>
+                <DataGridTextColumn Header="Parte de" Binding="{Binding Base}" Width="110" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Lotes" Binding="{Binding Lotes}" Width="50" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Operações" Binding="{Binding Operacoes}" Width="70" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Vistas" Binding="{Binding Vistas}" Width="140" IsReadOnly="True"/>
             </DataGrid.Columns>
         </DataGrid>
     </DockPanel>

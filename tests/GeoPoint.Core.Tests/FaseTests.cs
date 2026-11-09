@@ -78,6 +78,33 @@ public class FaseTests
         Assert.Single(p.Fases);
         Assert.Throws<InvalidOperationException>(() => FaseService.Delete(p, f0.Id));
     }
+
+    [Fact]
+    public void UserDefinedFases_EmptyPartialRenameDelete()
+    {
+        var a = TestProjects.Rect(0, 0, 10, 30, "01");
+        var b = TestProjects.Rect(10, 0, 10, 30, "02");
+        var p = TestProjects.Project(a, b);
+        var f0 = p.Fase;
+        f0.Nome = "Regularização"; f0.Situacao = "Regularização";
+        // Fase vazia (sem lotes de partida).
+        var vazia = FaseService.Create(p, "Loteamento novo", "Loteamento", "");
+        Assert.Empty(p.ActiveLots);
+        Assert.Equal("", vazia.BaseFaseId);
+        // Fase com só o lote 02.
+        var parcial = FaseService.Create(p, "Desmembramento do 02", "Desmembramento", f0.Id, new[] { b.Id });
+        Assert.Equal("02", Assert.Single(p.ActiveLots).Nome);
+        Assert.Equal(f0.Id, parcial.BaseFaseId);
+        FaseService.Renumber(p, parcial, 5);
+        Assert.Throws<InvalidOperationException>(() => FaseService.Renumber(p, vazia, 5));
+        // A fase inicial pode ser excluída quando nenhuma outra parte dela e há outras fases.
+        Assert.Throws<InvalidOperationException>(() => FaseService.Delete(p, f0.Id));   // a fase "parcial" parte dela
+        FaseService.Delete(p, parcial.Id);
+        FaseService.Delete(p, f0.Id);
+        Assert.Single(p.Fases);
+        Assert.Equal(vazia.Id, p.Fase.Id);
+        Assert.DoesNotContain(p.Lots, l => l.Id == a.Id || l.Id == b.Id);
+    }
 }
 
 public class IndividualMemorialTests

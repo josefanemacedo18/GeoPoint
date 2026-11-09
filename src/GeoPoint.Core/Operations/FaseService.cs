@@ -15,15 +15,16 @@ public static class FaseService
     public static FaseRecord Create(ParcelProject p, string nome, string situacao, string? baseFaseId = null, ICollection<string>? lotIds = null)
     {
         var current = p.Fase;
-        var baseF = p.FindFase(baseFaseId) ?? current;
+        // baseFaseId vazio ("") = fase vazia, sem lotes de partida.
+        var baseF = baseFaseId == "" ? null : p.FindFase(baseFaseId) ?? current;
         var f = new FaseRecord
         {
             Numero = p.Fases.Max(x => x.Numero) + 1,
             Nome = string.IsNullOrWhiteSpace(nome) ? "Nova fase" : nome.Trim(),
             Situacao = situacao?.Trim() ?? "",
-            BaseFaseId = baseF.Id,
+            BaseFaseId = baseF?.Id ?? "",
         };
-        var src = p.Lots.Where(l => l.FaseId == baseF.Id && l.Status == LotStatus.Ativo && (lotIds is null || lotIds.Contains(l.Id)))
+        var src = baseF is null ? new List<LotRecord>() : p.Lots.Where(l => l.FaseId == baseF.Id && l.Status == LotStatus.Ativo && (lotIds is null || lotIds.Contains(l.Id)))
             .OrderBy(l => l.Created).ToList();
         var map = new Dictionary<string, string>();
         var copies = new List<LotRecord>();
@@ -42,7 +43,7 @@ public static class FaseService
             c.PropertyLineId = "";
             if (c.IsRemanescente && string.IsNullOrWhiteSpace(c.Nome)) c.Nome = "Remanescente";
             c.IsRemanescente = false;
-            c.History = new() { new HistoryEntry { Description = $"Lote da {baseF.Label} (início da {f.Label})", Area = SafeArea(src[i]) } };
+            c.History = new() { new HistoryEntry { Description = $"Lote da {baseF!.Label} (início da {f.Label})", Area = SafeArea(src[i]) } };
             map[src[i].Id] = c.Id;
             copies.Add(c);
         }
@@ -75,7 +76,7 @@ public static class FaseService
     public static List<LotRecord> Delete(ParcelProject p, string faseId)
     {
         var f = p.FindFase(faseId) ?? throw new ArgumentException("Fase não encontrada.");
-        if (f.Numero == 0 || p.Fases.Count <= 1) throw new InvalidOperationException("A fase inicial não pode ser excluída.");
+        if (p.Fases.Count <= 1) throw new InvalidOperationException("O projeto precisa ter pelo menos uma fase.");
         if (p.Fases.Any(x => x.BaseFaseId == f.Id))
             throw new InvalidOperationException($"Outras fases partem da {f.Label}. Exclua-as primeiro.");
         var removed = p.Lots.Where(l => l.FaseId == f.Id).ToList();
@@ -85,6 +86,14 @@ public static class FaseService
         p.Fases.Remove(f);
         if (p.ActiveFaseId == f.Id) p.ActiveFaseId = (p.FindFase(f.BaseFaseId) ?? p.Fases.OrderBy(x => x.Numero).First()).Id;
         return removed;
+    }
+
+    /// <summary>Muda o número de uma fase (não pode repetir o de outra fase).</summary>
+    public static void Renumber(ParcelProject p, FaseRecord f, int numero)
+    {
+        if (numero < 0) throw new ArgumentException("O número da fase não pode ser negativo.");
+        if (p.Fases.Any(x => x != f && x.Numero == numero)) throw new InvalidOperationException($"Já existe a fase {numero}.");
+        f.Numero = numero;
     }
 
     public static LotRecord Clone(LotRecord l) =>

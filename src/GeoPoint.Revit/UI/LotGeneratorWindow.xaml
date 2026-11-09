@@ -1,0 +1,88 @@
+<Window x:Class="GeoPoint.Revit.UI.LotGeneratorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:GeoPoint.Revit.UI"
+        Title="GeoPoint – Gerar lote" Width="1120" Height="760" MinWidth="900" MinHeight="600"
+        FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GeoPoint.Revit;component/UI/Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <DockPanel Margin="14">
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource H1}" Text="Gerar lote pelo formato e medidas"/>
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Text="Escolha o formato, digite as medidas de cada lado e confira a prévia (vista da rua: frente embaixo, lateral direita à direita). Depois clique no desenho onde fica o canto frente/lateral esquerda; o GeoPoint desenha as linhas e cadastra o lote."/>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button x:Name="OkButton" Content="Gerar e posicionar no desenho" Style="{StaticResource Primary}" Click="Ok_Click" IsDefault="True"/>
+            <Button Content="Cancelar" IsCancel="True"/>
+        </StackPanel>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="230"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="330"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <GroupBox Grid.Column="0" Header="Formato">
+                <ListBox x:Name="Shapes" DisplayMemberPath="Nome" SelectionChanged="Shape_Changed"/>
+            </GroupBox>
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <GroupBox Header="Medidas">
+                        <StackPanel>
+                            <TextBlock x:Name="ShapeHint" Style="{StaticResource Hint}" TextWrapping="Wrap"/>
+                            <StackPanel x:Name="ParamsPanel"/>
+                        </StackPanel>
+                    </GroupBox>
+                    <GroupBox Header="Posição e direção da frente">
+                        <StackPanel>
+                            <RadioButton x:Name="DirScreen" GroupName="d" IsChecked="True" Content="Como na prévia (frente na horizontal da tela)"/>
+                            <RadioButton x:Name="DirPick" GroupName="d" Content="Clicar um 2º ponto na direção da frente"/>
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="DirAz" GroupName="d" Content="Azimute da frente:"/>
+                                <TextBox x:Name="AzText" Width="110" Text="90°00'00&quot;" ToolTip="Azimute verdadeiro do canto frente-esquerda para o canto frente-direita."/>
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource Hint}" Text="O 1º clique é o canto frente / lateral esquerda (snap de extremidade e interseção)."/>
+                        </StackPanel>
+                    </GroupBox>
+                    <GroupBox Header="Linhas e cadastro">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="ModelLines" GroupName="l" IsChecked="True" Content="Linhas de modelo"/>
+                                <RadioButton x:Name="DetailLines" GroupName="l" Margin="12,0,0,0" Content="Linhas de detalhe"/>
+                            </StackPanel>
+                            <StackPanel x:Name="RepeatPanel" Orientation="Horizontal" Margin="0,4,0,0">
+                                <Label Content="Quantidade lado a lado:"/>
+                                <TextBox x:Name="Count" Width="50" Text="1" TextChanged="Any_Changed" ToolTip="Gera vários lotes iguais seguidos ao longo da frente (as divisas comuns são uma linha só)."/>
+                            </StackPanel>
+                            <CheckBox x:Name="Register" IsChecked="True" Content="Cadastrar como lote(s) do GeoPoint" Margin="0,4,0,0"/>
+                            <Grid Margin="18,2,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                                <Label Content="Nome / número inicial:"/>
+                                <TextBox Grid.Column="1" x:Name="NameText"/>
+                                <Label Grid.Row="1" Content="Quadra:"/>
+                                <TextBox Grid.Row="1" Grid.Column="1" x:Name="Quadra"/>
+                                <Label Grid.Row="2" Content="Uso:"/>
+                                <ComboBox Grid.Row="2" Grid.Column="1" x:Name="Uso" DisplayMemberPath="Value" SelectedValuePath="Key"/>
+                            </Grid>
+                            <CheckBox x:Name="Testada" IsChecked="True" Margin="18,4,0,0" Content="Marcar a frente como testada"/>
+                            <CheckBox x:Name="Annotate" IsChecked="True" Margin="18,2,0,0" Content="Anotar na vista atual (medidas, azimutes e vértices)"/>
+                        </StackPanel>
+                    </GroupBox>
+                </StackPanel>
+            </ScrollViewer>
+            <DockPanel Grid.Column="4">
+                <GroupBox DockPanel.Dock="Bottom" Header="Resultado">
+                    <TextBlock x:Name="Summary" TextWrapping="Wrap"/>
+                </GroupBox>
+                <GroupBox Header="Prévia">
+                    <ui:PreviewCanvas x:Name="Preview" MinHeight="300"/>
+                </GroupBox>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</Window>
