@@ -43,6 +43,62 @@ public enum PrecisionClass
 
 public enum OperationType { Desmembramento = 0, Remembramento = 1, Parcelamento = 2 }
 
+/// <summary>Tipo de confrontante de uma divisa.</summary>
+public enum ConfrontanteTipo
+{
+    /// <summary>Texto livre (proprietário, área etc.) ou sugestão automática quando vazio.</summary>
+    Texto = 0,
+    /// <summary>Outro lote do projeto (o nome acompanha o lote).</summary>
+    Lote = 1,
+    /// <summary>Via cadastrada no projeto.</summary>
+    Via = 2,
+}
+
+/// <summary>Lado do lote em que fica a divisa (visto da via, de frente para o lote).</summary>
+public enum LadoLote
+{
+    Automatico = 0,
+    Frente = 1,
+    Fundos = 2,
+    LateralDireita = 3,
+    LateralEsquerda = 4,
+    Outro = 5,
+}
+
+/// <summary>Numeração dos vértices.</summary>
+public enum VertexNumbering
+{
+    /// <summary>Numeração única no projeto inteiro (registro de vértices).</summary>
+    Projeto = 0,
+    /// <summary>Numeração única por quadra.</summary>
+    Quadra = 1,
+    /// <summary>Cada lote começa em P-01.</summary>
+    Lote = 2,
+}
+
+public static class LadoInfo
+{
+    public static string Label(LadoLote l) => l switch
+    {
+        LadoLote.Frente => "Frente",
+        LadoLote.Fundos => "Fundos",
+        LadoLote.LateralDireita => "Lateral direita",
+        LadoLote.LateralEsquerda => "Lateral esquerda",
+        LadoLote.Outro => "Outro",
+        _ => "Automático",
+    };
+
+    /// <summary>Expressão usada no memorial ("pela frente", "pelos fundos"...).</summary>
+    public static string Phrase(LadoLote l) => l switch
+    {
+        LadoLote.Frente => "pela frente",
+        LadoLote.Fundos => "pelos fundos",
+        LadoLote.LateralDireita => "pela lateral direita",
+        LadoLote.LateralEsquerda => "pela lateral esquerda",
+        _ => "",
+    };
+}
+
 public static class LotUseInfo
 {
     public static string Label(LotUse u) => u switch
@@ -151,10 +207,69 @@ public sealed class EdgeInfo
 {
     public double MX { get; set; }
     public double MY { get; set; }
+    /// <summary>Texto do confrontante (usado quando Tipo = Texto).</summary>
     public string Confrontante { get; set; } = "";
+    public ConfrontanteTipo Tipo { get; set; } = ConfrontanteTipo.Texto;
+    /// <summary>Lote confrontante (Tipo = Lote).</summary>
+    public string LotId { get; set; } = "";
+    /// <summary>Via confrontante (Tipo = Via).</summary>
+    public string ViaId { get; set; } = "";
+    /// <summary>Lado definido pelo usuário (Automático = calculado pela testada).</summary>
+    public LadoLote Lado { get; set; } = LadoLote.Automatico;
     public bool Testada { get; set; }
     /// <summary>Recuo/afastamento (m) para cálculo de área edificável.</summary>
     public double? Recuo { get; set; }
+
+    public bool IsEmpty =>
+        string.IsNullOrWhiteSpace(Confrontante) && Tipo == ConfrontanteTipo.Texto && !Testada && Recuo is null && Lado == LadoLote.Automatico;
+
+    public EdgeInfo CloneAt(Vec2 mid) => new()
+    {
+        MX = mid.X, MY = mid.Y, Confrontante = Confrontante, Tipo = Tipo, LotId = LotId, ViaId = ViaId,
+        Lado = Lado, Testada = Testada, Recuo = Recuo,
+    };
+}
+
+/// <summary>Vértice do registro único do projeto (numeração estável).</summary>
+public sealed class VertexRecord
+{
+    /// <summary>Número no projeto (P-01 = 1).</summary>
+    public int Number { get; set; }
+    public double X { get; set; }
+    public double Y { get; set; }
+    /// <summary>Número do vértice em cada quadra em que aparece.</summary>
+    public Dictionary<string, int> QuadraNumbers { get; set; } = new();
+    public DateTime Created { get; set; } = DateTime.Now;
+}
+
+/// <summary>Comportamento da ponta de uma via no desenho esquemático.</summary>
+public enum ViaPonta { Termina = 0, Prolonga = 1 }
+
+/// <summary>Via (rua, avenida, estrada) usada como confrontante e no desenho esquemático.</summary>
+public sealed class ViaRecord
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Nome { get; set; } = "Rua";
+    /// <summary>Largura do leito carroçável (m).</summary>
+    public double Largura { get; set; } = 12;
+    /// <summary>Largura de cada calçada (m).</summary>
+    public double Calcada { get; set; } = 2.5;
+    /// <summary>Prolongamento das pontas além da última testada (m), quando não há cruzamento.</summary>
+    public double Prolongamento { get; set; }
+    public override string ToString() => Nome;
+}
+
+/// <summary>Cruzamento de 2, 3 ou 4 vias (desenho esquemático).</summary>
+public sealed class CruzamentoRecord
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public List<string> ViaIds { get; set; } = new();
+    /// <summary>Vias que atravessam o cruzamento (seguem do outro lado).</summary>
+    public List<string> Atravessam { get; set; } = new();
+    /// <summary>Raio de concordância do meio-fio nas esquinas (m).</summary>
+    public double RaioEsquina { get; set; } = 3;
+    /// <summary>Comprimento desenhado além do cruzamento para as vias que atravessam (m).</summary>
+    public double Continuacao { get; set; } = 15;
 }
 
 public sealed class AnnotationRecord
@@ -179,6 +294,8 @@ public sealed class LotRecord
     public string Numero { get; set; } = "";
     public LotUse Uso { get; set; } = LotUse.Lote;
     public LotStatus Status { get; set; } = LotStatus.Ativo;
+    /// <summary>Lote remanescente de um desmembramento.</summary>
+    public bool IsRemanescente { get; set; }
 
     public string Matricula { get; set; } = "";
     public string Proprietario { get; set; } = "";
@@ -217,6 +334,8 @@ public sealed class LotRecord
     public string PropertyLineId { get; set; } = "";
     public List<string> FilledRegionIds { get; set; } = new();
     public List<string> AuxElementIds { get; set; } = new();
+    /// <summary>Hachuras do lote (por vista).</summary>
+    public List<AnnotationRecord> Hatches { get; set; } = new();
 
     public List<HistoryEntry> History { get; set; } = new();
     public DateTime Created { get; set; } = DateTime.Now;
@@ -228,9 +347,10 @@ public sealed class LotRecord
         get
         {
             string n;
-            if (string.IsNullOrWhiteSpace(Nome)) n = Uso == LotUse.Lote ? "Lote" : LotUseInfo.Label(Uso);
-            else if (Uso == LotUse.Lote && char.IsDigit(Nome.Trim()[0])) n = "Lote " + Nome.Trim();
+            if (string.IsNullOrWhiteSpace(Nome)) n = IsRemanescente ? "Lote Remanescente" : Uso == LotUse.Lote ? "Lote" : LotUseInfo.Label(Uso);
+            else if ((Uso is LotUse.Lote or LotUse.Remanescente) && char.IsDigit(Nome.Trim()[0])) n = "Lote " + Nome.Trim();
             else n = Nome.Trim();
+            if (IsRemanescente && !string.IsNullOrWhiteSpace(Nome) && !n.Contains("emanescente", StringComparison.OrdinalIgnoreCase)) n += " (Remanescente)";
             if (!string.IsNullOrWhiteSpace(Quadra)) n += $" – Quadra {Quadra}";
             return n;
         }
@@ -331,6 +451,10 @@ public sealed class OperationRecord
     public List<string> ParentIds { get; set; } = new();
     public List<string> ChildIds { get; set; } = new();
     public string Notes { get; set; } = "";
+    /// <summary>Lote remanescente (desmembramento).</summary>
+    public string RemanescenteId { get; set; } = "";
+    /// <summary>Vistas e pranchas geradas para a operação (UniqueId).</summary>
+    public List<string> GeneratedIds { get; set; } = new();
 
     [JsonIgnore]
     public string Label => $"{(Type == OperationType.Desmembramento ? "Desmembramento" : Type == OperationType.Remembramento ? "Remembramento" : "Parcelamento")} – {Date:dd/MM/yyyy HH:mm}";
@@ -345,6 +469,14 @@ public sealed class ParcelProject
     public ProjectInfo Info { get; set; } = new();
     public List<LotRecord> Lots { get; set; } = new();
     public List<OperationRecord> Operations { get; set; } = new();
+    /// <summary>Registro único de vértices (numeração estável entre operações).</summary>
+    public List<VertexRecord> Vertices { get; set; } = new();
+    /// <summary>Próximo número de vértice em cada quadra.</summary>
+    public Dictionary<string, int> QuadraVertexCounters { get; set; } = new();
+    public List<ViaRecord> Vias { get; set; } = new();
+    public List<CruzamentoRecord> Cruzamentos { get; set; } = new();
+
+    public ViaRecord? FindVia(string? id) => string.IsNullOrWhiteSpace(id) ? null : Vias.FirstOrDefault(v => v.Id == id);
 
     public IEnumerable<LotRecord> ActiveLots => Lots.Where(l => l.Status == LotStatus.Ativo);
 

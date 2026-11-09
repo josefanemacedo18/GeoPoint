@@ -137,10 +137,10 @@ public static class GisExport
                     foreach (var v in r.Vertices)
                     {
                         if (v.Geo is not { } g) continue;
-                        string key = ctx.Settings.Naming.GlobalNumbering ? v.Name : lot.Id + v.Name;
+                        string key = ctx.Settings.Naming.Numbering == VertexNumbering.Projeto ? v.Name : lot.Id + v.Name;
                         if (!seen.Add(key)) continue;
                         w.WriteStartElement("Placemark");
-                        w.WriteElementString("name", ctx.Settings.Naming.GlobalNumbering ? v.Name : $"{v.Name} ({lot.DisplayName})");
+                        w.WriteElementString("name", ctx.Settings.Naming.Numbering == VertexNumbering.Projeto ? v.Name : $"{v.Name} ({lot.DisplayName})");
                         var utm = v.Utm;
                         string desc = $"Latitude: {fmt.Lat(g.LatDeg)}<br/>Longitude: {fmt.Lon(g.LonDeg)}" +
                                       (utm is { } u ? $"<br/>UTM {u.ZoneLabel}: E {fmt.Plane(u.East)} m, N {fmt.Plane(u.North)} m" : "");
@@ -291,7 +291,7 @@ public static class GisExport
                     foreach (var v in r.Vertices)
                     {
                         if (v.Geo is not { } g) continue;
-                        string key = ctx.Settings.Naming.GlobalNumbering ? v.Name : lot.Id + v.Name;
+                        string key = ctx.Settings.Naming.Numbering == VertexNumbering.Projeto ? v.Name : lot.Id + v.Name;
                         if (!seen.Add(key)) continue;
                         w.WriteStartObject();
                         w.WriteString("type", "Feature");

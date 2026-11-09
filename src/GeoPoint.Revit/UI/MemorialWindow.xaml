@@ -125,8 +125,12 @@
                             <TextBox x:Name="Prefix" Width="60"/>
                             <Label Content="  Dígitos:"/>
                             <TextBox x:Name="Digits" Width="40"/>
-                            <CheckBox x:Name="Global" Margin="12,0,0,0" Content="Numeração única no projeto"
-                                      ToolTip="Vértices compartilhados entre lotes recebem o mesmo nome em todos os memoriais."/>
+                            <Label Content="  Numeração:"/>
+                            <ComboBox x:Name="Numbering" Width="150" ToolTip="Projeto: cada ponto tem um número único em todo o projeto (o mesmo em desmembramentos e remembramentos). Quadra: numeração única por quadra. Lote: cada lote começa em P-01.">
+                                <ComboBoxItem Content="Projeto inteiro"/>
+                                <ComboBoxItem Content="Por quadra"/>
+                                <ComboBoxItem Content="Por lote"/>
+                            </ComboBox>
                         </StackPanel>
                     </GroupBox>
                     <GroupBox Header="Conteúdo e arquivo">

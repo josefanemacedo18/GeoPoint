@@ -11,10 +11,10 @@ namespace GeoPoint.Core.Memorial;
 public sealed class MemorialPhrases
 {
     public string Inicio { get; set; } = "Inicia-se a descrição deste perímetro no vértice {VERTICE}, de coordenadas {COORDENADAS}";
-    public string Reta { get; set; } = "; deste, segue[ confrontando com {CONFRONTANTE},] com {DIRECAO} e distância de {DISTANCIA}, até o vértice {VERTICE_SEGUINTE}, de coordenadas {COORDENADAS_SEGUINTE}";
-    public string RetaFinal { get; set; } = "; deste, segue[ confrontando com {CONFRONTANTE},] com {DIRECAO} e distância de {DISTANCIA}, até o vértice {VERTICE_SEGUINTE}, ponto inicial da descrição deste perímetro";
-    public string Arco { get; set; } = "; deste, segue em curva circular[ confrontando com {CONFRONTANTE},] com raio de {RAIO}, ângulo central de {ANGULO_CENTRAL} e desenvolvimento de {DESENVOLVIMENTO} (corda de {CORDA}, com {DIRECAO}), até o vértice {VERTICE_SEGUINTE}, de coordenadas {COORDENADAS_SEGUINTE}";
-    public string ArcoFinal { get; set; } = "; deste, segue em curva circular[ confrontando com {CONFRONTANTE},] com raio de {RAIO}, ângulo central de {ANGULO_CENTRAL} e desenvolvimento de {DESENVOLVIMENTO} (corda de {CORDA}, com {DIRECAO}), até o vértice {VERTICE_SEGUINTE}, ponto inicial da descrição deste perímetro";
+    public string Reta { get; set; } = "; deste, segue[ {LADO},][ confrontando com {CONFRONTANTE},] com {DIRECAO} e distância de {DISTANCIA}, até o vértice {VERTICE_SEGUINTE}, de coordenadas {COORDENADAS_SEGUINTE}";
+    public string RetaFinal { get; set; } = "; deste, segue[ {LADO},][ confrontando com {CONFRONTANTE},] com {DIRECAO} e distância de {DISTANCIA}, até o vértice {VERTICE_SEGUINTE}, ponto inicial da descrição deste perímetro";
+    public string Arco { get; set; } = "; deste, segue em curva circular[ {LADO},][ confrontando com {CONFRONTANTE},] com raio de {RAIO}, ângulo central de {ANGULO_CENTRAL} e desenvolvimento de {DESENVOLVIMENTO} (corda de {CORDA}, com {DIRECAO}), até o vértice {VERTICE_SEGUINTE}, de coordenadas {COORDENADAS_SEGUINTE}";
+    public string ArcoFinal { get; set; } = "; deste, segue em curva circular[ {LADO},][ confrontando com {CONFRONTANTE},] com raio de {RAIO}, ângulo central de {ANGULO_CENTRAL} e desenvolvimento de {DESENVOLVIMENTO} (corda de {CORDA}, com {DIRECAO}), até o vértice {VERTICE_SEGUINTE}, ponto inicial da descrição deste perímetro";
     public string Fechamento { get; set; } = ", fechando assim o polígono acima descrito, com área de {AREA} e perímetro de {PERIMETRO}.";
     public string FuroInicio { get; set; } = "Excluída a área interna ({NOME_FURO}), com área de {AREA_FURO}, assim descrita: ";
     public string ConfrontanteVazio { get; set; } = "";

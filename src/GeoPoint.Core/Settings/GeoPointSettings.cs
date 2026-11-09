@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using GeoPoint.Core.Geodesy;
+using GeoPoint.Core.Model;
 using GeoPoint.Core.Urban;
 
 namespace GeoPoint.Core.Settings;
@@ -74,8 +75,8 @@ public sealed class NamingSettings
 {
     public string VertexPrefix { get; set; } = "P-";
     public int VertexDigits { get; set; } = 2;
-    /// <summary>Numeração única de vértices em todo o projeto (vértices compartilhados com o mesmo nome).</summary>
-    public bool GlobalNumbering { get; set; }
+    /// <summary>Numeração dos vértices: projeto inteiro (registro único), por quadra ou por lote.</summary>
+    public VertexNumbering Numbering { get; set; } = VertexNumbering.Projeto;
     /// <summary>Descrição no sentido horário.</summary>
     public bool Clockwise { get; set; } = true;
     public StartVertexRule StartRule { get; set; } = StartVertexRule.Testada;
@@ -109,6 +110,10 @@ public sealed class MemorialSettings
     public bool IncludeVertexTable { get; set; } = true;
     public bool IncludeSystemDeclaration { get; set; } = true;
     public bool IncludeAltitude { get; set; }
+    /// <summary>Inclui o lado do lote na descrição ("pela frente", "pela lateral direita"...).</summary>
+    public bool IncludeSide { get; set; } = true;
+    /// <summary>Quadro de confrontantes por lado.</summary>
+    public bool IncludeConfrontantesTable { get; set; } = true;
     public string TemplatePath { get; set; } = "";
     public string PhrasesPath { get; set; } = "";
     public bool OneFilePerLot { get; set; }
@@ -138,6 +143,37 @@ public sealed class AnnotationSettings
     public bool AreaLabel { get; set; } = true;
     public bool EdgeAzimuth { get; set; } = true;
     public string Font { get; set; } = "Arial";
+    /// <summary>Textos das divisas do lado de fora do lote.</summary>
+    public bool TextOutside { get; set; } = true;
+    /// <summary>Ponto (círculo preenchido) em cada vértice.</summary>
+    public bool VertexDots { get; set; } = true;
+    /// <summary>Diâmetro do ponto no papel (mm).</summary>
+    public double DotMm { get; set; } = 1.2;
+    /// <summary>Fundo opaco nos textos (legíveis sobre hachuras).</summary>
+    public bool OpaqueText { get; set; } = true;
+}
+
+public sealed class StreetSettings
+{
+    public double Largura { get; set; } = 12;
+    public double Calcada { get; set; } = 2.5;
+    public double RaioEsquina { get; set; } = 3;
+    /// <summary>Altura do texto do nome da via no papel (mm).</summary>
+    public double NomeMm { get; set; } = 3.0;
+}
+
+public sealed class SheetSettings
+{
+    /// <summary>Nome do tipo de carimbo ("Família: Tipo"); vazio = primeiro disponível.</summary>
+    public string TitleBlock { get; set; } = "";
+    public int Scale { get; set; } = 500;
+    public string NumberPrefix { get; set; } = "GP";
+    public bool SituacaoAtual { get; set; } = true;
+    public bool Proposta { get; set; } = true;
+    public bool Quadro { get; set; } = true;
+    public bool Hachuras { get; set; } = true;
+    public bool Anotacoes { get; set; } = true;
+    public bool Vias { get; set; } = true;
 }
 
 public sealed class KmlSettings
@@ -159,6 +195,8 @@ public sealed class GeoPointSettings
     public TechnicianSettings Technician { get; set; } = new();
     public AnnotationSettings Annotation { get; set; } = new();
     public KmlSettings Kml { get; set; } = new();
+    public StreetSettings Streets { get; set; } = new();
+    public SheetSettings Sheets { get; set; } = new();
     public List<RuleProfile> RuleProfiles { get; set; } = RuleProfile.Defaults();
     public string DefaultRuleProfile { get; set; } = "Lei 6.766/79 (mínimos federais)";
     public string LastExportFolder { get; set; } = "";
@@ -251,6 +289,14 @@ public static class SettingsStore
         s.Technician ??= new();
         s.Annotation ??= new();
         s.Kml ??= new();
+        s.Streets ??= new();
+        s.Sheets ??= new();
+        s.Streets.Largura = Math.Clamp(s.Streets.Largura, 1, 200);
+        s.Streets.Calcada = Math.Clamp(s.Streets.Calcada, 0, 50);
+        s.Streets.RaioEsquina = Math.Clamp(s.Streets.RaioEsquina, 0, 50);
+        s.Streets.NomeMm = Math.Clamp(s.Streets.NomeMm, 0.5, 20);
+        s.Sheets.Scale = Math.Clamp(s.Sheets.Scale, 1, 100000);
+        s.Annotation.DotMm = Math.Clamp(s.Annotation.DotMm, 0.2, 10);
         s.RuleProfiles ??= RuleProfile.Defaults();
         if (s.RuleProfiles.Count == 0) s.RuleProfiles = RuleProfile.Defaults();
         s.Memorial.CoordinateSystems ??= new();

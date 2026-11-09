@@ -346,6 +346,8 @@ public sealed class MemorialGenerator
         res.Add(Wml.Paragraph(new ParaSpec { Align = ParaAlign.Left, SpaceAfterPt = 6 }, new RunSpec(string.Join("; ", facts) + ".")));
 
         res.Add(Wml.Paragraph(Body, new RunSpec(PerimeterDescription(r))));
+        if (_ms.IncludeConfrontantesTable)
+            foreach (var line in Confrontacoes(r)) res.Add(line);
         foreach (var t in HoleDescriptions(lot)) res.Add(Wml.Paragraph(Body, new RunSpec(t)));
 
         if (includeTables && _ms.IncludeVertexTable)
@@ -357,6 +359,24 @@ public sealed class MemorialGenerator
             res.Add(Wml.EmptyParagraph(6));
         }
         return res;
+    }
+
+    /// <summary>Resumo das confrontações por lado ("Frente: Rua E – 50,00 m").</summary>
+    private IEnumerable<XElement> Confrontacoes(LotReport r)
+    {
+        var groups = r.Segments.Where(s => s.Lado != LadoLote.Automatico)
+            .GroupBy(s => s.Lado).OrderBy(g => g.Key switch
+            {
+                LadoLote.Frente => 0, LadoLote.LateralDireita => 1, LadoLote.Fundos => 2, LadoLote.LateralEsquerda => 3, _ => 4,
+            }).ToList();
+        if (groups.Count == 0) yield break;
+        yield return Wml.Paragraph(new ParaSpec { SpaceBeforePt = 4, SpaceAfterPt = 2, KeepNext = true }, new RunSpec("Confrontações:", true));
+        foreach (var g in groups)
+        {
+            var parts = g.Select(s => $"{(string.IsNullOrWhiteSpace(s.Confrontante) ? "(não informado)" : s.Confrontante)} – {_fmt.Distance(s.Length(_ms.DistanceType))} ({s.From.Name}–{s.To.Name})");
+            yield return Wml.Paragraph(new ParaSpec { SpaceAfterPt = 1, LeftIndentCm = 0.5 },
+                new RunSpec(LadoInfo.Label(g.Key) + ": ", true), new RunSpec(string.Join("; ", parts) + "."));
+        }
     }
 
     private string AreaText(LotReport r) => _ms.AreaType switch
@@ -395,6 +415,7 @@ public sealed class MemorialGenerator
             vals = new Dictionary<string, string>
             {
                 ["CONFRONTANTE"] = string.IsNullOrWhiteSpace(s.Confrontante) ? _ph.ConfrontanteVazio : s.Confrontante,
+                ["LADO"] = _ms.IncludeSide ? LadoInfo.Phrase(s.Lado) : "",
                 ["DIRECAO"] = _fmt.DirectionPhrase(s.Azimuth(_ms.AzimuthType)),
                 ["AZIMUTE"] = _fmt.Angle(s.Azimuth(_ms.AzimuthType)),
                 ["DISTANCIA"] = _fmt.Distance(s.IsArc ? s.Chord(_ms.DistanceType) : s.Length(_ms.DistanceType)),
@@ -481,28 +502,26 @@ public sealed class MemorialGenerator
 
     private XElement SegmentTable(LotReport r)
     {
-        var widths = new List<double> { 2.6, 3.0, 4.2, 6.2 };
+        bool side = r.Segments.Any(x => x.Lado != LadoLote.Automatico);
+        var widths = side ? new List<double> { 2.3, 2.4, 2.7, 3.8, 4.8 } : new List<double> { 2.6, 3.0, 4.2, 6.2 };
         string angTitle = _fmt.F.AngleStyle == AngleStyle.Rumo ? "Rumo" : "Azimute";
-        var rows = new List<IReadOnlyList<CellSpec>>
-        {
-            new List<CellSpec>
-            {
-                new("Segmento", true, ParaAlign.Center, "D9E2F3"), new(angTitle, true, ParaAlign.Center, "D9E2F3"),
-                new("Distância (m)", true, ParaAlign.Center, "D9E2F3"), new("Confrontante", true, ParaAlign.Center, "D9E2F3"),
-            },
-        };
+        var head = new List<CellSpec> { new("Segmento", true, ParaAlign.Center, "D9E2F3") };
+        if (side) head.Add(new CellSpec("Lado", true, ParaAlign.Center, "D9E2F3"));
+        head.Add(new CellSpec(angTitle, true, ParaAlign.Center, "D9E2F3"));
+        head.Add(new CellSpec("Distância (m)", true, ParaAlign.Center, "D9E2F3"));
+        head.Add(new CellSpec("Confrontante", true, ParaAlign.Center, "D9E2F3"));
+        var rows = new List<IReadOnlyList<CellSpec>> { head };
         foreach (var s in r.Segments)
         {
             string dist = s.IsArc
                 ? $"Arco: D = {_fmt.DistanceValue(s.Length(_ms.DistanceType))}; R = {_fmt.DistanceValue(s.Radius ?? 0)}; corda = {_fmt.DistanceValue(s.Chord(_ms.DistanceType))}"
                 : _fmt.DistanceValue(s.Length(_ms.DistanceType));
-            rows.Add(new List<CellSpec>
-            {
-                new($"{s.From.Name} – {s.To.Name}", false, ParaAlign.Center),
-                new(_fmt.Angle(s.Azimuth(_ms.AzimuthType)), false, ParaAlign.Center),
-                new(dist, false, ParaAlign.Center),
-                new(string.IsNullOrWhiteSpace(s.Confrontante) ? "–" : s.Confrontante, false, ParaAlign.Left),
-            });
+            var row = new List<CellSpec> { new($"{s.From.Name} – {s.To.Name}", false, ParaAlign.Center) };
+            if (side) row.Add(new CellSpec(s.Lado == LadoLote.Automatico ? "–" : LadoInfo.Label(s.Lado), false, ParaAlign.Center));
+            row.Add(new CellSpec(_fmt.Angle(s.Azimuth(_ms.AzimuthType)), false, ParaAlign.Center));
+            row.Add(new CellSpec(dist, false, ParaAlign.Center));
+            row.Add(new CellSpec(string.IsNullOrWhiteSpace(s.Confrontante) ? "–" : s.Confrontante, false, ParaAlign.Left));
+            rows.Add(row);
         }
         return Wml.Table(rows, widths, headerRepeat: true, fontPt: 8.5);
     }

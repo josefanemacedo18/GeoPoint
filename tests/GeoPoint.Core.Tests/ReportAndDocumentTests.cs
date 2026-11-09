@@ -76,7 +76,7 @@ public class ReportAndDocumentTests
     {
         var a = TestProjects.Rect(0, 0, 10, 30, "01");
         var b = TestProjects.Rect(10, 0, 10, 30, "02");
-        var ctx = TestProjects.Context(TestProjects.Project(a, b), s => s.Naming.GlobalNumbering = true);
+        var ctx = TestProjects.Context(TestProjects.Project(a, b), s => s.Naming.Numbering = VertexNumbering.Projeto);
         var ra = ctx.Report(a);
         var shared = ra.Segments.Single(s => s.ConfrontanteAutomatico);
         Assert.Contains("02", shared.Confrontante);
@@ -239,7 +239,8 @@ public class ReportAndDocumentTests
 
         var gj = JsonDocument.Parse(GisExport.BuildGeoJson(ctx, lots, true));
         var feats = gj.RootElement.GetProperty("features");
-        Assert.Equal(2 + 8, feats.GetArrayLength());
+        // 2 polígonos + 6 vértices únicos (a APP compartilha 2 vértices com o lote: mesmo ponto no registro).
+        Assert.Equal(2 + 6, feats.GetArrayLength());
         var ring = feats[0].GetProperty("geometry").GetProperty("coordinates")[0];
         Assert.Equal(5, ring.GetArrayLength());
 

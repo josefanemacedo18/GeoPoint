@@ -52,7 +52,7 @@ public partial class MemorialWindow : Window
         DirectionBox.SelectedIndex = settings.Naming.Clockwise ? 0 : 1;
         Prefix.Text = settings.Naming.VertexPrefix;
         Digits.Text = settings.Naming.VertexDigits.ToString();
-        Global.IsChecked = settings.Naming.GlobalNumbering;
+        Numbering.SelectedIndex = (int)settings.Naming.Numbering;
         Tables.IsChecked = m.IncludeVertexTable;
         Notes.IsChecked = m.IncludeSystemDeclaration;
         Altitudes.IsChecked = m.IncludeAltitude;
@@ -154,7 +154,7 @@ public partial class MemorialWindow : Window
         _settings.Naming.Clockwise = DirectionBox.SelectedIndex != 1;
         _settings.Naming.VertexPrefix = Prefix.Text;
         _settings.Naming.VertexDigits = digits;
-        _settings.Naming.GlobalNumbering = Global.IsChecked == true;
+        _settings.Naming.Numbering = (VertexNumbering)Math.Max(0, Numbering.SelectedIndex);
         m.IncludeVertexTable = Tables.IsChecked == true;
         m.IncludeSystemDeclaration = Notes.IsChecked == true;
         m.IncludeAltitude = Altitudes.IsChecked == true;

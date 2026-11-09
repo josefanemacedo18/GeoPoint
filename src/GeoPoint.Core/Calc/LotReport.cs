@@ -47,9 +47,17 @@ public sealed class SegmentReport
 
     public string Confrontante { get; set; } = "";
     public bool ConfrontanteAutomatico { get; set; }
+    public ConfrontanteTipo ConfrontanteTipo { get; set; }
+    public string ConfrontanteLotId { get; set; } = "";
+    public string ConfrontanteViaId { get; set; } = "";
+    /// <summary>Lado do lote (frente, fundos, laterais) – definido pelo usuário ou calculado pela testada.</summary>
+    public LadoLote Lado { get; set; } = LadoLote.Automatico;
+    public bool LadoAutomatico { get; set; } = true;
     public bool Testada { get; set; }
     public double? Recuo { get; set; }
     public EdgeInfo? Info { get; set; }
+    /// <summary>Normal externa da divisa (no desenho).</summary>
+    public Vec2 OutwardNormal { get; set; }
 
     public double Azimuth(AzimuthType t) => t switch
     {
@@ -107,47 +115,11 @@ public sealed class LotReport
     };
 }
 
-/// <summary>Numeração global de vértices (vértices compartilhados recebem o mesmo nome).</summary>
-public sealed class VertexNamer
-{
-    private readonly Dictionary<(long, long), List<(Vec2 p, string name)>> _grid = new();
-    private const double Cell = 0.005;
-    private int _counter;
-    private readonly string _prefix;
-    private readonly int _digits;
-
-    public VertexNamer(string prefix, int digits) { _prefix = prefix; _digits = digits; }
-
-    private static (long, long) Key(Vec2 p) => ((long)Math.Floor(p.X / Cell), (long)Math.Floor(p.Y / Cell));
-
-    public string? Find(Vec2 p)
-    {
-        var (kx, ky) = Key(p);
-        for (long dx = -1; dx <= 1; dx++)
-            for (long dy = -1; dy <= 1; dy++)
-                if (_grid.TryGetValue((kx + dx, ky + dy), out var l))
-                    foreach (var (q, n) in l)
-                        if (q.DistanceTo(p) <= 0.002) return n;
-        return null;
-    }
-
-    public string GetOrAdd(Vec2 p)
-    {
-        var f = Find(p);
-        if (f is not null) return f;
-        string name = _prefix + (++_counter).ToString(new string('0', Math.Max(1, _digits)));
-        var k = Key(p);
-        if (!_grid.TryGetValue(k, out var l)) _grid[k] = l = new List<(Vec2, string)>();
-        l.Add((p, name));
-        return name;
-    }
-}
-
 /// <summary>Contexto de cálculo de um projeto: referência, configurações, vizinhanças e descontos.</summary>
 public sealed class ProjectContext
 {
     private readonly Dictionary<string, LotReport> _cache = new();
-    private VertexNamer? _globalNamer;
+    private Func<Vec2, VertexRecord?>? _vertexFinder;
     private List<(LotRecord lot, Region region, BBox bb)>? _active;
     private List<(LotRecord lot, Region region, BBox bb)>? _archived;
     private readonly Dictionary<(string, string), bool> _overlaps = new();
@@ -168,7 +140,7 @@ public sealed class ProjectContext
     public void Invalidate()
     {
         _cache.Clear();
-        _globalNamer = null;
+        _vertexFinder = null;
         _active = null;
         _archived = null;
         _overlaps.Clear();
@@ -236,21 +208,27 @@ public sealed class ProjectContext
         return null;
     }
 
-    private VertexNamer GlobalNamer()
+    /// <summary>Nome do vértice conforme a numeração escolhida (projeto, quadra ou lote).</summary>
+    public string VertexName(LotRecord lot, Vec2 p, int indexInLot)
     {
-        if (_globalNamer is not null) return _globalNamer;
-        var namer = new VertexNamer(Settings.Naming.VertexPrefix, Settings.Naming.VertexDigits);
-        foreach (var lot in SortLots(Project.ActiveLots))
+        var n = Settings.Naming;
+        string Fmt(int k) => n.VertexPrefix + k.ToString(new string('0', Math.Max(1, n.VertexDigits)));
+        if (n.Numbering == VertexNumbering.Lote) return Fmt(indexInLot + 1);
+        if (_vertexFinder is null)
         {
-            try
-            {
-                var ring = OrientedRing(lot, out _);
-                foreach (var e in ring.Edges) namer.GetOrAdd(e.Start);
-            }
-            catch { }
+            VertexRegistry.EnsureAll(this);
+            _vertexFinder = VertexRegistry.Finder(Project);
         }
-        _globalNamer = namer;
-        return namer;
+        var rec = _vertexFinder(p);
+        if (rec is null)
+        {
+            VertexRegistry.Register(this, new[] { lot });
+            _vertexFinder = VertexRegistry.Finder(Project);
+            rec = _vertexFinder(p);
+        }
+        if (rec is null) return Fmt(indexInLot + 1);
+        if (n.Numbering == VertexNumbering.Quadra && rec.QuadraNumbers.TryGetValue((lot.Quadra ?? "").Trim(), out int qn)) return Fmt(qn);
+        return Fmt(rec.Number);
     }
 
     /// <summary>Anel externo orientado no sentido de descrição e iniciado no vértice inicial.</summary>
@@ -353,7 +331,6 @@ public sealed class ProjectContext
         UtmZone? zone = geo ? c.ResolveZone(CrsDef.Utm()) : null;
 
         var rep = new LotReport { Lot = lot, Region = region, Clockwise = clockwise, AreaLocal = region.Area, Zone = zone };
-        VertexNamer? global = fmt.GlobalNumbering ? GlobalNamer() : null;
 
         var utmDef = CrsDef.Utm();
         for (int i = 0; i < ring.Count; i++)
@@ -363,7 +340,7 @@ public sealed class ProjectContext
             CrsCoord? utm = geo ? c.ToCrs(p, utmDef) : null;
             var v = new VertexReport
             {
-                Name = global?.GetOrAdd(p) ?? fmt.VertexPrefix + (i + 1).ToString(new string('0', Math.Max(1, fmt.VertexDigits))),
+                Name = VertexName(lot, p, i),
                 Internal = p,
                 Enu = c.ToEnu(p),
                 Shared = c.ToShared(p),
@@ -433,23 +410,16 @@ public sealed class ProjectContext
                 Info = info,
                 Testada = info?.Testada == true,
                 Recuo = info?.Recuo,
-                Confrontante = info?.Confrontante ?? "",
+                OutwardNormal = OutwardNormal(curve, clockwise),
             };
-            if (string.IsNullOrWhiteSpace(seg.Confrontante))
-            {
-                var nb = NeighborAt(lot, curve.Mid);
-                if (nb is not null)
-                {
-                    seg.Confrontante = nb.DisplayName;
-                    seg.ConfrontanteAutomatico = true;
-                }
-            }
+            ResolveConfrontante(lot, seg, info);
             rep.Segments.Add(seg);
             perim += len;
             perimUtm += lenUtm ?? len;
             perimGeo += lenGeo ?? len;
             if (seg.Testada) testada += len;
         }
+        AssignSides(rep);
         rep.PerimeterLocal = perim;
         if (geo)
         {
@@ -478,6 +448,93 @@ public sealed class ProjectContext
         if (!geo) rep.Warnings.Add("Projeto sem ponto de referência: coordenadas geográficas/UTM indisponíveis.");
         if (rep.Segments.Any(s => string.IsNullOrWhiteSpace(s.Confrontante))) rep.Warnings.Add("Há divisas sem confrontante informado.");
         return rep;
+    }
+
+    /// <summary>Normal externa (para fora do lote) da divisa, pela corda.</summary>
+    private static Vec2 OutwardNormal(Curve2 c, bool clockwise)
+    {
+        var d = (c.End - c.Start).Normalized();
+        if (d.LengthSquared == 0) d = c.TangentAt(0.5);
+        // Anel anti-horário: interior à esquerda → externo à direita. Horário: o contrário.
+        return clockwise ? d.PerpLeft : d.PerpRight;
+    }
+
+    /// <summary>Resolve o texto do confrontante conforme o tipo (texto, lote ou via) ou sugere o vizinho.</summary>
+    private void ResolveConfrontante(LotRecord lot, SegmentReport seg, EdgeInfo? info)
+    {
+        var mid = seg.Curve.Mid;
+        if (info is not null)
+        {
+            seg.ConfrontanteTipo = info.Tipo;
+            switch (info.Tipo)
+            {
+                case ConfrontanteTipo.Via:
+                {
+                    var via = Project.FindVia(info.ViaId);
+                    seg.ConfrontanteViaId = info.ViaId;
+                    seg.Confrontante = via?.Nome ?? info.Confrontante;
+                    if (!string.IsNullOrWhiteSpace(seg.Confrontante)) return;
+                    break;
+                }
+                case ConfrontanteTipo.Lote:
+                {
+                    var target = Project.FindLot(info.LotId);
+                    seg.ConfrontanteLotId = info.LotId;
+                    // Lote vizinho arquivado por uma operação: usa o lote que ocupa a divisa hoje.
+                    if (target is not null && target.Status == LotStatus.Arquivado && lot.Status == LotStatus.Ativo)
+                    {
+                        var now = NeighborAt(lot, mid);
+                        if (now is not null) { seg.Confrontante = now.DisplayName; seg.ConfrontanteLotId = now.Id; return; }
+                    }
+                    if (target is not null) { seg.Confrontante = target.DisplayName; return; }
+                    if (!string.IsNullOrWhiteSpace(info.Confrontante)) { seg.Confrontante = info.Confrontante; return; }
+                    break;
+                }
+                default:
+                    if (!string.IsNullOrWhiteSpace(info.Confrontante)) { seg.Confrontante = info.Confrontante.Trim(); return; }
+                    break;
+            }
+        }
+        var nb = NeighborAt(lot, mid);
+        if (nb is not null)
+        {
+            seg.Confrontante = nb.DisplayName;
+            seg.ConfrontanteAutomatico = true;
+            seg.ConfrontanteTipo = ConfrontanteTipo.Lote;
+            seg.ConfrontanteLotId = nb.Id;
+        }
+    }
+
+    /// <summary>
+    /// Lados do lote: frente pelas testadas; fundos, lateral direita e esquerda vistos da via, de frente para o lote.
+    /// Lados definidos pelo usuário prevalecem.
+    /// </summary>
+    private static void AssignSides(LotReport rep)
+    {
+        var fronts = rep.Segments.Where(s => s.Testada).ToList();
+        Vec2? nf = fronts.Count > 0 ? fronts.OrderByDescending(s => s.LengthHorizontal).First().OutwardNormal : null;
+        foreach (var s in rep.Segments)
+        {
+            if (s.Info is { Lado: not LadoLote.Automatico } info)
+            {
+                s.Lado = info.Lado;
+                s.LadoAutomatico = false;
+                continue;
+            }
+            s.LadoAutomatico = true;
+            if (s.Testada) { s.Lado = LadoLote.Frente; continue; }
+            if (nf is not Vec2 f) { s.Lado = LadoLote.Automatico; continue; }
+            double d = s.OutwardNormal.Dot(f);
+            if (d > 0.7) s.Lado = LadoLote.Frente;
+            else if (d < -0.7) s.Lado = LadoLote.Fundos;
+            else
+            {
+                // Observador na via olhando para o lote: direção = -f; direita = rotação de -90°.
+                var facing = -f;
+                var right = new Vec2(facing.Y, -facing.X);
+                s.Lado = s.OutwardNormal.Dot(right) > 0 ? LadoLote.LateralDireita : LadoLote.LateralEsquerda;
+            }
+        }
     }
 
     /// <summary>Fator de altitude (redução ao elipsoide) usado nos arcos em UTM.</summary>
