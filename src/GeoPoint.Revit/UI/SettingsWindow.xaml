@@ -188,7 +188,7 @@
                 <StackPanel Margin="10">
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
                         <Label Content="Altura do texto das anotações (mm no papel):"/>
                         <TextBox Grid.Column="1" x:Name="TextMm"/>
                         <Label Grid.Row="1" Content="Afastamento do texto (mm no papel):"/>
@@ -199,6 +199,16 @@
                         <TextBox Grid.Row="3" Grid.Column="1" x:Name="KmlOpacity"/>
                         <Label Grid.Row="4" Content="KML – espessura da linha:"/>
                         <TextBox Grid.Row="4" Grid.Column="1" x:Name="KmlWidth"/>
+                        <Label Grid.Row="5" Content="Diâmetro do ponto dos vértices (mm no papel):"/>
+                        <TextBox Grid.Row="5" Grid.Column="1" x:Name="DotMm"/>
+                        <Label Grid.Row="6" Content="Vias – largura padrão do leito (m):"/>
+                        <TextBox Grid.Row="6" Grid.Column="1" x:Name="StreetWidth"/>
+                        <Label Grid.Row="7" Content="Vias – largura padrão da calçada (m):"/>
+                        <TextBox Grid.Row="7" Grid.Column="1" x:Name="StreetWalk"/>
+                        <Label Grid.Row="8" Content="Vias – altura do nome da rua (mm no papel):"/>
+                        <TextBox Grid.Row="8" Grid.Column="1" x:Name="StreetText"/>
+                        <Label Grid.Row="9" Content="Pranchas – carimbo próprio (Família: Tipo):"/>
+                        <TextBox Grid.Row="9" Grid.Column="1" Grid.ColumnSpan="2" x:Name="TitleBlock" ToolTip="Vazio = moldura e carimbo A4 desenhados pelo GeoPoint (recomendado)."/>
                     </Grid>
                 </StackPanel>
             </TabItem>

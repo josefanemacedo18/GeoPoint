@@ -82,6 +82,11 @@ public partial class SettingsWindow : Window
         Font.Text = a.Font;
         KmlOpacity.Text = Fmt.Raw(_s.Kml.FillOpacity, 2);
         KmlWidth.Text = Fmt.Raw(_s.Kml.LineWidth, 1);
+        DotMm.Text = Fmt.Raw(a.DotMm, 2);
+        StreetWidth.Text = Fmt.Raw(_s.Streets.Largura, 2);
+        StreetWalk.Text = Fmt.Raw(_s.Streets.Calcada, 2);
+        StreetText.Text = Fmt.Raw(_s.Streets.NomeMm, 2);
+        TitleBlock.Text = _s.Sheets.TitleBlock;
 
         _profiles = new ObservableCollection<RuleProfile>(_s.RuleProfiles.Select(x => x.Clone()));
         Profiles.ItemsSource = _profiles;
@@ -375,6 +380,13 @@ public partial class SettingsWindow : Window
         if (!Fmt.ReadNum(OffsetMm, "Afastamento", out double omm, 0, 50)) return;
         if (!Fmt.ReadNum(KmlOpacity, "Opacidade", out double op, 0, 1)) return;
         if (!Fmt.ReadNum(KmlWidth, "Espessura", out double lw, 0.5, 20)) return;
+        if (!Fmt.ReadNum(DotMm, "Diâmetro do ponto", out double dmm, 0.2, 10)) return;
+        if (!Fmt.ReadNum(StreetWidth, "Largura do leito", out double swid, 1, 200)) return;
+        if (!Fmt.ReadNum(StreetWalk, "Largura da calçada", out double swalk, 0, 50)) return;
+        if (!Fmt.ReadNum(StreetText, "Altura do nome da rua", out double stx, 0.5, 20)) return;
+        a.DotMm = dmm;
+        _s.Streets.Largura = swid; _s.Streets.Calcada = swalk; _s.Streets.NomeMm = stx;
+        _s.Sheets.TitleBlock = TitleBlock.Text.Trim();
         a.TextSizeMm = tmm; a.OffsetMm = omm; a.Font = string.IsNullOrWhiteSpace(Font.Text) ? "Arial" : Font.Text.Trim();
         _s.Kml.FillOpacity = op; _s.Kml.LineWidth = lw;
 

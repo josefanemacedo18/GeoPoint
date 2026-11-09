@@ -125,3 +125,27 @@ public class SheetAndAnnotationTests
         Assert.Single(only);
     }
 }
+
+public class EdgeSplitTests
+{
+    [Fact]
+    public void SplitEdge_CopiesInfoAndMergeRestores()
+    {
+        var lot = TestProjects.Rect(0, 0, 10, 30, "01");
+        // Fundos (y = 30), percorrido de (10,30) para (0,30) no anel do retângulo.
+        lot.EdgeInfos.Add(new EdgeInfo { MX = 5, MY = 30, Confrontante = "Fulano" });
+        var edge = lot.Outer.Select(e => e.ToCurve()).First(c => Math.Abs(c.Mid.Y - 30) < 1e-9);
+        var pts = GeoPoint.Core.Topology.EdgeSplitter.SplitEdge(lot, edge, new[] { 4.0, 3.0 });
+        Assert.Equal(2, pts.Count);
+        Assert.Equal(6, lot.Outer.Count);
+        Assert.Equal(3, lot.EdgeInfos.Count(i => Math.Abs(i.MY - 30) < 1e-9 && i.Confrontante == "Fulano"));
+        Assert.Equal(300, lot.ToRegion().Area, 6);
+        // Juntar um trecho remove o vértice inserido.
+        Assert.True(GeoPoint.Core.Topology.EdgeSplitter.Merge(lot, pts[0]));
+        Assert.Equal(5, lot.Outer.Count);
+        Assert.Single(lot.ExtraVertices);
+        Assert.Equal(300, lot.ToRegion().Area, 6);
+        // Um canto do desenho não é removido.
+        Assert.False(GeoPoint.Core.Topology.EdgeSplitter.Merge(lot, new Vec2(0, 0)));
+    }
+}

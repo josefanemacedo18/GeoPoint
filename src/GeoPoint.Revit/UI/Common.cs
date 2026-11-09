@@ -107,3 +107,30 @@ public sealed class EdgeChoice
     public GeoPoint.Core.Geometry.Curve2 Curve { get; }
     public bool Testada { get; }
 }
+
+/// <summary>Caixa de diálogo simples para digitar um texto.</summary>
+public static class Prompt
+{
+    public static string? Ask(Window owner, string title, string message, string initial)
+    {
+        var w = new Window
+        {
+            Title = "GeoPoint – " + title, Owner = owner, Width = 520, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner, FontFamily = new System.Windows.Media.FontFamily("Segoe UI"), FontSize = 12,
+        };
+        var panel = new StackPanel { Margin = new Thickness(14) };
+        panel.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) });
+        var box = new TextBox { Text = initial, Padding = new Thickness(4, 3, 4, 3) };
+        panel.Children.Add(box);
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
+        var ok = new Button { Content = "OK", IsDefault = true, MinWidth = 80, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(10, 4, 10, 4) };
+        var cancel = new Button { Content = "Cancelar", IsCancel = true, MinWidth = 80, Padding = new Thickness(10, 4, 10, 4) };
+        ok.Click += (_, _) => w.DialogResult = true;
+        buttons.Children.Add(ok);
+        buttons.Children.Add(cancel);
+        panel.Children.Add(buttons);
+        w.Content = panel;
+        w.Loaded += (_, _) => { box.Focus(); box.SelectAll(); };
+        return w.ShowDialog() == true ? box.Text : null;
+    }
+}

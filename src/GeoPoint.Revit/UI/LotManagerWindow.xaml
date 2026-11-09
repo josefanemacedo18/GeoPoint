@@ -1,6 +1,7 @@
 <Window x:Class="GeoPoint.Revit.UI.LotManagerWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:GeoPoint.Revit.UI"
         Title="GeoPoint – Gerenciar lotes" Width="1180" Height="760" MinWidth="900" MinHeight="560"
         FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip">
     <Window.Resources>
@@ -97,26 +98,51 @@
 
                     <GroupBox Header="Divisas (confrontantes e testada)">
                         <StackPanel>
-                            <TextBlock Style="{StaticResource Hint}" Text="Digite o confrontante de cada divisa (rua, lote vizinho, proprietário). Quando a divisa é compartilhada com outro lote do projeto, o vizinho é sugerido automaticamente. Marque 'Testada' nas divisas de frente para a via."/>
-                            <DataGrid x:Name="SegGrid" Height="250" SelectionMode="Single" CellEditEnding="SegGrid_CellEditEnding">
+                            <TextBlock Style="{StaticResource Hint}" Text="Para cada divisa: o tipo (texto livre, lote do projeto ou via cadastrada), o confrontante e o lado do lote. Lote do projeto e via acompanham desmembramentos e remembramentos automaticamente. Lado 'Automático' é calculado pela testada. Se uma divisa tem mais de um confrontante, use 'Dividir divisa' para marcar até onde vai cada um."/>
+                            <DataGrid x:Name="SegGrid" Height="270" SelectionMode="Single" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" CellEditEnding="SegGrid_CellEditEnding">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Segmento" Binding="{Binding Segmento}" Width="110" IsReadOnly="True"/>
-                                    <DataGridTextColumn Header="Tipo" Binding="{Binding Tipo}" Width="50" IsReadOnly="True"/>
-                                    <DataGridTextColumn Header="Distância (m)" Binding="{Binding Comprimento}" Width="90" IsReadOnly="True"/>
-                                    <DataGridTextColumn Header="Azimute" Binding="{Binding Azimute}" Width="95" IsReadOnly="True"/>
-                                    <DataGridTextColumn Header="Confrontante" Binding="{Binding Confrontante, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
-                                    <DataGridTemplateColumn Header="Testada" Width="60">
+                                    <DataGridTextColumn Header="Segmento" Binding="{Binding Segmento}" Width="95" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Dist. (m)" Binding="{Binding Comprimento}" Width="65" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Azimute" Binding="{Binding Azimute}" Width="90" IsReadOnly="True"/>
+                                    <DataGridTemplateColumn Header="Tipo" Width="125">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <ComboBox ItemsSource="{x:Static ui:SegmentRow.Tipos}" DisplayMemberPath="Value" SelectedValuePath="Key" SelectedValue="{Binding TipoConfrontante, UpdateSourceTrigger=PropertyChanged}"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="Confrontante" Width="*">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Grid>
+                                                    <TextBox Text="{Binding Confrontante, UpdateSourceTrigger=PropertyChanged}" Visibility="{Binding TextoEnabled, Converter={StaticResource BoolToVis}}"/>
+                                                    <ComboBox ItemsSource="{Binding AlvoOptions}" DisplayMemberPath="Text" SelectedValuePath="Id" SelectedValue="{Binding Alvo, UpdateSourceTrigger=PropertyChanged}" Visibility="{Binding AlvoEnabled, Converter={StaticResource BoolToVis}}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="Lado" Width="110">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <ComboBox ItemsSource="{x:Static ui:SegmentRow.Lados}" DisplayMemberPath="Value" SelectedValuePath="Key" SelectedValue="{Binding Lado, UpdateSourceTrigger=PropertyChanged}"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="Testada" Width="55">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <CheckBox IsChecked="{Binding Testada, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" Click="Testada_Click"/>
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn Header="Sugerido (vizinho)" Binding="{Binding Sugerido}" Width="140" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="No memorial" Binding="{Binding Resultado}" Width="150" IsReadOnly="True"/>
                                 </DataGrid.Columns>
                             </DataGrid>
                             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                 <Button Margin="0" Content="Usar sugestões nas divisas vazias" Click="UseSuggestions_Click"/>
+                                <Button Content="Dividir divisa…" Click="SplitEdge_Click" ToolTip="Insere vértices sobre a divisa selecionada para marcar até onde vai cada confrontante (ex.: Lote 16 por 8 m, Lote 17 por 4 m)."/>
+                                <Button Content="Juntar trecho" Click="MergeEdge_Click" ToolTip="Remove o vértice inicial do trecho selecionado (somente vértices inseridos por 'Dividir divisa')."/>
+                                <Button Content="Atualizar" Click="Refresh_Click" ToolTip="Recalcula confrontantes e lados."/>
                             </StackPanel>
                         </StackPanel>
                     </GroupBox>

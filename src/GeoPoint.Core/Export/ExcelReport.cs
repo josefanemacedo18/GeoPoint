@@ -91,10 +91,48 @@ public static class ExcelReport
         }
         sheets.Add(vs);
 
+        // Registro único de vértices: cada ponto uma vez só, com os lotes (atuais e arquivados) em que aparece.
+        var reg = new XlSheet("Registro de vértices");
+        var rh = new List<string> { "Vértice", "X desenho (m)", "Y desenho (m)", "E local (m)", "N local (m)" };
+        if (geo) rh.AddRange(new[] { "Latitude (°)", "Longitude (°)", "UTM E (m)", "UTM N (m)" });
+        rh.AddRange(new[] { "Lotes ativos", "Lotes arquivados (histórico)" });
+        reg.AddHeader(rh.ToArray());
+        var seen = new Dictionary<string, (VertexReport v, List<string> act, List<string> arch)>();
+        foreach (var lot in ProjectContext.SortLots(ctx.Project.Lots))
+        {
+            LotReport r;
+            try { r = ctx.Report(lot); } catch { continue; }
+            foreach (var v in r.Vertices)
+            {
+                string k = AnnotationPlanner.VertexKey(v.Internal);
+                if (!seen.TryGetValue(k, out var e)) { e = (v, new List<string>(), new List<string>()); seen[k] = e; }
+                (lot.Status == LotStatus.Ativo ? e.act : e.arch).Add(lot.DisplayName);
+            }
+        }
+        foreach (var (v, act, arch) in seen.Values.OrderBy(x => x.v.Name, NaturalComparer.Instance))
+        {
+            var row = new List<XlCell?>
+            {
+                v.Name, new XlCell(v.Internal.X, XlStyle.Num3), new XlCell(v.Internal.Y, XlStyle.Num3),
+                new XlCell(v.Enu.X, XlStyle.Num3), new XlCell(v.Enu.Y, XlStyle.Num3),
+            };
+            if (geo)
+            {
+                row.Add(v.Geo is { } g ? new XlCell(g.LatDeg, XlStyle.Num8) : new XlCell("–"));
+                row.Add(v.Geo is { } g2 ? new XlCell(g2.LonDeg, XlStyle.Num8) : new XlCell("–"));
+                row.Add(v.Utm is { } u ? new XlCell(u.East, XlStyle.Num3) : new XlCell("–"));
+                row.Add(v.Utm is { } u2 ? new XlCell(u2.North, XlStyle.Num3) : new XlCell("–"));
+            }
+            row.Add(string.Join(", ", act.Distinct()));
+            row.Add(string.Join(", ", arch.Distinct()));
+            reg.Rows.Add(row);
+        }
+        sheets.Add(reg);
+
         // Segmentos.
         var ss = new XlSheet("Segmentos");
         ss.AddHeader("Lote", "De", "Para", "Tipo", "Azimute verdadeiro", "Rumo", "Azimute UTM", "Azimute geodésico", "Distância horizontal (m)",
-            "Distância UTM (m)", "Distância geodésica (m)", "Raio (m)", "Ângulo central", "Corda (m)", "Confrontante", "Testada");
+            "Distância UTM (m)", "Distância geodésica (m)", "Raio (m)", "Ângulo central", "Corda (m)", "Confrontante", "Lado", "Testada");
         foreach (var lot in sorted)
         {
             var r = ctx.Report(lot);
@@ -111,7 +149,7 @@ public static class ExcelReport
                     s.Radius is double rad ? new XlCell(rad, XlStyle.Num3) : new XlCell("–"),
                     s.CentralAngleDeg is double ca ? AngleText.FormatDms(ca, 2) : "–",
                     new XlCell(s.ChordHorizontal, XlStyle.Num3),
-                    s.Confrontante, s.Testada ? "Sim" : "");
+                    s.Confrontante, s.Lado == LadoLote.Automatico ? "" : LadoInfo.Label(s.Lado), s.Testada ? "Sim" : "");
             }
         }
         sheets.Add(ss);

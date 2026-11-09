@@ -13,12 +13,35 @@ namespace GeoPoint.Revit.UI;
 public sealed class SegmentRow : Notify
 {
     private readonly LotRecord _lot;
+    private readonly ParcelProject _project;
     private string _confrontante;
     private bool _testada;
+    private ConfrontanteTipo _tipo;
+    private string _alvo;
+    private LadoLote _lado;
 
-    public SegmentRow(LotRecord lot, SegmentReport s, ValueFormatter fmt)
+    public static IReadOnlyList<KeyValuePair<ConfrontanteTipo, string>> Tipos { get; } = new[]
+    {
+        new KeyValuePair<ConfrontanteTipo, string>(ConfrontanteTipo.Texto, "Texto / automático"),
+        new KeyValuePair<ConfrontanteTipo, string>(ConfrontanteTipo.Lote, "Lote do projeto"),
+        new KeyValuePair<ConfrontanteTipo, string>(ConfrontanteTipo.Via, "Via"),
+    };
+
+    public static IReadOnlyList<KeyValuePair<LadoLote, string>> Lados { get; } = new[]
+    {
+        new KeyValuePair<LadoLote, string>(LadoLote.Automatico, "Automático"),
+        new KeyValuePair<LadoLote, string>(LadoLote.Frente, "Frente"),
+        new KeyValuePair<LadoLote, string>(LadoLote.Fundos, "Fundos"),
+        new KeyValuePair<LadoLote, string>(LadoLote.LateralDireita, "Lateral direita"),
+        new KeyValuePair<LadoLote, string>(LadoLote.LateralEsquerda, "Lateral esquerda"),
+        new KeyValuePair<LadoLote, string>(LadoLote.Outro, "Sem lado"),
+    };
+
+    public SegmentRow(LotRecord lot, ParcelProject project, SegmentReport s, ValueFormatter fmt)
     {
         _lot = lot;
+        _project = project;
+        Curve = s.Curve;
         Mid = s.Curve.Mid;
         Segmento = $"{s.From.Name} – {s.To.Name}";
         Tipo = s.IsArc ? "Arco" : "Reta";
@@ -27,15 +50,35 @@ public sealed class SegmentRow : Notify
         var info = ProjectContext.FindInfo(lot, Mid);
         _confrontante = info?.Confrontante ?? "";
         _testada = info?.Testada == true;
+        _tipo = info?.Tipo ?? ConfrontanteTipo.Texto;
+        _alvo = _tipo == ConfrontanteTipo.Lote ? info!.LotId : _tipo == ConfrontanteTipo.Via ? info!.ViaId : "";
+        _lado = info?.Lado ?? LadoLote.Automatico;
+        Resultado = s.Confrontante + (s.Lado != LadoLote.Automatico ? $" ({LadoInfo.Label(s.Lado)})" : "");
         Sugerido = s.ConfrontanteAutomatico ? s.Confrontante : "";
+        FromName = s.From.Name;
     }
 
+    public Curve2 Curve { get; }
     public Vec2 Mid { get; }
+    public string FromName { get; }
     public string Segmento { get; }
     public string Tipo { get; }
     public string Comprimento { get; }
     public string Azimute { get; }
     public string Sugerido { get; }
+    /// <summary>Como sai no memorial (confrontante e lado calculados).</summary>
+    public string Resultado { get; }
+
+    public List<IdText> AlvoOptions => _tipo switch
+    {
+        ConfrontanteTipo.Lote => ProjectContext.SortLots(_project.Lots.Where(l => l.Id != _lot.Id))
+            .Select(l => new IdText(l.Id, l.DisplayName + (l.Status == LotStatus.Arquivado ? " (arquivado)" : ""))).Prepend(new IdText("", "(escolha o lote)")).ToList(),
+        ConfrontanteTipo.Via => _project.Vias.Select(v => new IdText(v.Id, v.Nome)).Prepend(new IdText("", "(escolha a via)")).ToList(),
+        _ => new List<IdText>(),
+    };
+
+    public bool AlvoEnabled => _tipo != ConfrontanteTipo.Texto;
+    public bool TextoEnabled => _tipo == ConfrontanteTipo.Texto;
 
     public string Confrontante
     {
@@ -44,6 +87,46 @@ public sealed class SegmentRow : Notify
         {
             if (!Set(ref _confrontante, value ?? "")) return;
             Info().Confrontante = _confrontante.Trim();
+            Cleanup();
+        }
+    }
+
+    public ConfrontanteTipo TipoConfrontante
+    {
+        get => _tipo;
+        set
+        {
+            if (!Set(ref _tipo, value)) return;
+            var i = Info();
+            i.Tipo = value;
+            if (value != ConfrontanteTipo.Lote) i.LotId = "";
+            if (value != ConfrontanteTipo.Via) i.ViaId = "";
+            _alvo = "";
+            OnChanged(nameof(AlvoOptions)); OnChanged(nameof(Alvo)); OnChanged(nameof(AlvoEnabled)); OnChanged(nameof(TextoEnabled));
+            Cleanup();
+        }
+    }
+
+    public string Alvo
+    {
+        get => _alvo;
+        set
+        {
+            if (!Set(ref _alvo, value ?? "")) return;
+            var i = Info();
+            if (_tipo == ConfrontanteTipo.Lote) i.LotId = _alvo;
+            else if (_tipo == ConfrontanteTipo.Via) { i.ViaId = _alvo; if (_alvo.Length > 0 && !_testada) Testada = true; }
+            Cleanup();
+        }
+    }
+
+    public LadoLote Lado
+    {
+        get => _lado;
+        set
+        {
+            if (!Set(ref _lado, value)) return;
+            Info().Lado = value;
             Cleanup();
         }
     }
@@ -70,7 +153,7 @@ public sealed class SegmentRow : Notify
         return i;
     }
 
-    private void Cleanup() => _lot.EdgeInfos.RemoveAll(e => string.IsNullOrWhiteSpace(e.Confrontante) && !e.Testada && e.Recuo is null);
+    private void Cleanup() => _lot.EdgeInfos.RemoveAll(e => e.IsEmpty && e.LotId.Length == 0 && e.ViaId.Length == 0);
 }
 
 public sealed class VertexChoice
@@ -197,7 +280,7 @@ public partial class LotManagerWindow : Window
         if (_current.AreaSuperficial is double asup) parts.Add($"Área superficial: {_fmt.AreaM2(asup)}");
         if (_current.AreaTitulo is double t && t > 0) parts.Add($"Diferença p/ título: {Fmt.N(rep.AreaLocal - t, 2)} m² ({Fmt.N((rep.AreaLocal - t) / t * 100, 2)}%)");
         Measures.Text = string.Join("   •   ", parts);
-        SegGrid.ItemsSource = rep.Segments.Select(s => new SegmentRow(_current, s, _fmt)).ToList();
+        SegGrid.ItemsSource = rep.Segments.Select(s => new SegmentRow(_current, _project, s, _fmt)).ToList();
     }
 
     private void Description_Changed(object sender, SelectionChangedEventArgs e)
@@ -231,11 +314,49 @@ public partial class LotManagerWindow : Window
 
     private void SegGrid_CellEditEnding(object? sender, DataGridCellEditEndingEventArgs e) { }
 
+    private void SplitEdge_Click(object sender, RoutedEventArgs e)
+    {
+        if (_current is null || SegGrid.SelectedItem is not SegmentRow row) { Fmt.Msg("Selecione a divisa na tabela."); return; }
+        var text = Prompt.Ask(this, "Dividir divisa",
+            $"Divisa {row.Segmento} ({row.Comprimento} m).\n\nInforme os comprimentos dos trechos a partir do vértice {row.FromName}, separados por ponto e vírgula (ex.: 8; 4,5).\nO último trecho é o que sobrar. Use para marcar até onde vai cada confrontante.", "");
+        if (string.IsNullOrWhiteSpace(text)) return;
+        var lengths = new List<double>();
+        foreach (var part in text.Split(new[] { ';', '/', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (!Fmt.TryNum(part.Trim(), out double v) || v <= 0) { Fmt.Msg($"Comprimento inválido: \"{part.Trim()}\"."); return; }
+            lengths.Add(v);
+        }
+        if (lengths.Sum() >= row.Curve.Length - 0.002) { Fmt.Msg($"A soma dos trechos ({Fmt.N(lengths.Sum(), 2)} m) deve ser menor que a divisa ({row.Comprimento} m)."); return; }
+        var pts = GeoPoint.Core.Topology.EdgeSplitter.SplitEdge(_current, row.Curve, lengths);
+        if (pts.Count == 0) { Fmt.Msg("Nenhum ponto foi inserido."); return; }
+        _current.History.Add(new HistoryEntry { Description = $"Divisa {row.Segmento} dividida em {pts.Count + 1} trechos", Area = SafeArea(_current) });
+        VertexRegistry.Register(_ctx, new[] { _current });
+        RefreshReport();
+    }
+
+    private void MergeEdge_Click(object sender, RoutedEventArgs e)
+    {
+        if (_current is null || SegGrid.SelectedItem is not SegmentRow row) { Fmt.Msg("Selecione o trecho na tabela (o vértice inicial do trecho será removido)."); return; }
+        if (!GeoPoint.Core.Topology.EdgeSplitter.Merge(_current, row.Curve.Start))
+        {
+            Fmt.Msg($"O vértice {row.FromName} não foi inserido por 'Dividir divisa' (é um encontro de linhas do desenho). Para removê-lo, edite as linhas no Revit.");
+            return;
+        }
+        RefreshReport();
+    }
+
+    private void Refresh_Click(object sender, RoutedEventArgs e)
+    {
+        SegGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        RefreshReport();
+    }
+
     private void UseSuggestions_Click(object sender, RoutedEventArgs e)
     {
         if (SegGrid.ItemsSource is not IEnumerable<SegmentRow> rows) return;
         foreach (var r in rows)
-            if (string.IsNullOrWhiteSpace(r.Confrontante) && !string.IsNullOrWhiteSpace(r.Sugerido)) r.Confrontante = r.Sugerido;
+            if (r.TipoConfrontante == ConfrontanteTipo.Texto && string.IsNullOrWhiteSpace(r.Confrontante) && !string.IsNullOrWhiteSpace(r.Sugerido)) r.Confrontante = r.Sugerido;
+        RefreshReport();
     }
 
     /// <summary>Aplica os campos editados ao lote atual.</summary>

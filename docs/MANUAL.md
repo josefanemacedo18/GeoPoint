@@ -32,7 +32,14 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 4. **Dados do Imóvel** – proprietário, município, matrícula, RRT/ART, perfil urbanístico.
 5. **Definir Referência** – cole a coordenada de **um** vértice (Google Maps/Earth, QGIS, GPS ou UTM).
 6. **Google Earth / QGIS** – confira o desenho sobre a imagem de satélite.
-7. **Memorial Descritivo**, **Planilha Excel**, **Anotar Lotes**, **Tabela de Coordenadas**, **Quadro de Áreas**.
+7. **Vias** – cadastre as ruas, associe as testadas e os cruzamentos (esquinas).
+8. **Desmembramento** / **Remembramento** – com prévia; o original fica arquivado no histórico.
+9. **Pranchas A4**, **Anotar Lotes**, **Hachuras**, **Memorial Descritivo**, **Anuência de Confrontantes**, **Planilha Excel**, **Quadro de Áreas**.
+
+### Numeração única dos vértices
+Cada ponto do projeto tem **um único número** (registro de vértices). Num desmembramento os vértices do lote original mantêm
+o número e só os pontos novos (onde as novas divisas encontram o contorno) recebem números novos. A numeração pode ser por
+**projeto** ou por **quadra** – escolha na janela do memorial. A planilha Excel traz a aba *Registro de vértices*.
 
 ---
 
@@ -57,13 +64,23 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 
 **Gerenciar Lotes**
 - Dados do lote; **sentido** da descrição (horário/anti-horário); **vértice inicial**.
-- Tabela de divisas: digite o **confrontante** de cada divisa e marque **Testada**. Quando a divisa é compartilhada com outro lote
-  do projeto, o vizinho aparece em *Sugerido* (botão **Usar sugestões nas divisas vazias**).
+- Tabela de divisas, para cada divisa:
+  - **Tipo** do confrontante: *Texto / automático* (texto livre; vazio = vizinho detectado), *Lote do projeto* ou *Via* cadastrada.
+    Lote do projeto e via **acompanham desmembramentos e remembramentos automaticamente** (o nome é atualizado e os lotes
+    resultantes herdam os confrontantes das divisas originais);
+  - **Lado** do lote: *Automático* (calculado pela testada: frente, fundos, lateral direita/esquerda vistas da rua) ou fixo;
+  - **Testada** (divisa de frente para a via);
+  - *No memorial* mostra como a divisa vai sair no texto.
+- **Dividir divisa…** – quando uma divisa tem mais de um confrontante (ex.: fundos com os lotes 16, 17 e 18), informe os
+  comprimentos dos trechos (ex.: `8; 4`). São criados vértices sobre a divisa e cada trecho recebe o seu confrontante.
+  Nas anotações aparece a extensão de cada confrontante (cota vermelha e marcas tracejadas). **Juntar trecho** desfaz.
 - Arquivar/reativar e excluir lotes (excluir não apaga as linhas do desenho).
 
 **Atualizar Lotes** – depois de editar as linhas no desenho, recalcula os lotes. Confrontantes e testadas são mantidos nas divisas correspondentes.
 
-**Dados do Imóvel** – campos do cabeçalho do memorial e o **perfil urbanístico** usado nas verificações.
+**Dados do Imóvel** – campos do cabeçalho do memorial, a **situação** do processo (Regularização, Desmembramento,
+Remembramento, Unificação, Desdobro, Retificação de área, Usucapião, Loteamento, Condomínio, Levantamento planimétrico)
+e o **perfil urbanístico** usado nas verificações.
 
 ### Painel Georreferência
 
@@ -80,7 +97,11 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 3. Orientação:
    - **Norte verdadeiro do projeto** (recomendado – o que está em *Gerenciar › Localização do projeto*);
    - **Azimute de uma linha** que parte do ponto (depois do OK, clique na linha);
+   - **Para cima na vista atual** – o topo da tela é o norte (útil quando o desenho foi feito "com o norte para cima" sem ajustar o norte verdadeiro do Revit);
    - **Dois pontos** com coordenadas conhecidas – o GeoPoint mostra a diferença de distância e de rotação entre o desenho e as coordenadas e pergunta qual orientação usar.
+   A janela mostra para onde aponta o topo da vista atual pelo norte verdadeiro do projeto (ex.: "o topo da vista aponta para 270° – Oeste").
+   Se no Google Earth o desenho aparecer girado, o norte verdadeiro do Revit não está onde você imagina: use *Para cima na vista atual*
+   ou *Dois pontos*, ou corrija em *Gerenciar › Localização do projeto › Girar norte verdadeiro*. **Verificar Projeto** também mostra essa informação.
 
 A partir desse ponto, todas as coordenadas são calculadas pelas **distâncias e azimutes do desenho** (o desenho é tratado como um
 plano topográfico local, com distâncias horizontais verdadeiras).
@@ -95,26 +116,48 @@ e desenha as linhas a partir de um ponto clicado ou do ponto de referência. Arc
 
 ### Painel Operações
 
-**Desmembramento** – desenhe as novas divisas (ou use *Dividir Lote*), reconheça os lotes resultantes, escolha o lote original e
-confira: soma das áreas, sobreposições e se os resultantes estão dentro do original. O original é arquivado (continua no memorial).
+**Desmembramento** (inclui a antiga ferramenta *Dividir Lote*: dividir um lote é desmembrá-lo)
+1. Escolha o **lote a desmembrar** e o modo:
+   - **Automático** – frente (testada), início/fim, critério (**partes iguais**, **mesma área**, **áreas personalizadas** como `300; 250; 250`,
+     **mesma testada**, **testadas personalizadas** como `12; 12; 6`, resto mínimo) e direção das divisas (perpendicular à frente,
+     paralela a uma divisa ou por azimute);
+   - **Pelas linhas desenhadas** – desenhe as novas divisas no Revit como quiser (retas, arcos, poligonais) e clique em
+     *Selecionar linhas no Revit…*; o GeoPoint reconhece as partes;
+   - **Lotes já reconhecidos** – usa lotes que você já criou dentro do original.
+2. **Prévia** colorida com área e testada de cada parte, atualizada a cada mudança.
+3. Na tabela das partes: **nome**, **Lote Remanescente** (você escolhe um), **proprietário** de cada parte e, se for o caso,
+   **Anexar a** um lote vizinho (a parte é remembrada com ele automaticamente).
+4. Ao registrar: as divisas são desenhadas (estilo *GeoPoint - Divisa proposta*), os lotes resultantes são criados com os confrontantes
+   herdados (a divisa entre duas partes vira confrontante "Lote X"), os vizinhos passam a confrontar com os novos lotes, o original é
+   arquivado e, se marcado, as **pranchas A4** da situação atual e proposta são geradas.
 
-**Remembramento** – marque os lotes contíguos; o GeoPoint calcula o contorno unificado (com arcos e divisas em "T"),
-confere a área e cria o lote resultante. As linhas internas continuam no desenho (apague-as se quiser).
-
-**Dividir Lote** (simulação de parcelamento)
-- Frente (testada), direção das divisas (perpendicular à frente, paralela a uma divisa ou por azimute) e critério:
-  **partes iguais**, **área por lote** (com regra para o resto) ou **testada fixa**.
-- Prévia com área e testada de cada parte e verificação do perfil urbanístico (área e testada mínimas).
-- Ao confirmar: desenha as divisas (estilo *GeoPoint - Divisa proposta*), cria os lotes e, se marcado, registra o desmembramento.
-- Áreas calculadas de forma exata, inclusive com divisas em arco.
+**Remembramento** – marque os lotes contíguos e veja a **prévia** do lote unificado (contorno vermelho). Informe nome, quadra, uso,
+matrícula e proprietário. O contorno é calculado com arcos e divisas em "T"; os confrontantes e os números dos vértices são herdados.
+As linhas internas continuam no desenho original (nas pranchas da situação proposta elas ficam ocultas).
 
 **Área Edificável** – recuo por divisa (ou do perfil: frente/laterais/fundos). Calcula a área edificável (cantos reentrantes
 arredondados, como manda a definição de afastamento) e desenha o contorno (estilo *GeoPoint - Área edificável*).
 
 ### Painel Anotação
 
-**Anotar Lotes** – na vista de planta atual: azimute/rumo e distância de cada divisa, nomes dos vértices e nome/área no centro.
+**Anotar Lotes** – na vista de planta atual:
+- distância (junto da linha) e azimute/rumo (logo abaixo) de cada divisa, **do lado de fora do lote**;
+- **ponto preenchido** em cada vértice e o nome do vértice fora do conjunto de lotes;
+- nome e área no centro (o remanescente aparece em destaque);
+- **confrontantes**: nome do confrontante do lado de fora e, quando uma divisa tem vários confrontantes, a **extensão de cada um**
+  (cota vermelha com marcas tracejadas nos pontos de mudança);
+- divisas e vértices compartilhados entre lotes vizinhos são anotados **uma vez só**;
+- fundo opaco nos textos (legíveis sobre hachuras).
 O tamanho é dado em mm no papel e acompanha a escala da vista. Executar de novo substitui as anotações anteriores do lote nesta vista.
+
+**Hachuras** – hachura cada lote com uma cor (o **remanescente** recebe hachura cruzada), com bordas invisíveis.
+
+**Vias** – desenho esquemático simples da rua:
+- aba *Vias*: nome, largura do leito (padrão 12 m), calçada (padrão 2,5 m) e prolongamento das pontas;
+- aba *Testadas*: escolha a via de cada divisa de frente (a via vira o confrontante da divisa);
+- aba *Cruzamentos*: esquinas de **2, 3 ou 4 vias** – marque *atravessa* para a via que continua do outro lado (L: nenhuma; T: a principal; +: as duas);
+  raio de concordância do meio-fio.
+O desenho tem meio-fio, alinhamento da calçada e o nome da rua no meio do leito; serve para vias retas, em L, em U ou contornando a quadra.
 
 **Tabela de Coordenadas** – cria uma vista de desenho por lote ("GeoPoint - Coordenadas - …") com o quadro de vértices,
 coordenadas, azimutes, distâncias e confrontantes. Arraste a vista para a prancha.
@@ -135,10 +178,28 @@ Use as **Tabelas (Schedules)** nativas do Revit para montar quadros com esses pa
 - Quadros de coordenadas e de segmentos, notas técnicas (sistema de referência, convenções e origem da coordenada).
 - Um arquivo por lote (opcional).
 
-**Google Earth / QGIS** – KMZ, KML e GeoJSON com os lotes coloridos por uso, vértices e (opcional) divisas com azimute e distância.
+**Anuência de Confrontantes** – declaração de anuência (concordância com o limite) para cada confrontante do lote, com a descrição
+da divisa comum (vértices, azimutes, distâncias e coordenadas), campos de assinatura do confrontante e de testemunhas. Opcionalmente
+inclui as vias (declaração do poder público).
+
+**Pranchas A4** – pranchas por situação, cada uma numa **cópia** da planta (o desenho original não é alterado):
+- *Situação atual* (todos juntos e/ou cada lote individualmente) e *Situação proposta* (total e/ou cada lote individualmente);
+- sem operação (regularização, levantamento…): planta de situação dos lotes marcados;
+- folha A4 **retrato** (carimbo embaixo) ou **paisagem** (carimbo à direita), margens ABNT (25 mm à esquerda, 7 mm nas demais);
+- carimbo com título, situação, proprietário, imóvel, município/UF, matrícula, área, perímetro, coordenada de referência,
+  responsável técnico (com RRT/ART), assinaturas, **imagem de localização** (escolha um PNG/JPG, ex.: print do Google Earth),
+  escala, data, folha 01/03 e número da prancha;
+- escala automática (a menor escala usual em que o desenho cabe) ou fixa; seta do **norte verdadeiro**; quadro de áreas;
+- anotações, hachuras e vias de cada situação; as divisas internas que não pertencem à situação ficam ocultas na cópia.
+Para PDF use o recurso nativo do Revit (*Arquivo › Exportar › PDF*), em A4. Se preferir o seu carimbo (família), informe-o em
+Configurações e o GeoPoint coloca a vista e o quadro na prancha com o seu carimbo.
+
+**Google Earth / QGIS** – KMZ, KML e GeoJSON com os lotes coloridos por uso, **todos os vértices como pontos** (pasta *Vértices*,
+com nome, latitude/longitude e UTM ao clicar) e (opcional) divisas com azimute e distância.
 No QGIS: *Camada › Adicionar camada › Vetorial* e escolha o `.geojson` ou `.kml`.
 
-**Planilha Excel** – abas *Lotes*, *Quadro de áreas*, *Vértices* (todas as coordenadas, convergência e fator de escala) e *Segmentos*.
+**Planilha Excel** – abas *Lotes*, *Quadro de áreas*, *Vértices* (todas as coordenadas, convergência e fator de escala),
+*Registro de vértices* (cada ponto uma vez, com os lotes atuais e do histórico em que aparece) e *Segmentos* (com confrontante e lado).
 
 **Quadro de Áreas** – áreas por uso (lotes, viário, verde, institucional, APP…), percentuais, áreas públicas e verificação do perfil:
 área mínima, testada mínima, áreas públicas mínimas, projeção e construção máximas (taxa de ocupação e coeficiente).
