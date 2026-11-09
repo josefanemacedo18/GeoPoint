@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>GeoPoint</Name>
+    <Assembly>GeoPoint\GeoPoint.Revit.dll</Assembly>
+    <AddInId>8E3C5B1F-4B7A-4E0B-9C2E-6F1D2A7B9C31</AddInId>
+    <FullClassName>GeoPoint.Revit.App</FullClassName>
+    <VendorId>GEOPOINT</VendorId>
+    <VendorDescription>GeoPoint - georreferenciamento de lotes (uso interno)</VendorDescription>
+  </AddIn>
+</RevitAddIns>

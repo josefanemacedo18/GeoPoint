@@ -1,0 +1,130 @@
+<Window x:Class="GeoPoint.Revit.UI.LotManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GeoPoint – Gerenciar lotes" Width="1180" Height="760" MinWidth="900" MinHeight="560"
+        FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GeoPoint.Revit;component/UI/Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <DockPanel Margin="12">
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="False">
+            <Button DockPanel.Dock="Left" Margin="0" Content="Mostrar no Revit" Click="Show_Click" ToolTip="Salva, fecha e seleciona no Revit as linhas do lote."/>
+            <TextBlock x:Name="Status" DockPanel.Dock="Left" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/>
+            <Button DockPanel.Dock="Right" Content="Cancelar" IsCancel="True"/>
+            <Button DockPanel.Dock="Right" Content="Salvar" Style="{StaticResource Primary}" Click="Save_Click"/>
+        </DockPanel>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="330"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <DockPanel Grid.Column="0">
+                <TextBlock DockPanel.Dock="Top" Text="Lotes e áreas" Style="{StaticResource H1}"/>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                    <CheckBox x:Name="ShowArchived" Content="Mostrar arquivados" Checked="Filter_Changed" Unchecked="Filter_Changed"/>
+                </DockPanel>
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                    <Button Content="Arquivar / reativar" Margin="0" Click="Archive_Click"/>
+                    <Button Content="Excluir" Click="Delete_Click"/>
+                </StackPanel>
+                <DataGrid x:Name="LotsGrid" SelectionMode="Single" SelectionChanged="Lots_SelectionChanged">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Lote / área" Binding="{Binding Nome}" Width="*" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Uso" Binding="{Binding Uso}" Width="90" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Área (m²)" Binding="{Binding AreaText}" Width="80" IsReadOnly="True"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" x:Name="Detail">
+                <StackPanel>
+                    <TextBlock x:Name="LotTitle" Style="{StaticResource H1}"/>
+                    <GroupBox Header="Identificação">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="16"/>
+                                <ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <Label Grid.Row="0" Grid.Column="0" Content="Nome / número:"/>
+                            <TextBox Grid.Row="0" Grid.Column="1" x:Name="Nome" ToolTip="Ex.: 01, 02... (aparece como 'Lote 01') ou um nome livre (ex.: Praça, Rua B)."/>
+                            <Label Grid.Row="0" Grid.Column="3" Content="Quadra:"/>
+                            <TextBox Grid.Row="0" Grid.Column="4" x:Name="Quadra"/>
+                            <Label Grid.Row="1" Grid.Column="0" Content="Uso:"/>
+                            <ComboBox Grid.Row="1" Grid.Column="1" x:Name="Uso" DisplayMemberPath="Value" SelectedValuePath="Key"/>
+                            <Label Grid.Row="1" Grid.Column="3" Content="Matrícula:"/>
+                            <TextBox Grid.Row="1" Grid.Column="4" x:Name="Matricula"/>
+                            <Label Grid.Row="2" Grid.Column="0" Content="Proprietário:"/>
+                            <TextBox Grid.Row="2" Grid.Column="1" x:Name="Proprietario" ToolTip="Deixe vazio para usar o proprietário dos Dados do Imóvel."/>
+                            <Label Grid.Row="2" Grid.Column="3" Content="CPF/CNPJ:"/>
+                            <TextBox Grid.Row="2" Grid.Column="4" x:Name="Documento"/>
+                            <Label Grid.Row="3" Grid.Column="0" Content="Endereço:"/>
+                            <TextBox Grid.Row="3" Grid.Column="1" x:Name="Endereco"/>
+                            <Label Grid.Row="3" Grid.Column="3" Content="Área do título (m²):"/>
+                            <TextBox Grid.Row="3" Grid.Column="4" x:Name="AreaTitulo" ToolTip="Área que consta na matrícula/escritura, para comparação."/>
+                            <Label Grid.Row="4" Grid.Column="0" Content="Observações:"/>
+                            <TextBox Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="4" x:Name="Observacoes" AcceptsReturn="True" Height="44" TextWrapping="Wrap" VerticalContentAlignment="Top"/>
+                        </Grid>
+                    </GroupBox>
+
+                    <GroupBox Header="Descrição perimétrica">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Label Content="Sentido:"/>
+                                <ComboBox x:Name="Sentido" Width="190" SelectionChanged="Description_Changed">
+                                    <ComboBoxItem Content="Padrão das configurações"/>
+                                    <ComboBoxItem Content="Horário"/>
+                                    <ComboBoxItem Content="Anti-horário"/>
+                                </ComboBox>
+                                <Label Content="   Vértice inicial:"/>
+                                <ComboBox x:Name="StartVertex" Width="220" DisplayMemberPath="Text" SelectionChanged="Description_Changed"/>
+                                <Button Content="Automático" Click="AutoStart_Click" ToolTip="Volta à regra automática (início da testada ou vértice mais ao norte)."/>
+                            </StackPanel>
+                            <TextBlock x:Name="Measures" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                        </StackPanel>
+                    </GroupBox>
+
+                    <GroupBox Header="Divisas (confrontantes e testada)">
+                        <StackPanel>
+                            <TextBlock Style="{StaticResource Hint}" Text="Digite o confrontante de cada divisa (rua, lote vizinho, proprietário). Quando a divisa é compartilhada com outro lote do projeto, o vizinho é sugerido automaticamente. Marque 'Testada' nas divisas de frente para a via."/>
+                            <DataGrid x:Name="SegGrid" Height="250" SelectionMode="Single" CellEditEnding="SegGrid_CellEditEnding">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Segmento" Binding="{Binding Segmento}" Width="110" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Tipo" Binding="{Binding Tipo}" Width="50" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Distância (m)" Binding="{Binding Comprimento}" Width="90" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Azimute" Binding="{Binding Azimute}" Width="95" IsReadOnly="True"/>
+                                    <DataGridTextColumn Header="Confrontante" Binding="{Binding Confrontante, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                                    <DataGridTemplateColumn Header="Testada" Width="60">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding Testada, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" Click="Testada_Click"/>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Sugerido (vizinho)" Binding="{Binding Sugerido}" Width="140" IsReadOnly="True"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <Button Margin="0" Content="Usar sugestões nas divisas vazias" Click="UseSuggestions_Click"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </GroupBox>
+                    <GroupBox Header="Histórico">
+                        <TextBlock x:Name="History" TextWrapping="Wrap" Foreground="{StaticResource Muted}"/>
+                    </GroupBox>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</Window>

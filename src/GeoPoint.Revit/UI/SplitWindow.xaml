@@ -1,0 +1,101 @@
+<Window x:Class="GeoPoint.Revit.UI.SplitWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GeoPoint – Dividir lote" Width="980" Height="760" MinWidth="780" MinHeight="560"
+        FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GeoPoint.Revit;component/UI/Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <DockPanel Margin="14">
+        <TextBlock DockPanel.Dock="Top" Text="Simulação de parcelamento (divisão de lote ou gleba)" Style="{StaticResource H1}"/>
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Text="As áreas são calculadas de forma exata (inclusive com arcos). Ao confirmar, as linhas de divisão são desenhadas no mesmo plano/vista das linhas do lote, com o estilo 'GeoPoint - Divisa proposta'."/>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button x:Name="OkButton" Content="Desenhar divisas" Style="{StaticResource Primary}" Click="Ok_Click" IsDefault="True"/>
+            <Button Content="Cancelar" IsCancel="True"/>
+        </StackPanel>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="430"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <Label Content="Lote / gleba a dividir:"/>
+                    <ComboBox x:Name="LotBox" DisplayMemberPath="Nome" SelectionChanged="Lot_Changed"/>
+                    <Label Content="Frente (testada) – a divisão avança ao longo dela:"/>
+                    <ComboBox x:Name="FrontBox" DisplayMemberPath="Text" SelectionChanged="Any_Changed"/>
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton x:Name="FromStart" GroupName="side" IsChecked="True" Content="Começar pelo início da frente" Checked="Any_Checked"/>
+                        <RadioButton x:Name="FromEnd" GroupName="side" Content="pelo fim" Checked="Any_Checked"/>
+                    </StackPanel>
+                    <GroupBox Header="Critério">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="ModeEqual" GroupName="mode" IsChecked="True" Content="Partes iguais:" Checked="Any_Checked"/>
+                                <TextBox x:Name="Parts" Width="60" Text="2" TextChanged="Any_TextChanged"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="ModeArea" GroupName="mode" Content="Área de cada lote (m²):" Checked="Any_Checked"/>
+                                <TextBox x:Name="TargetArea" Width="90" Text="250" TextChanged="Any_TextChanged"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="22,0,0,0">
+                                <Label Content="Se sobrar menos de (m²):"/>
+                                <TextBox x:Name="MinRemainder" Width="80" Text="125" TextChanged="Any_TextChanged" ToolTip="O resto menor que isto é incorporado ao último lote."/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="ModeFront" GroupName="mode" Content="Testada de cada lote (m):" Checked="Any_Checked"/>
+                                <TextBox x:Name="FrontWidth" Width="80" Text="10" TextChanged="Any_TextChanged"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </GroupBox>
+                    <GroupBox Header="Direção das divisas">
+                        <StackPanel>
+                            <RadioButton x:Name="DirPerp" GroupName="dir" IsChecked="True" Content="Perpendicular à frente" Checked="Any_Checked"/>
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="DirParallel" GroupName="dir" Content="Paralela à divisa:" Checked="Any_Checked"/>
+                                <ComboBox x:Name="ParallelBox" Width="230" DisplayMemberPath="Text" SelectionChanged="Any_Changed"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="DirAz" GroupName="dir" Content="Azimute verdadeiro:" Checked="Any_Checked"/>
+                                <TextBox x:Name="DirAzText" Width="120" Text="0°00'00&quot;" TextChanged="Any_TextChanged"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </GroupBox>
+                    <GroupBox Header="Ao confirmar">
+                        <StackPanel>
+                            <CheckBox x:Name="CreateLots" IsChecked="True" Content="Criar os lotes resultantes no GeoPoint"/>
+                            <CheckBox x:Name="Register" IsChecked="True" Content="Registrar como desmembramento (arquiva o lote original)"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Label Content="Numeração inicial:"/>
+                                <TextBox x:Name="StartNumber" Width="60" Text="01"/>
+                                <Label Content="  Quadra:"/>
+                                <TextBox x:Name="Quadra" Width="70"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </GroupBox>
+                </StackPanel>
+            </ScrollViewer>
+            <DockPanel Grid.Column="2">
+                <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold" Text="Prévia"/>
+                <TextBlock x:Name="Summary" DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,4,0,6"/>
+                <DataGrid x:Name="Preview">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Parte" Binding="{Binding Parte}" Width="50" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Área (m²)" Binding="{Binding Area}" Width="100" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Testada (m)" Binding="{Binding Testada}" Width="90" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Situação (perfil urbanístico)" Binding="{Binding Situacao}" Width="*" IsReadOnly="True">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</Window>

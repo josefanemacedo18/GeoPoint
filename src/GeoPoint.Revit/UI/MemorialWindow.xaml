@@ -1,0 +1,149 @@
+<Window x:Class="GeoPoint.Revit.UI.MemorialWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GeoPoint – Memorial descritivo" Width="1100" Height="780" MinWidth="900" MinHeight="600"
+        FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GeoPoint.Revit;component/UI/Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <DockPanel Margin="14">
+        <TextBlock DockPanel.Dock="Top" Text="Memorial descritivo (Word)" Style="{StaticResource H1}"/>
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="False">
+            <Button DockPanel.Dock="Left" Margin="0" Content="Dados do imóvel…" Click="Info_Click"/>
+            <TextBlock x:Name="TemplateInfo" DockPanel.Dock="Left" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/>
+            <Button DockPanel.Dock="Right" Content="Cancelar" IsCancel="True"/>
+            <Button DockPanel.Dock="Right" Content="Gerar memorial" Style="{StaticResource Primary}" Click="Ok_Click" IsDefault="True"/>
+        </DockPanel>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="12"/>
+                <ColumnDefinition Width="460"/>
+            </Grid.ColumnDefinitions>
+            <DockPanel Grid.Column="0">
+                <GroupBox DockPanel.Dock="Top" Header="Tipo">
+                    <StackPanel>
+                        <RadioButton x:Name="KindLots" GroupName="k" IsChecked="True" Content="Lote(s) – memorial de cada área selecionada" Checked="Kind_Changed"/>
+                        <RadioButton x:Name="KindSplit" GroupName="k" Content="Desmembramento – área original e áreas resultantes" Checked="Kind_Changed"/>
+                        <RadioButton x:Name="KindMerge" GroupName="k" Content="Remembramento – áreas originais e área unificada" Checked="Kind_Changed"/>
+                        <RadioButton x:Name="KindPlat" GroupName="k" Content="Loteamento / parcelamento – gleba, quadro de áreas e todos os lotes" Checked="Kind_Changed"/>
+                    </StackPanel>
+                </GroupBox>
+                <StackPanel DockPanel.Dock="Top" x:Name="OperationPanel" Visibility="Collapsed">
+                    <Label Content="Operação registrada:"/>
+                    <ComboBox x:Name="Operations" DisplayMemberPath="Label"/>
+                    <TextBlock x:Name="OperationHint" Style="{StaticResource Hint}"/>
+                </StackPanel>
+                <TextBlock DockPanel.Dock="Top" x:Name="PlatHint" Style="{StaticResource Hint}" Visibility="Collapsed"
+                           Text="Inclui todos os lotes e áreas ativos, agrupados por quadra, e a gleba (área com uso 'Gleba'), se houver."/>
+                <DockPanel x:Name="LotsPanel">
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
+                        <Button Content="Marcar todos" Margin="0" Click="All_Click"/>
+                        <Button Content="Desmarcar" Click="None_Click"/>
+                    </StackPanel>
+                    <DataGrid x:Name="LotsGrid">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="" Width="34">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding Selected, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Lote / área" Binding="{Binding Nome}" Width="*" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Uso" Binding="{Binding Uso}" Width="100" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Área (m²)" Binding="{Binding AreaText}" Width="90" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Avisos" Binding="{Binding Extra}" Width="160" IsReadOnly="True"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </DockPanel>
+
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <GroupBox Header="Coordenadas">
+                        <StackPanel>
+                            <Label Content="Na descrição perimétrica (texto corrido):"/>
+                            <ComboBox x:Name="PrimaryCrs"/>
+                            <Label Content="Nos quadros (até 3 sistemas):"/>
+                            <ItemsControl x:Name="TableCrs">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <CheckBox Content="{Binding Label}" IsChecked="{Binding Checked}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </GroupBox>
+                    <GroupBox Header="Ângulos, distâncias e áreas">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                            <Label Grid.Row="0" Content="Direção:"/>
+                            <ComboBox Grid.Row="0" Grid.Column="1" x:Name="AngleStyleBox">
+                                <ComboBoxItem Content="Azimute (0° a 360°)"/>
+                                <ComboBoxItem Content="Rumo (NE, SE, SO, NO)"/>
+                            </ComboBox>
+                            <Label Grid.Row="1" Content="Tipo de azimute:"/>
+                            <ComboBox Grid.Row="1" Grid.Column="1" x:Name="AzTypeBox">
+                                <ComboBoxItem Content="Verdadeiro (norte verdadeiro – como no desenho)"/>
+                                <ComboBoxItem Content="Plano UTM (de quadrícula)"/>
+                                <ComboBoxItem Content="Geodésico (elipsoide)"/>
+                            </ComboBox>
+                            <Label Grid.Row="2" Content="Distâncias:"/>
+                            <ComboBox Grid.Row="2" Grid.Column="1" x:Name="DistTypeBox">
+                                <ComboBoxItem Content="Horizontais (plano topográfico local – do desenho)"/>
+                                <ComboBoxItem Content="Planas UTM (com fator de escala)"/>
+                                <ComboBoxItem Content="Geodésicas (elipsoide)"/>
+                            </ComboBox>
+                            <Label Grid.Row="3" Content="Área:"/>
+                            <ComboBox Grid.Row="3" Grid.Column="1" x:Name="AreaTypeBox">
+                                <ComboBoxItem Content="Plano topográfico local (do desenho)"/>
+                                <ComboBoxItem Content="Plano UTM"/>
+                                <ComboBoxItem Content="As duas"/>
+                            </ComboBox>
+                            <Label Grid.Row="4" Content="Unidade de área:"/>
+                            <ComboBox Grid.Row="4" Grid.Column="1" x:Name="AreaUnitBox">
+                                <ComboBoxItem Content="m²"/>
+                                <ComboBoxItem Content="hectares"/>
+                                <ComboBoxItem Content="m² e hectares"/>
+                            </ComboBox>
+                            <Label Grid.Row="5" Content="Sentido:"/>
+                            <ComboBox Grid.Row="5" Grid.Column="1" x:Name="DirectionBox">
+                                <ComboBoxItem Content="Horário"/>
+                                <ComboBoxItem Content="Anti-horário"/>
+                            </ComboBox>
+                        </Grid>
+                    </GroupBox>
+                    <GroupBox Header="Vértices">
+                        <StackPanel Orientation="Horizontal">
+                            <Label Content="Prefixo:"/>
+                            <TextBox x:Name="Prefix" Width="60"/>
+                            <Label Content="  Dígitos:"/>
+                            <TextBox x:Name="Digits" Width="40"/>
+                            <CheckBox x:Name="Global" Margin="12,0,0,0" Content="Numeração única no projeto"
+                                      ToolTip="Vértices compartilhados entre lotes recebem o mesmo nome em todos os memoriais."/>
+                        </StackPanel>
+                    </GroupBox>
+                    <GroupBox Header="Conteúdo e arquivo">
+                        <StackPanel>
+                            <CheckBox x:Name="Tables" Content="Quadros de coordenadas e de segmentos"/>
+                            <CheckBox x:Name="Notes" Content="Notas técnicas (sistema de referência, convenções, origem da coordenada)"/>
+                            <CheckBox x:Name="Altitudes" Content="Altitudes dos vértices (quando calculadas pelo Toposolid)"/>
+                            <CheckBox x:Name="OnePerLot" Content="Um arquivo por lote (tipo Lote(s))"/>
+                            <CheckBox x:Name="OpenAfter" Content="Abrir no Word depois de gerar"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Label Content="Data do memorial:"/>
+                                <DatePicker x:Name="Date" Width="140"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </GroupBox>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</Window>

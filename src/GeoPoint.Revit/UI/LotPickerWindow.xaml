@@ -1,0 +1,46 @@
+<Window x:Class="GeoPoint.Revit.UI.LotPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GeoPoint" Width="640" Height="600" MinWidth="480" MinHeight="380"
+        FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GeoPoint.Revit;component/UI/Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <DockPanel Margin="14">
+        <TextBlock x:Name="Header" DockPanel.Dock="Top" Style="{StaticResource H1}"/>
+        <TextBlock x:Name="Intro" DockPanel.Dock="Top" Style="{StaticResource Hint}"/>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button x:Name="OkButton" Content="OK" Style="{StaticResource Primary}" Click="Ok_Click" IsDefault="True"/>
+            <Button Content="Cancelar" IsCancel="True"/>
+        </StackPanel>
+        <GroupBox x:Name="OptionsBox" DockPanel.Dock="Bottom" Header="Opções">
+            <StackPanel x:Name="OptionsPanel"/>
+        </GroupBox>
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+            <Button Content="Marcar todos" Click="All_Click" Margin="0"/>
+            <Button Content="Desmarcar" Click="None_Click"/>
+            <CheckBox x:Name="ShowArchived" Content="Mostrar lotes arquivados" Margin="12,0,0,0" Checked="Filter_Changed" Unchecked="Filter_Changed"/>
+            <TextBlock x:Name="Count" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/>
+        </DockPanel>
+        <DataGrid x:Name="Grid" SelectionMode="Extended">
+            <DataGrid.Columns>
+                <DataGridTemplateColumn Header="" Width="34">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox IsChecked="{Binding Selected, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" Click="Check_Click"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Lote / área" Binding="{Binding Nome}" Width="2*" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Uso" Binding="{Binding Uso}" Width="*" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Área (m²)" Binding="{Binding AreaText}" Width="90" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Situação" Binding="{Binding Status}" Width="80" IsReadOnly="True"/>
+                <DataGridTextColumn Header="" Binding="{Binding Extra}" Width="*" IsReadOnly="True"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>

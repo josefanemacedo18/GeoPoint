@@ -1,0 +1,41 @@
+<Window x:Class="GeoPoint.Revit.UI.SetbackWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GeoPoint – Área edificável" Width="900" Height="640" MinWidth="700" MinHeight="460"
+        FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GeoPoint.Revit;component/UI/Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <DockPanel Margin="14">
+        <TextBlock DockPanel.Dock="Top" Text="Área edificável pelos recuos" Style="{StaticResource H1}"/>
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Text="Informe o recuo (afastamento) de cada divisa. A área edificável é o conjunto de pontos do lote que respeitam todos os recuos (cantos reentrantes ficam arredondados)."/>
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
+            <Label Content="Lote:"/>
+            <ComboBox x:Name="LotBox" Width="300" DisplayMemberPath="Nome" SelectionChanged="Lot_Changed"/>
+            <Button Content="Aplicar recuos do perfil (frente / laterais / fundos)" Click="Profile_Click"/>
+        </StackPanel>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="Salvar" Style="{StaticResource Primary}" Click="Ok_Click" IsDefault="True"/>
+            <Button Content="Cancelar" IsCancel="True"/>
+        </StackPanel>
+        <StackPanel DockPanel.Dock="Bottom">
+            <CheckBox x:Name="Draw" IsChecked="True" Content="Desenhar o contorno da área edificável (estilo 'GeoPoint - Área edificável')"/>
+            <GroupBox Header="Resultado">
+                <TextBlock x:Name="Result" TextWrapping="Wrap"/>
+            </GroupBox>
+        </StackPanel>
+        <DataGrid x:Name="Grid" CellEditEnding="Grid_CellEditEnding">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Divisa" Binding="{Binding Segmento}" Width="110" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Distância (m)" Binding="{Binding Distancia}" Width="90" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Confrontante" Binding="{Binding Confrontante}" Width="*" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Tipo" Binding="{Binding Tipo}" Width="80" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Recuo (m)" Binding="{Binding Recuo, UpdateSourceTrigger=LostFocus}" Width="90"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>

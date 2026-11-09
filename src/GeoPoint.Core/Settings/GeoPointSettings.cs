@@ -1,0 +1,278 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using GeoPoint.Core.Geodesy;
+using GeoPoint.Core.Urban;
+
+namespace GeoPoint.Core.Settings;
+
+public enum AzimuthType
+{
+    /// <summary>Azimute verdadeiro no plano topográfico local (como desenhado no Revit).</summary>
+    TrueLocal = 0,
+    /// <summary>Azimute plano de quadrícula (UTM).</summary>
+    GridUtm = 1,
+    /// <summary>Azimute geodésico (elipsoide).</summary>
+    Geodesic = 2,
+}
+
+public enum DistanceType
+{
+    /// <summary>Distância horizontal (plano topográfico local – a do desenho).</summary>
+    Horizontal = 0,
+    /// <summary>Distância plana UTM (com fator de escala).</summary>
+    GridUtm = 1,
+    /// <summary>Distância geodésica (elipsoide).</summary>
+    Geodesic = 2,
+}
+
+public enum AreaType
+{
+    /// <summary>Área no plano topográfico local (a do desenho).</summary>
+    Local = 0,
+    /// <summary>Área no plano de projeção UTM.</summary>
+    Utm = 1,
+    /// <summary>As duas.</summary>
+    Both = 2,
+}
+
+public enum AreaUnit { SquareMeters = 0, Hectares = 1, Both = 2 }
+
+public enum AngleStyle { Azimute = 0, Rumo = 1 }
+
+public enum ZoneLabelStyle
+{
+    /// <summary>"Fuso 23, hemisfério Sul".</summary>
+    FusoHemisferio = 0,
+    /// <summary>"Zona 23M".</summary>
+    ZonaLetra = 1,
+}
+
+public enum StartVertexRule
+{
+    /// <summary>Início da testada (frente); se não houver, vértice mais ao norte.</summary>
+    Testada = 0,
+    /// <summary>Vértice mais ao norte (empate: mais a oeste).</summary>
+    MaisAoNorte = 1,
+    /// <summary>Vértice mais a noroeste.</summary>
+    MaisANoroeste = 2,
+}
+
+public sealed class RecognitionSettings
+{
+    public double ToleranceMm { get; set; } = 1.0;
+    public double GapSearchMm { get; set; } = 100;
+    public double TinyFaceM2 { get; set; } = 0.01;
+    /// <summary>Remove vértices intermediários colineares sem encontro de outras linhas.</summary>
+    public bool MergeCollinear { get; set; }
+    /// <summary>Considerar ilhas internas como furos do lote.</summary>
+    public bool IncludeHoles { get; set; }
+    public string DefaultQuadra { get; set; } = "";
+    public string NamePrefix { get; set; } = "Lote";
+}
+
+public sealed class NamingSettings
+{
+    public string VertexPrefix { get; set; } = "P-";
+    public int VertexDigits { get; set; } = 2;
+    /// <summary>Numeração única de vértices em todo o projeto (vértices compartilhados com o mesmo nome).</summary>
+    public bool GlobalNumbering { get; set; }
+    /// <summary>Descrição no sentido horário.</summary>
+    public bool Clockwise { get; set; } = true;
+    public StartVertexRule StartRule { get; set; } = StartVertexRule.Testada;
+}
+
+public sealed class FormatSettings
+{
+    public int DistanceDecimals { get; set; } = 2;
+    public int AreaDecimals { get; set; } = 2;
+    public int PlaneCoordDecimals { get; set; } = 3;
+    public int GeoSecondsDecimals { get; set; } = 4;
+    public int AzimuthSecondsDecimals { get; set; }
+    public bool ThousandsSeparator { get; set; } = true;
+    public AreaUnit AreaUnit { get; set; } = AreaUnit.SquareMeters;
+    public int HectareDecimals { get; set; } = 4;
+    public AngleStyle AngleStyle { get; set; } = AngleStyle.Azimute;
+    /// <summary>Usar "O" (oeste) em vez de "W".</summary>
+    public bool WestAsO { get; set; } = true;
+    public ZoneLabelStyle ZoneStyle { get; set; } = ZoneLabelStyle.FusoHemisferio;
+    /// <summary>Latitude/longitude em graus decimais em vez de GMS.</summary>
+    public bool GeoDecimalDegrees { get; set; }
+}
+
+public sealed class MemorialSettings
+{
+    /// <summary>Sistemas de coordenadas mostrados no memorial (o primeiro é o principal).</summary>
+    public List<CrsDef> CoordinateSystems { get; set; } = new() { CrsDef.Utm(), CrsDef.Geographic() };
+    public AzimuthType AzimuthType { get; set; } = AzimuthType.TrueLocal;
+    public DistanceType DistanceType { get; set; } = DistanceType.Horizontal;
+    public AreaType AreaType { get; set; } = AreaType.Local;
+    public bool IncludeVertexTable { get; set; } = true;
+    public bool IncludeSystemDeclaration { get; set; } = true;
+    public bool IncludeAltitude { get; set; }
+    public string TemplatePath { get; set; } = "";
+    public string PhrasesPath { get; set; } = "";
+    public bool OneFilePerLot { get; set; }
+    public bool OpenAfterGenerate { get; set; } = true;
+    public string OutputFolder { get; set; } = "";
+    /// <summary>Transversa de Mercator personalizada (RTM/LTM municipal) disponível para o memorial.</summary>
+    public CrsDef CustomTm { get; set; } = CrsDef.Rtm(-45);
+    /// <summary>Plano Topográfico Local (origem no ponto de referência ou definida pelo município).</summary>
+    public CrsDef Ptl { get; set; } = CrsDef.Ptl();
+}
+
+public sealed class TechnicianSettings
+{
+    public string Nome { get; set; } = "";
+    public string Profissao { get; set; } = "Arquiteto e Urbanista";
+    public string Conselho { get; set; } = "CAU";
+    public string Registro { get; set; } = "";
+    public string Empresa { get; set; } = "";
+}
+
+public sealed class AnnotationSettings
+{
+    public double TextSizeMm { get; set; } = 2.0;
+    public double OffsetMm { get; set; } = 1.5;
+    public bool Vertices { get; set; } = true;
+    public bool Edges { get; set; } = true;
+    public bool AreaLabel { get; set; } = true;
+    public bool EdgeAzimuth { get; set; } = true;
+    public string Font { get; set; } = "Arial";
+}
+
+public sealed class KmlSettings
+{
+    public double FillOpacity { get; set; } = 0.35;
+    public double LineWidth { get; set; } = 2;
+    public bool IncludeVertices { get; set; } = true;
+    public bool IncludeEdges { get; set; }
+    public bool IncludeArchived { get; set; }
+}
+
+public sealed class GeoPointSettings
+{
+    public int Version { get; set; } = 1;
+    public RecognitionSettings Recognition { get; set; } = new();
+    public NamingSettings Naming { get; set; } = new();
+    public FormatSettings Format { get; set; } = new();
+    public MemorialSettings Memorial { get; set; } = new();
+    public TechnicianSettings Technician { get; set; } = new();
+    public AnnotationSettings Annotation { get; set; } = new();
+    public KmlSettings Kml { get; set; } = new();
+    public List<RuleProfile> RuleProfiles { get; set; } = RuleProfile.Defaults();
+    public string DefaultRuleProfile { get; set; } = "Lei 6.766/79 (mínimos federais)";
+    public string LastExportFolder { get; set; } = "";
+
+    public RuleProfile? FindProfile(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) name = DefaultRuleProfile;
+        return RuleProfiles.FirstOrDefault(p => p.Name == name) ?? RuleProfiles.FirstOrDefault();
+    }
+
+    public GeoPointSettings Clone() => SettingsStore.Deserialize(SettingsStore.Serialize(this)) ?? new GeoPointSettings();
+}
+
+public static class JsonOptions
+{
+    public static readonly JsonSerializerOptions Default = Create();
+
+    private static JsonSerializerOptions Create()
+    {
+        var o = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            PropertyNameCaseInsensitive = true,
+            NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
+            DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+            ReadCommentHandling = JsonCommentHandling.Skip,
+            AllowTrailingCommas = true,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        };
+        o.Converters.Add(new JsonStringEnumConverter());
+        return o;
+    }
+
+    /// <summary>JSON compacto (para armazenamento no modelo).</summary>
+    public static readonly JsonSerializerOptions Compact = new(Default) { WriteIndented = false };
+}
+
+public static class SettingsStore
+{
+    public static string DefaultFolder =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GeoPoint");
+
+    public static string DefaultPath => Path.Combine(DefaultFolder, "configuracoes.json");
+
+    public static string Serialize(GeoPointSettings s) => JsonSerializer.Serialize(s, JsonOptions.Default);
+
+    public static GeoPointSettings? Deserialize(string json)
+    {
+        try { return JsonSerializer.Deserialize<GeoPointSettings>(json, JsonOptions.Default); }
+        catch { return null; }
+    }
+
+    /// <summary>Carrega configurações; se o arquivo estiver corrompido, guarda uma cópia e usa os padrões.</summary>
+    public static GeoPointSettings Load(string? path = null)
+    {
+        path ??= DefaultPath;
+        try
+        {
+            if (!File.Exists(path)) return Normalize(new GeoPointSettings());
+            var json = File.ReadAllText(path);
+            var s = Deserialize(json);
+            if (s is null)
+            {
+                try { File.Copy(path, path + ".corrompido-" + DateTime.Now.ToString("yyyyMMddHHmmss"), true); } catch { }
+                return Normalize(new GeoPointSettings());
+            }
+            return Normalize(s);
+        }
+        catch
+        {
+            return Normalize(new GeoPointSettings());
+        }
+    }
+
+    public static void Save(GeoPointSettings s, string? path = null)
+    {
+        path ??= DefaultPath;
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var tmp = path + ".tmp";
+        File.WriteAllText(tmp, Serialize(s));
+        File.Move(tmp, path, true);
+    }
+
+    private static GeoPointSettings Normalize(GeoPointSettings s)
+    {
+        s.Recognition ??= new();
+        s.Naming ??= new();
+        s.Format ??= new();
+        s.Memorial ??= new();
+        s.Technician ??= new();
+        s.Annotation ??= new();
+        s.Kml ??= new();
+        s.RuleProfiles ??= RuleProfile.Defaults();
+        if (s.RuleProfiles.Count == 0) s.RuleProfiles = RuleProfile.Defaults();
+        s.Memorial.CoordinateSystems ??= new();
+        s.Memorial.CustomTm ??= CrsDef.Rtm(-45);
+        s.Memorial.CustomTm.Kind = CrsKind.CustomTm;
+        s.Memorial.Ptl ??= CrsDef.Ptl();
+        s.Memorial.Ptl.Kind = CrsKind.LocalTopographic;
+        if (s.Memorial.CustomTm.CustomK0 <= 0 || s.Memorial.CustomTm.CustomK0 > 2) s.Memorial.CustomTm.CustomK0 = 0.999995;
+        if (s.Memorial.CoordinateSystems.Count == 0) s.Memorial.CoordinateSystems.Add(CrsDef.Utm());
+        s.Recognition.ToleranceMm = Math.Clamp(s.Recognition.ToleranceMm, 0.01, 100);
+        s.Recognition.GapSearchMm = Math.Clamp(s.Recognition.GapSearchMm, 0, 10000);
+        s.Naming.VertexDigits = Math.Clamp(s.Naming.VertexDigits, 1, 5);
+        s.Format.DistanceDecimals = Math.Clamp(s.Format.DistanceDecimals, 0, 6);
+        s.Format.AreaDecimals = Math.Clamp(s.Format.AreaDecimals, 0, 6);
+        s.Format.PlaneCoordDecimals = Math.Clamp(s.Format.PlaneCoordDecimals, 0, 6);
+        s.Format.GeoSecondsDecimals = Math.Clamp(s.Format.GeoSecondsDecimals, 0, 6);
+        s.Format.AzimuthSecondsDecimals = Math.Clamp(s.Format.AzimuthSecondsDecimals, 0, 4);
+        s.Format.HectareDecimals = Math.Clamp(s.Format.HectareDecimals, 0, 8);
+        s.Annotation.TextSizeMm = Math.Clamp(s.Annotation.TextSizeMm, 0.5, 20);
+        s.Annotation.OffsetMm = Math.Clamp(s.Annotation.OffsetMm, 0, 50);
+        s.Kml.FillOpacity = Math.Clamp(s.Kml.FillOpacity, 0, 1);
+        s.Kml.LineWidth = Math.Clamp(s.Kml.LineWidth, 0.5, 20);
+        return s;
+    }
+}

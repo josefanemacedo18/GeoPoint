@@ -1,0 +1,98 @@
+<Window x:Class="GeoPoint.Revit.UI.ReferenceWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GeoPoint – Ponto de referência" Width="720" Height="760" MinWidth="560" MinHeight="560"
+        FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GeoPoint.Revit;component/UI/Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <DockPanel Margin="14">
+        <TextBlock x:Name="Header" DockPanel.Dock="Top" Text="Coordenada do ponto de referência" Style="{StaticResource H1}"/>
+        <TextBlock x:Name="PointInfo" DockPanel.Dock="Top" Style="{StaticResource Hint}"/>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button x:Name="OkButton" Content="OK" Style="{StaticResource Primary}" Click="Ok_Click" IsDefault="True"/>
+            <Button Content="Cancelar" IsCancel="True"/>
+        </StackPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <GroupBox Header="Coordenada">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="KindLatLon" GroupName="kind" Content="Latitude / longitude" IsChecked="True" Checked="Kind_Changed"/>
+                            <RadioButton x:Name="KindUtm" GroupName="kind" Content="UTM" Checked="Kind_Changed"/>
+                            <RadioButton x:Name="KindKml" GroupName="kind" Content="Marcador de KML/KMZ (Google Earth / QGIS)" Checked="Kind_Changed"/>
+                        </StackPanel>
+
+                        <StackPanel x:Name="PanelLatLon" Margin="0,6,0,0">
+                            <TextBlock Style="{StaticResource Hint}" Text="Cole como vem do Google Maps (clique direito no mapa), Google Earth, QGIS ou GPS. Exemplos: -6.337512, -47.390125   ou   6°20'15,04&quot;S 47°23'24,45&quot;W"/>
+                            <TextBox x:Name="LatLonText" TextChanged="Input_Changed"/>
+                        </StackPanel>
+
+                        <Grid x:Name="PanelUtm" Margin="0,6,0,0" Visibility="Collapsed">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="60"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="80"/>
+                                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Label Content="Fuso:"/>
+                            <TextBox Grid.Column="1" x:Name="UtmZone" Text="23" TextChanged="Input_Changed"/>
+                            <Label Grid.Column="2" Content="  Hemisfério:"/>
+                            <ComboBox Grid.Column="3" x:Name="UtmHemi" SelectedIndex="0" SelectionChanged="Input_Changed2">
+                                <ComboBoxItem Content="Sul"/>
+                                <ComboBoxItem Content="Norte"/>
+                            </ComboBox>
+                            <Label Grid.Column="4" Content="  E (m):"/>
+                            <TextBox Grid.Column="5" x:Name="UtmE" TextChanged="Input_Changed"/>
+                            <Label Grid.Column="6" Content="  N (m):"/>
+                            <TextBox Grid.Column="7" x:Name="UtmN" TextChanged="Input_Changed"/>
+                        </Grid>
+
+                        <DockPanel x:Name="PanelKml" Margin="0,6,0,0" Visibility="Collapsed">
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
+                                <Button Content="Abrir KML/KMZ…" Margin="0" Click="OpenKml_Click"/>
+                                <TextBlock x:Name="KmlFile" Margin="8,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Muted}"/>
+                            </StackPanel>
+                            <ListBox x:Name="KmlList" Height="110" Margin="0,6,0,0" DisplayMemberPath="Text" SelectionChanged="Input_Changed2"/>
+                        </DockPanel>
+
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="90"/>
+                            </Grid.ColumnDefinitions>
+                            <Label Content="Datum da coordenada:"/>
+                            <ComboBox Grid.Column="1" x:Name="DatumBox" SelectionChanged="Input_Changed2"/>
+                            <Label Grid.Column="2" Content="  Altitude (m):"/>
+                            <TextBox Grid.Column="3" x:Name="Altitude" Text="0" TextChanged="Input_Changed" ToolTip="Altitude aproximada do terreno. Influencia o fator de escala (100 m ≈ 1,6 cm por km)."/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal">
+                            <Label Content="Origem da coordenada:"/>
+                            <ComboBox x:Name="PrecisionBox" Width="280" ToolTip="Usado para declarar a precisão no memorial e alertar quando não servir para registro."/>
+                        </StackPanel>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox x:Name="OrientationBox" Header="Orientação (norte)">
+                    <StackPanel>
+                        <RadioButton x:Name="OriProject" GroupName="ori" IsChecked="True" Content="Usar o norte verdadeiro definido no projeto (recomendado)"/>
+                        <TextBlock x:Name="ProjectNorthInfo" Style="{StaticResource Hint}" Margin="22,0,0,4"/>
+                        <RadioButton x:Name="OriEdge" GroupName="ori" Content="Informar o azimute de uma linha que parte deste ponto"/>
+                        <StackPanel Orientation="Horizontal" Margin="22,0,0,4">
+                            <Label Content="Azimute verdadeiro:"/>
+                            <TextBox x:Name="EdgeAz" Width="140" ToolTip="Ex.: 299°36'55&quot; ou 299,6153. Depois do OK, clique na linha."/>
+                            <TextBlock Style="{StaticResource Hint}" Margin="8,4,0,0" Text="(depois do OK, clique na linha)"/>
+                        </StackPanel>
+                        <RadioButton x:Name="OriTwo" GroupName="ori" Content="Usar dois pontos com coordenadas conhecidas (confere escala e rotação)"/>
+                        <TextBlock Style="{StaticResource Hint}" Margin="22,0,0,0" Text="Depois do OK, clique no segundo ponto e informe a coordenada dele."/>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="Conferência">
+                    <TextBlock x:Name="Preview" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12"/>
+                </GroupBox>
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

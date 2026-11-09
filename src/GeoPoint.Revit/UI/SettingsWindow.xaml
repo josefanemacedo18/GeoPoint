@@ -1,0 +1,255 @@
+<Window x:Class="GeoPoint.Revit.UI.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GeoPoint – Configurações" Width="860" Height="720" MinWidth="700" MinHeight="560"
+        FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GeoPoint.Revit;component/UI/Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <DockPanel Margin="14">
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="False">
+            <Button DockPanel.Dock="Left" Margin="0" Content="Abrir pasta de configurações" Click="OpenFolder_Click"/>
+            <Button DockPanel.Dock="Right" Content="Cancelar" IsCancel="True"/>
+            <Button DockPanel.Dock="Right" Content="Salvar" Style="{StaticResource Primary}" Click="Ok_Click" IsDefault="True"/>
+        </DockPanel>
+        <TabControl>
+            <TabItem Header="Reconhecimento">
+                <StackPanel Margin="10">
+                    <TextBlock Style="{StaticResource Hint}" Text="As linhas desenhadas com snap se encontram exatamente; a tolerância só absorve diferenças numéricas mínimas."/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="330"/><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                        <Label Content="Tolerância de encontro das linhas (mm):"/>
+                        <TextBox Grid.Column="1" x:Name="Tol"/>
+                        <Label Grid.Row="1" Content="Distância para apontar falha de conexão (mm):"/>
+                        <TextBox Grid.Row="1" Grid.Column="1" x:Name="Gap"/>
+                        <Label Grid.Row="2" Content="Alertar áreas menores que (m²):"/>
+                        <TextBox Grid.Row="2" Grid.Column="1" x:Name="Tiny"/>
+                    </Grid>
+                    <CheckBox x:Name="Merge" Content="Remover vértices intermediários alinhados (linhas emendadas sem encontro de outra linha)"/>
+                    <CheckBox x:Name="Holes" Content="Considerar áreas internas isoladas como furos do lote"/>
+                </StackPanel>
+            </TabItem>
+            <TabItem Header="Vértices e formatos">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="220"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <Label Content="Prefixo dos vértices:"/>
+                            <TextBox Grid.Column="1" x:Name="Prefix"/>
+                            <Label Grid.Row="1" Content="Dígitos (P-01 = 2):"/>
+                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="Digits"/>
+                            <Label Grid.Row="2" Content="Vértice inicial automático:"/>
+                            <ComboBox Grid.Row="2" Grid.Column="1" x:Name="StartRule">
+                                <ComboBoxItem Content="Início da testada (frente)"/>
+                                <ComboBoxItem Content="Mais ao norte"/>
+                                <ComboBoxItem Content="Mais a noroeste"/>
+                            </ComboBox>
+                            <Label Grid.Row="3" Content="Sentido da descrição:"/>
+                            <ComboBox Grid.Row="3" Grid.Column="1" x:Name="Direction">
+                                <ComboBoxItem Content="Horário"/>
+                                <ComboBoxItem Content="Anti-horário"/>
+                            </ComboBox>
+                            <Label Grid.Row="4" Content="Casas decimais – distâncias / áreas:"/>
+                            <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal">
+                                <TextBox x:Name="DecDist" Width="50"/>
+                                <TextBox x:Name="DecArea" Width="50" Margin="8,2,0,2"/>
+                            </StackPanel>
+                            <Label Grid.Row="5" Content="Casas decimais – coordenadas planas (E/N):"/>
+                            <TextBox Grid.Row="5" Grid.Column="1" x:Name="DecPlane" Width="50" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="6" Content="Casas decimais dos segundos – lat/long / azimute:"/>
+                            <StackPanel Grid.Row="6" Grid.Column="1" Orientation="Horizontal">
+                                <TextBox x:Name="DecGeo" Width="50"/>
+                                <TextBox x:Name="DecAz" Width="50" Margin="8,2,0,2"/>
+                            </StackPanel>
+                            <Label Grid.Row="7" Content="Casas decimais em hectares:"/>
+                            <TextBox Grid.Row="7" Grid.Column="1" x:Name="DecHa" Width="50" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="8" Content="Identificação da zona UTM:"/>
+                            <ComboBox Grid.Row="8" Grid.Column="1" x:Name="ZoneStyle">
+                                <ComboBoxItem Content="Fuso 23, hemisfério Sul"/>
+                                <ComboBoxItem Content="Zona 23M"/>
+                            </ComboBox>
+                            <Label Grid.Row="9" Content="Oeste nas coordenadas e rumos:"/>
+                            <ComboBox Grid.Row="9" Grid.Column="1" x:Name="West">
+                                <ComboBoxItem Content="O (oeste)"/>
+                                <ComboBoxItem Content="W (west)"/>
+                            </ComboBox>
+                        </Grid>
+                        <CheckBox x:Name="Thousands" Content="Separador de milhar nas coordenadas (9.299.316,160)"/>
+                        <CheckBox x:Name="DecimalDeg" Content="Latitude/longitude em graus decimais (em vez de graus, minutos e segundos)"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="Memorial">
+                <StackPanel Margin="10">
+                    <TextBlock Style="{StaticResource Hint}" Text="O modelo é um arquivo Word comum com marcadores como {{PROPRIETARIO}}, {{AREA}}, {{CORPO}}, {{LOCAL_DATA}}, {{TECNICO_NOME}}. Exporte o modelo padrão, edite no Word (logotipo, fontes, cabeçalho, rodapé, assinatura) e selecione-o aqui. {{CAMPO?}} remove o parágrafo quando o campo estiver vazio."/>
+                    <Label Content="Modelo do memorial (.docx):"/>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="Padrão" Click="TemplateDefault_Click"/>
+                        <Button DockPanel.Dock="Right" Content="Escolher…" Click="TemplatePick_Click"/>
+                        <Button DockPanel.Dock="Right" Content="Exportar modelo padrão…" Click="TemplateExport_Click"/>
+                        <TextBox x:Name="TemplatePath" IsReadOnly="True"/>
+                    </DockPanel>
+                    <TextBlock x:Name="TemplateFields" Style="{StaticResource Hint}"/>
+                    <Label Content="Frases da descrição perimétrica (.json):" Margin="0,8,0,0"/>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="Padrão" Click="PhrasesDefault_Click"/>
+                        <Button DockPanel.Dock="Right" Content="Escolher…" Click="PhrasesPick_Click"/>
+                        <Button DockPanel.Dock="Right" Content="Exportar frases padrão…" Click="PhrasesExport_Click"/>
+                        <TextBox x:Name="PhrasesPath" IsReadOnly="True"/>
+                    </DockPanel>
+                    <TextBlock Style="{StaticResource Hint}" Text="Nas frases: {VERTICE}, {COORDENADAS}, {CONFRONTANTE}, {DIRECAO}, {DISTANCIA}, {VERTICE_SEGUINTE}, {RAIO}, {DESENVOLVIMENTO}, {CORDA}, {AREA}, {PERIMETRO}. Trechos entre [ ] somem quando um marcador interno está vazio."/>
+                    <Label Content="Pasta padrão dos memoriais:" Margin="0,8,0,0"/>
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="Escolher…" Click="OutputPick_Click"/>
+                        <TextBox x:Name="OutputFolder"/>
+                    </DockPanel>
+                </StackPanel>
+            </TabItem>
+            <TabItem Header="Responsável técnico">
+                <Grid Margin="10">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="160"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                    <Label Content="Nome:"/>
+                    <TextBox Grid.Column="1" x:Name="TechName"/>
+                    <Label Grid.Row="1" Content="Título profissional:"/>
+                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="TechProf"/>
+                    <Label Grid.Row="2" Content="Conselho:"/>
+                    <ComboBox Grid.Row="2" Grid.Column="1" x:Name="TechCouncil" IsEditable="True" Width="160" HorizontalAlignment="Left">
+                        <ComboBoxItem Content="CAU"/>
+                        <ComboBoxItem Content="CREA"/>
+                        <ComboBoxItem Content="CFT"/>
+                    </ComboBox>
+                    <Label Grid.Row="3" Content="Registro:"/>
+                    <TextBox Grid.Row="3" Grid.Column="1" x:Name="TechReg"/>
+                    <Label Grid.Row="4" Content="Empresa / escritório:"/>
+                    <TextBox Grid.Row="4" Grid.Column="1" x:Name="TechCompany"/>
+                    <TextBlock Grid.Row="5" Grid.ColumnSpan="2" Style="{StaticResource Hint}" Margin="0,10,0,0"
+                               Text="O número do RRT/ART é informado por projeto, em Dados do Imóvel. Lembre-se: o memorial é documento técnico de responsabilidade do profissional; georreferenciamento para registro (SIGEF/INCRA, cartório) exige levantamento com precisão adequada."/>
+                </Grid>
+            </TabItem>
+            <TabItem Header="Sistemas de coordenadas">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10">
+                        <GroupBox Header="Transversa de Mercator personalizada (RTM / LTM / sistema municipal)">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource Hint}" Text="Confira os parâmetros com a prefeitura ou o órgão que exige o sistema. Os botões preenchem valores usuais de RTM (fuso de 2°) e LTM (fuso de 1°)."/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="200"/><ColumnDefinition Width="160"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                                    <Label Content="Nome:"/>
+                                    <TextBox Grid.Column="1" x:Name="TmName"/>
+                                    <Label Grid.Row="1" Content="Meridiano central (°, oeste negativo):"/>
+                                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="TmCm"/>
+                                    <Label Grid.Row="2" Content="Fator de escala k0:"/>
+                                    <TextBox Grid.Row="2" Grid.Column="1" x:Name="TmK0"/>
+                                    <Label Grid.Row="3" Content="Falso este (m):"/>
+                                    <TextBox Grid.Row="3" Grid.Column="1" x:Name="TmFe"/>
+                                    <Label Grid.Row="4" Content="Falso norte (m):"/>
+                                    <TextBox Grid.Row="4" Grid.Column="1" x:Name="TmFn"/>
+                                    <Label Grid.Row="5" Content="Latitude de origem (°):"/>
+                                    <TextBox Grid.Row="5" Grid.Column="1" x:Name="TmLat0"/>
+                                    <StackPanel Grid.Column="2" Grid.RowSpan="3" Margin="10,0,0,0">
+                                        <Button Content="Preencher RTM" Click="Rtm_Click" Margin="0,2"/>
+                                        <Button Content="Preencher LTM" Click="Ltm_Click" Margin="0,2"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </GroupBox>
+                        <GroupBox Header="Plano Topográfico Local (NBR 14166)">
+                            <StackPanel>
+                                <CheckBox x:Name="PtlAnchor" Content="Usar o ponto de referência do projeto como origem do plano" Checked="PtlAnchor_Changed" Unchecked="PtlAnchor_Changed"/>
+                                <Grid x:Name="PtlGrid">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="200"/><ColumnDefinition Width="260"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                                    <Label Content="Origem (lat, long):"/>
+                                    <TextBox Grid.Column="1" x:Name="PtlLatLon"/>
+                                    <Label Grid.Row="1" Content="Altitude do plano (m):"/>
+                                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="PtlH"/>
+                                </Grid>
+                                <StackPanel Orientation="Horizontal">
+                                    <Label Content="Coordenadas da origem X / Y (m):"/>
+                                    <TextBox x:Name="PtlX0" Width="110"/>
+                                    <TextBox x:Name="PtlY0" Width="110" Margin="8,2,0,2"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="Anotações e KML">
+                <StackPanel Margin="10">
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                        <Label Content="Altura do texto das anotações (mm no papel):"/>
+                        <TextBox Grid.Column="1" x:Name="TextMm"/>
+                        <Label Grid.Row="1" Content="Afastamento do texto (mm no papel):"/>
+                        <TextBox Grid.Row="1" Grid.Column="1" x:Name="OffsetMm"/>
+                        <Label Grid.Row="2" Content="Fonte:"/>
+                        <TextBox Grid.Row="2" Grid.Column="1" x:Name="Font"/>
+                        <Label Grid.Row="3" Content="KML – opacidade do preenchimento (0 a 1):"/>
+                        <TextBox Grid.Row="3" Grid.Column="1" x:Name="KmlOpacity"/>
+                        <Label Grid.Row="4" Content="KML – espessura da linha:"/>
+                        <TextBox Grid.Row="4" Grid.Column="1" x:Name="KmlWidth"/>
+                    </Grid>
+                </StackPanel>
+            </TabItem>
+            <TabItem Header="Perfis urbanísticos">
+                <DockPanel Margin="10">
+                    <StackPanel DockPanel.Dock="Left" Width="240">
+                        <ListBox x:Name="Profiles" Height="380" SelectionChanged="Profiles_SelectionChanged" DisplayMemberPath="Name"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <Button Content="Novo" Margin="0" Click="ProfileNew_Click" MinWidth="70"/>
+                            <Button Content="Duplicar" Click="ProfileDup_Click" MinWidth="70"/>
+                            <Button Content="Excluir" Click="ProfileDel_Click" MinWidth="70"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <ScrollViewer Margin="12,0,0,0" VerticalScrollBarVisibility="Auto">
+                        <Grid x:Name="ProfileGrid">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="270"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <Label Content="Nome:"/>
+                            <TextBox Grid.Column="1" x:Name="PName"/>
+                            <Label Grid.Row="1" Content="Descrição / lei:"/>
+                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="PDesc"/>
+                            <Label Grid.Row="2" Content="Área mínima do lote (m²):"/>
+                            <TextBox Grid.Row="2" Grid.Column="1" x:Name="PArea" Width="100" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="3" Content="Testada mínima (m):"/>
+                            <TextBox Grid.Row="3" Grid.Column="1" x:Name="PTest" Width="100" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="4" Content="Taxa de ocupação máxima (%):"/>
+                            <TextBox Grid.Row="4" Grid.Column="1" x:Name="PTo" Width="100" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="5" Content="Coeficiente de aproveitamento máximo:"/>
+                            <TextBox Grid.Row="5" Grid.Column="1" x:Name="PCa" Width="100" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="6" Content="Áreas públicas mínimas (% da gleba):"/>
+                            <TextBox Grid.Row="6" Grid.Column="1" x:Name="PPub" Width="100" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="7" Content="Área verde mínima (%):"/>
+                            <TextBox Grid.Row="7" Grid.Column="1" x:Name="PVerde" Width="100" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="8" Content="Área institucional mínima (%):"/>
+                            <TextBox Grid.Row="8" Grid.Column="1" x:Name="PInst" Width="100" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="9" Content="Recuo frontal (m):"/>
+                            <TextBox Grid.Row="9" Grid.Column="1" x:Name="PRf" Width="100" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="10" Content="Recuo lateral (m):"/>
+                            <TextBox Grid.Row="10" Grid.Column="1" x:Name="PRl" Width="100" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="11" Content="Recuo de fundos (m):"/>
+                            <TextBox Grid.Row="11" Grid.Column="1" x:Name="PRb" Width="100" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="12" Content="Tolerância para a área do título (%):"/>
+                            <TextBox Grid.Row="12" Grid.Column="1" x:Name="PTol" Width="100" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="13" Content="Fração mínima rural (ha):"/>
+                            <TextBox Grid.Row="13" Grid.Column="1" x:Name="PFmp" Width="100" HorizontalAlignment="Left"/>
+                        </Grid>
+                    </ScrollViewer>
+                </DockPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>
