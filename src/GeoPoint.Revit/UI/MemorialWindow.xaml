@@ -36,6 +36,15 @@
                 <StackPanel DockPanel.Dock="Top" x:Name="OperationPanel" Visibility="Collapsed">
                     <Label Content="Operação registrada:"/>
                     <ComboBox x:Name="Operations" DisplayMemberPath="Label"/>
+                    <StackPanel x:Name="SplitModePanel" Margin="0,6,0,0">
+                        <Label Content="Memoriais do desmembramento:"/>
+                        <ComboBox x:Name="SplitMode" SelectedIndex="0">
+                            <ComboBoxItem Content="Só individuais – um memorial por lote resultante (padrão)"/>
+                            <ComboBoxItem Content="Só o geral – área original e áreas resultantes"/>
+                            <ComboBoxItem Content="Geral + individuais"/>
+                        </ComboBox>
+                        <TextBlock Style="{StaticResource Hint}" Text="Nos individuais, cada lote tem a sua numeração de vértices (P-01…), como nas pranchas individuais, e a origem (lote desmembrado, matrícula e área)."/>
+                    </StackPanel>
                     <TextBlock x:Name="OperationHint" Style="{StaticResource Hint}"/>
                 </StackPanel>
                 <TextBlock DockPanel.Dock="Top" x:Name="PlatHint" Style="{StaticResource Hint}" Visibility="Collapsed"

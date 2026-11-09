@@ -37,6 +37,29 @@ public class StreetTests
     }
 
     [Fact]
+    public void StreetFromUserCurb_MeasuredSidewalkAndFullWidth()
+    {
+        var a = TestProjects.Rect(0, 0, 10, 30, "01").ToRegion();
+        var b = TestProjects.Rect(10, 0, 10, 30, "02").ToRegion();
+        // Meio-fio desenhado pelo usuário a 3 m das testadas, de x = -5 a 25 (desenhado no sentido "errado").
+        var curb = new List<Vec2> { new(25, -3), new(-5, -3) };
+        double calc = StreetSchematic.MeasureCalcada(new Curve2[] { new LineCurve(new(0, 0), new(20, 0)) }, new[] { curb });
+        Assert.Equal(3, calc, 6);
+        var via = new ViaRecord { Nome = "Rua 1", Largura = 12, Calcada = calc, MeioFio = { curb.Select(p => new PointDto { X = p.X, Y = p.Y }).ToList() } };
+        var d = StreetSchematic.Build(new[] { via }, Array.Empty<CruzamentoRecord>(), Array.Empty<StreetFrontage>(), new[] { a, b });
+        Assert.Empty(d.Warnings);
+        // O meio-fio do usuário não é redesenhado; o oposto fica a 12 m (pista inteira).
+        var c = Assert.Single(d.Curbs);
+        Assert.All(c, p => Assert.Equal(-15, p.Y, 3));
+        Assert.Equal(30, Math.Abs(c[^1].X - c[0].X), 3);
+        // Só o alinhamento do outro lado (calçada medida de 3 m).
+        var al = Assert.Single(d.Alignments);
+        Assert.All(al, p => Assert.Equal(-18, p.Y, 3));
+        var label = Assert.Single(d.Labels);
+        Assert.Equal(-9, label.Position.Y, 3);
+    }
+
+    [Fact]
     public void CornerLot_LCrossing()
     {
         // Lote de esquina com frente para a Rua A (sul) e a Rua B (leste).

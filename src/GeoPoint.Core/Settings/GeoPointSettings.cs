@@ -148,7 +148,7 @@ public sealed class AnnotationSettings
     /// <summary>Ponto (círculo preenchido) em cada vértice.</summary>
     public bool VertexDots { get; set; } = true;
     /// <summary>Diâmetro do ponto no papel (mm).</summary>
-    public double DotMm { get; set; } = 1.2;
+    public double DotMm { get; set; } = 2.2;
     /// <summary>Fundo opaco nos textos (legíveis sobre hachuras).</summary>
     public bool OpaqueText { get; set; } = true;
     /// <summary>Nome do confrontante e extensão de cada confrontante ao longo da divisa.</summary>
@@ -199,7 +199,7 @@ public sealed class KmlSettings
 
 public sealed class GeoPointSettings
 {
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
     public RecognitionSettings Recognition { get; set; } = new();
     public NamingSettings Naming { get; set; } = new();
     public FormatSettings Format { get; set; } = new();
@@ -308,6 +308,12 @@ public static class SettingsStore
         s.Streets.RaioEsquina = Math.Clamp(s.Streets.RaioEsquina, 0, 50);
         s.Streets.NomeMm = Math.Clamp(s.Streets.NomeMm, 0.5, 20);
         s.Sheets.Scale = Math.Clamp(s.Sheets.Scale, 1, 100000);
+        // Versão 2: pontos dos vértices maiores (1,2 → 2,2 mm), mais visíveis.
+        if (s.Version < 2)
+        {
+            if (s.Annotation.DotMm <= 1.21) s.Annotation.DotMm = 2.2;
+            s.Version = 2;
+        }
         s.Annotation.DotMm = Math.Clamp(s.Annotation.DotMm, 0.2, 10);
         s.RuleProfiles ??= RuleProfile.Defaults();
         if (s.RuleProfiles.Count == 0) s.RuleProfiles = RuleProfile.Defaults();

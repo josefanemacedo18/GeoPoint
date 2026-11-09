@@ -43,7 +43,7 @@ public static class VertexRegistry
 
     /// <summary>Ordem de numeração: lotes mais antigos primeiro (o original antes dos resultantes).</summary>
     public static IEnumerable<LotRecord> CreationOrder(ParcelProject p) =>
-        p.Lots.OrderBy(l => l.Created).ThenBy(l => l.Quadra, NaturalComparer.Instance).ThenBy(l => l.Numero, NaturalComparer.Instance).ThenBy(l => l.Nome, NaturalComparer.Instance);
+        p.PhaseLots.OrderBy(l => l.Created).ThenBy(l => l.Quadra, NaturalComparer.Instance).ThenBy(l => l.Numero, NaturalComparer.Instance).ThenBy(l => l.Nome, NaturalComparer.Instance);
 
     /// <summary>Registra os vértices ainda não numerados de todos os lotes. Números existentes não mudam.</summary>
     public static int EnsureAll(ProjectContext ctx) => Register(ctx, CreationOrder(ctx.Project));
@@ -91,7 +91,7 @@ public static class VertexRegistry
         ctx.Project.Vertices.Clear();
         ctx.Project.QuadraVertexCounters.Clear();
         var active = ProjectContext.SortLots(ctx.Project.ActiveLots).ToList();
-        var archived = ctx.Project.Lots.Where(l => l.Status == LotStatus.Arquivado).OrderBy(l => l.Created).ToList();
+        var archived = ctx.Project.PhaseLots.Where(l => l.Status == LotStatus.Arquivado).OrderBy(l => l.Created).ToList();
         Register(ctx, archived.Concat(active));
         ctx.Invalidate();
     }
@@ -101,7 +101,7 @@ public static class VertexRegistry
     {
         var used = new Index(Array.Empty<VertexRecord>());
         var all = new List<VertexRecord>();
-        foreach (var lot in p.Lots)
+        foreach (var lot in p.PhaseLots)
             foreach (var e in lot.Outer.Concat(lot.Holes.SelectMany(h => h)))
             {
                 var r = new VertexRecord { X = e.X1, Y = e.Y1 };

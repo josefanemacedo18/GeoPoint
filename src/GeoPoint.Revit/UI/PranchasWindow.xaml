@@ -1,7 +1,8 @@
 <Window x:Class="GeoPoint.Revit.UI.PranchasWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="GeoPoint – Pranchas A4" Width="900" Height="700" MinWidth="760" MinHeight="560"
+        xmlns:ui="clr-namespace:GeoPoint.Revit.UI"
+        Title="GeoPoint – Pranchas A4" Width="1000" Height="820" MinWidth="820" MinHeight="640"
         FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterOwner">
     <Window.Resources>
         <ResourceDictionary>
@@ -12,13 +13,41 @@
     </Window.Resources>
     <DockPanel Margin="14">
         <TextBlock DockPanel.Dock="Top" Style="{StaticResource H1}" Text="Pranchas A4 por situação"/>
-        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Text="Cada prancha usa uma CÓPIA da planta atual (o desenho original não é alterado). As divisas internas que não pertencem à situação ficam ocultas na cópia. Moldura e carimbo A4 desenhados pelo GeoPoint (margens ABNT)."/>
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Text="Cada prancha usa uma CÓPIA da planta (o desenho original não é alterado). Pranchas com vários lotes são de visualização (distâncias, áreas, proprietários e confrontantes, sem vértices nem azimutes). Pranchas de um lote têm a numeração própria do lote (P-01…), todos os azimutes e o quadro de coordenadas."/>
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
             <Button x:Name="OkButton" Content="Gerar pranchas" Style="{StaticResource Primary}" Click="Ok_Click" IsDefault="True"/>
             <Button Content="Cancelar" IsCancel="True"/>
         </StackPanel>
-        <GroupBox DockPanel.Dock="Bottom" Header="Pranchas que serão criadas">
-            <TextBlock x:Name="Summary" TextWrapping="Wrap"/>
+        <GroupBox DockPanel.Dock="Bottom" Header="Pranchas">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" x:Name="Summary" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                    <Button Margin="0" Content="Escolher o ponto de referência no desenho…" Click="PickRef_Click"
+                            ToolTip="Selecione a prancha na tabela e clique no vértice (com snap) cuja coordenada vai no carimbo."/>
+                </StackPanel>
+                <DataGrid x:Name="SheetsGrid" Height="190" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Single">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Prancha" Binding="{Binding Title}" Width="*" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Conteúdo" Binding="{Binding Conteudo}" Width="150" IsReadOnly="True"/>
+                        <DataGridTemplateColumn Header="Coordenada de referência" Width="200">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <ComboBox ItemsSource="{Binding RefOptions}" DisplayMemberPath="Text" SelectedValuePath="Id" SelectedValue="{Binding RefKey, UpdateSourceTrigger=PropertyChanged}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Já existe" Binding="{Binding Status}" Width="130" IsReadOnly="True"/>
+                        <DataGridTemplateColumn Header="Se já existir" Width="130">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <ComboBox ItemsSource="{x:Static ui:SheetRow.ReplaceOptions}" DisplayMemberPath="Value" SelectedValuePath="Key"
+                                              SelectedValue="{Binding Replace, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Exists}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
         </GroupBox>
         <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>

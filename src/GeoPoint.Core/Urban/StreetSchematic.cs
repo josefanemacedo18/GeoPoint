@@ -44,6 +44,8 @@ public static class StreetSchematic
         public bool Closed;
         public double StartExt, EndExt;
         public bool StartCrossing, EndCrossing;
+        /// <summary>Cadeia definida pela linha de meio-fio do usuário (rua à esquerda).</summary>
+        public bool FromCurb;
         public double Length => PolyLength(Points, Closed);
     }
 
@@ -54,6 +56,25 @@ public static class StreetSchematic
         var chains = new List<Chain>();
         foreach (var via in vias)
         {
+            if (via.MeioFio.Count > 0)
+            {
+                // Rua a partir do meio-fio desenhado: eixo a meia pista do meio-fio, do lado oposto aos lotes.
+                foreach (var poly in via.MeioFio)
+                {
+                    var pts = Simplify(poly.Select(p => p.ToVec()).ToList(), false);
+                    if (pts.Count < 2) continue;
+                    bool closed = pts.Count > 3 && pts[0].DistanceTo(pts[^1]) <= JoinTol;
+                    if (closed) pts.RemoveAt(pts.Count - 1);
+                    if (LotsOnLeft(pts, lots)) pts.Reverse();
+                    chains.Add(new Chain
+                    {
+                        Via = via, Points = pts, Closed = closed, FromCurb = true,
+                        Axis = OffsetPolyline(pts, via.Largura / 2, closed),
+                        StartExt = Math.Max(0, via.Prolongamento), EndExt = Math.Max(0, via.Prolongamento),
+                    });
+                }
+                continue;
+            }
             var mine = frontages.Where(f => f.ViaId == via.Id).ToList();
             if (mine.Count == 0) { res.Warnings.Add($"A via \"{via.Nome}\" não tem testadas associadas."); continue; }
             foreach (var pts in BuildChains(mine, out var closedFlags).Zip(closedFlags))
@@ -99,10 +120,11 @@ public static class StreetSchematic
         }
 
         var lotPolys = lots.SelectMany(r => r.AllRings()).Select(r => r.ToPolygon(0.005)).ToList();
+        var userCurbs = chains.Where(c => c.FromCurb).ToList();
         foreach (var path in cUnion)
-            res.Curbs.AddRange(KeepPieces(Overlay.ToVecs(path), seg => !IsCap(seg, caps)));
+            res.Curbs.AddRange(KeepPieces(Overlay.ToVecs(path), seg => !IsCap(seg, caps) && !OnUserCurb(seg, userCurbs)));
         foreach (var path in fUnion)
-            res.Alignments.AddRange(KeepPieces(Overlay.ToVecs(path), seg => !IsCap(seg, caps) && !OnLots(seg, lotPolys)));
+            res.Alignments.AddRange(KeepPieces(Overlay.ToVecs(path), seg => !IsCap(seg, caps) && !OnLots(seg, lotPolys) && !LotSideOfCurb(seg, userCurbs)));
 
         // Nomes: um por via (no trecho mais longo) e outros para trechos distantes.
         foreach (var g in chains.GroupBy(c => c.Via.Id))
@@ -117,6 +139,75 @@ public static class StreetSchematic
             }
         }
         return res;
+    }
+
+    // ------------------------------------------------------------ meio-fio desenhado pelo usuário
+
+    /// <summary>Os lotes ficam à esquerda da polilinha?</summary>
+    private static bool LotsOnLeft(List<Vec2> pts, IReadOnlyList<Region> lots)
+    {
+        if (lots.Count == 0) return false;
+        int best = 0;
+        for (int i = 1; i + 1 < pts.Count; i++) if (pts[i].DistanceTo(pts[i + 1]) > pts[best].DistanceTo(pts[best + 1])) best = i;
+        var a = pts[best]; var b = pts[best + 1];
+        var m = Vec2.Lerp(a, b, 0.5);
+        var n = (b - a).Normalized().PerpLeft;
+        var edges = lots.SelectMany(r => r.AllRings()).SelectMany(r => r.Edges).ToList();
+        foreach (double d in new[] { 0.5, 1, 2, 3, 5, 8, 12 })
+        {
+            bool left = lots.Any(r => r.Contains(m + n * d)), right = lots.Any(r => r.Contains(m - n * d));
+            if (left != right) return left;
+        }
+        double dl = edges.Min(e => e.DistanceTo(m + n * 3)), dr = edges.Min(e => e.DistanceTo(m - n * 3));
+        return dl < dr;
+    }
+
+    private static double DistToPolyline(Vec2 p, List<Vec2> pts, bool closed, out double side)
+    {
+        double best = double.MaxValue;
+        side = 0;
+        int n = closed ? pts.Count : pts.Count - 1;
+        for (int i = 0; i < n; i++)
+        {
+            var a = pts[i]; var b = pts[(i + 1) % pts.Count];
+            var ab = b - a; double l2 = ab.LengthSquared;
+            double t = l2 < 1e-12 ? 0 : Math.Clamp((p - a).Dot(ab) / l2, 0, 1);
+            double d = p.DistanceTo(a + ab * t);
+            if (d < best) { best = d; side = ab.Cross(p - a); }
+        }
+        return best;
+    }
+
+    private static bool OnUserCurb((Vec2 a, Vec2 b) seg, List<Chain> curbs) =>
+        curbs.Any(c => DistToPolyline(Vec2.Lerp(seg.a, seg.b, 0.5), c.Points, c.Closed, out _) <= 0.03);
+
+    /// <summary>Alinhamento do lado dos lotes (a própria testada): não é desenhado.</summary>
+    private static bool LotSideOfCurb((Vec2 a, Vec2 b) seg, List<Chain> curbs)
+    {
+        var m = Vec2.Lerp(seg.a, seg.b, 0.5);
+        foreach (var c in curbs)
+        {
+            double d = DistToPolyline(m, c.Points, c.Closed, out double side);
+            if (side < 0 && d <= c.Via.Calcada + 0.5) return true;   // rua à esquerda → lotes à direita
+        }
+        return false;
+    }
+
+    /// <summary>Largura da calçada medida entre as testadas e as linhas de meio-fio (mediana das distâncias).</summary>
+    public static double MeasureCalcada(IEnumerable<Curve2> frontages, IEnumerable<List<Vec2>> curbs)
+    {
+        var cs = curbs.Where(c => c.Count >= 2).ToList();
+        var ds = new List<double>();
+        foreach (var f in frontages)
+            foreach (double t in new[] { 0.1, 0.3, 0.5, 0.7, 0.9 })
+            {
+                var p = f.PointAt(t);
+                double d = cs.Count == 0 ? double.NaN : cs.Min(c => DistToPolyline(p, c, false, out _));
+                if (!double.IsNaN(d) && d < 30) ds.Add(d);
+            }
+        if (ds.Count == 0) return double.NaN;
+        ds.Sort();
+        return ds[ds.Count / 2];
     }
 
     // ------------------------------------------------------------ cadeias de testadas

@@ -42,7 +42,7 @@ internal sealed class Numberer
     public static string Suggest(ParcelProject p)
     {
         int max = 0;
-        foreach (var l in p.Lots)
+        foreach (var l in p.PhaseLots)
         {
             var m = Regex.Match(l.Nome ?? "", @"(\d+)\s*$");
             if (m.Success && int.TryParse(m.Groups[1].Value, out int k)) max = Math.Max(max, k);
@@ -268,7 +268,7 @@ public sealed class CmdGerenciar : CommandBase
     }
 
     /// <summary>Remove do modelo os elementos criados pelo GeoPoint para o lote (não apaga as linhas de origem).</summary>
-    internal static void DeleteGeoPointElements(Document doc, LotRecord lot)
+    internal static void DeleteGeoPointElements(Document doc, LotRecord lot, bool deleteTableView = true)
     {
         var uids = lot.Annotations.SelectMany(a => a.ElementIds)
             .Concat(lot.FilledRegionIds).Concat(lot.AuxElementIds)
@@ -280,6 +280,7 @@ public sealed class CmdGerenciar : CommandBase
             catch (Exception ex) { Logger.Error("Falha ao remover elemento do lote excluído", ex); }
         }
         // Vista de desenho da tabela de coordenadas.
+        if (!deleteTableView) return;
         string viewName = Ui.SafeFileName($"GeoPoint - Coordenadas - {lot.DisplayName}").Replace("{", "(").Replace("}", ")");
         var v = new FilteredElementCollector(doc).OfClass(typeof(ViewDrafting)).Cast<ViewDrafting>().FirstOrDefault(x => x.Name == viewName);
         if (v is not null)
@@ -347,8 +348,10 @@ public sealed class CmdDadosImovel : CommandBase
 
     protected override Result Run(GpSession s)
     {
+        if (!string.IsNullOrWhiteSpace(s.Project.Fase.Situacao)) s.Project.Info.Situacao = s.Project.Fase.Situacao;
         var w = new ProjectInfoWindow(s.Project.Info, s.Settings);
         if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
+        s.Project.Fase.Situacao = s.Project.Info.Situacao;
         s.SaveProject("GeoPoint: dados do imóvel");
         return Result.Succeeded;
     }

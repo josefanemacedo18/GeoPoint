@@ -17,7 +17,8 @@ public static class CoordinateTableBuilder
     public static ViewDrafting Build(Document doc, LotRecord lot, LotReport rep, ProjectContext ctx, double textMm)
     {
         var fmt = new ValueFormatter(ctx.Settings.Format);
-        string viewName = Ui.SafeFileName($"GeoPoint - Coordenadas - {lot.DisplayName}").Replace("{", "(").Replace("}", ")");
+        var fase = ctx.Project.Fases.Count > 1 ? ctx.Project.FindFase(lot.FaseId) : null;
+        string viewName = Ui.SafeFileName($"GeoPoint - Coordenadas - {(fase is null ? "" : $"F{fase.Numero} - ")}{lot.DisplayName}").Replace("{", "(").Replace("}", ")");
         var view = new FilteredElementCollector(doc).OfClass(typeof(ViewDrafting)).Cast<ViewDrafting>().FirstOrDefault(v => v.Name == viewName);
         if (view is null)
         {

@@ -1,16 +1,28 @@
 using GeoPoint.Core.Calc;
+using GeoPoint.Core.Geometry;
 using GeoPoint.Core.Model;
 
 namespace GeoPoint.Core.Sheets;
 
 public enum SheetKind { Atual, Proposta, IndividualAtual, IndividualProposta }
 
+/// <summary>O que fazer quando a prancha já foi gerada antes.</summary>
+public enum SheetReplace { Substituir = 0, Manter = 1, NovaVersao = 2 }
+
 /// <summary>Uma prancha a gerar: quais lotes aparecem anotados, título e quadro.</summary>
 public sealed class SheetSpec
 {
     public SheetKind Kind { get; init; }
+    /// <summary>Identifica a prancha entre gerações (fase/operação, tipo e lotes).</summary>
+    public string Key { get; set; } = "";
+    /// <summary>Prancha de um lote só: vértices com numeração própria (P-01…), todos os azimutes e quadro de coordenadas.
+    /// Pranchas com vários lotes são de visualização: distâncias, confrontantes, áreas e proprietários.</summary>
+    public bool Detailed => LotIds.Count == 1;
+    /// <summary>Ponto (coordenadas do desenho, m) cuja coordenada vai no carimbo. Null = padrão.</summary>
+    public Vec2? RefPoint { get; set; }
+    public SheetReplace Replace { get; set; } = SheetReplace.Substituir;
     public string Title { get; init; } = "";
-    public string Subtitle { get; init; } = "";
+    public string Subtitle { get; set; } = "";
     public List<string> LotIds { get; init; } = new();
     /// <summary>Lotes listados no quadro de áreas (vazio = sem quadro).</summary>
     public List<string> QuadroIds { get; init; } = new();
@@ -80,6 +92,7 @@ public static class SheetPlanner
                     Kind = SheetKind.IndividualProposta, Title = "SITUAÇÃO PROPOSTA – " + l.DisplayName.ToUpperInvariant(), Subtitle = subParents,
                     LotIds = { l.Id }, Hatch = r.Hachuras, Colors = colors, CoordTable = r.Coordenadas,
                 });
+        foreach (var x in res) x.Key = $"op:{op.Id}|{x.Kind}|{string.Join(",", x.LotIds.OrderBy(i => i, StringComparer.Ordinal))}";
         return res;
     }
 
@@ -105,6 +118,8 @@ public static class SheetPlanner
                     Kind = SheetKind.IndividualAtual, Title = "PLANTA DE SITUAÇÃO – " + l.DisplayName.ToUpperInvariant(), Subtitle = sub,
                     LotIds = { l.Id }, Hatch = r.Hachuras, Colors = colors, CoordTable = r.Coordenadas,
                 });
+        string fase = sorted.FirstOrDefault()?.FaseId ?? "";
+        foreach (var x in res) x.Key = $"lots:{fase}|{x.Kind}|{string.Join(",", x.LotIds.OrderBy(i => i, StringComparer.Ordinal))}";
         return res;
     }
 }

@@ -98,7 +98,7 @@ public static class ExcelReport
         rh.AddRange(new[] { "Lotes ativos", "Lotes arquivados (histórico)" });
         reg.AddHeader(rh.ToArray());
         var seen = new Dictionary<string, (VertexReport v, List<string> act, List<string> arch)>();
-        foreach (var lot in ProjectContext.SortLots(ctx.Project.Lots))
+        foreach (var lot in ProjectContext.SortLots(ctx.Project.PhaseLots))
         {
             LotReport r;
             try { r = ctx.Report(lot); } catch { continue; }
@@ -128,6 +128,21 @@ public static class ExcelReport
             reg.Rows.Add(row);
         }
         sheets.Add(reg);
+
+        // Pontos de controle importados (KML/KMZ) e conferência com os vértices.
+        if (ctx.Project.ControlPoints.Count > 0)
+        {
+            var cs = new XlSheet("Pontos de controle");
+            cs.AddHeader("Ponto", "Origem", "Latitude (°)", "Longitude (°)", "UTM E (m)", "UTM N (m)", "Vértice mais próximo", "Lote", "Distância (m)");
+            foreach (var r in ControlPointCheck.Compare(ctx))
+            {
+                var utm = r.Position is { } pos ? ctx.Coords.ToCrs(pos, CrsDef.Utm()) : null;
+                cs.AddRow(r.Point.Nome, r.Point.Origem, new XlCell(r.Point.Lat, XlStyle.Num8), new XlCell(r.Point.Lon, XlStyle.Num8),
+                    utm is { } u1 ? new XlCell(u1.East, XlStyle.Num3) : new XlCell("–"), utm is { } u2 ? new XlCell(u2.North, XlStyle.Num3) : new XlCell("–"),
+                    r.VertexName, r.Lot?.DisplayName ?? "", r.Distance is double d ? new XlCell(d, XlStyle.Num3) : new XlCell("–"));
+            }
+            sheets.Add(cs);
+        }
 
         // Segmentos.
         var ss = new XlSheet("Segmentos");

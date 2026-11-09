@@ -74,7 +74,7 @@ public static class ProjectValidator
         foreach (var (a, b, area) in ParcelOperations.FindOverlaps(project.ActiveLots))
             res.Add(new ValidationIssue { Severity = DiagnosticSeverity.Error, Category = "Sobreposição", LotId = a.Id, LotName = a.DisplayName, Message = $"{a.DisplayName} sobrepõe {b.DisplayName} em {area:0.00} m²." });
 
-        foreach (var op in project.Operations)
+        foreach (var op in project.PhaseOperations)
         {
             var missing = op.ParentIds.Concat(op.ChildIds).Where(id => project.FindLot(id) is null).ToList();
             if (missing.Count > 0)

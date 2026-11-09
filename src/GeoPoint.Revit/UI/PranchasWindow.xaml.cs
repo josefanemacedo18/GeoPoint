@@ -16,20 +16,71 @@ public sealed class SourceChoice
     public OperationRecord? Operation { get; }
 }
 
+public enum PranchasAction { Cancel, Generate, PickRef }
+
+/// <summary>Escolhas da janela de pranchas mantidas entre aberturas (ex.: depois de clicar no desenho).</summary>
+public sealed class PranchasState
+{
+    public string? OpId { get; set; }
+    public bool UseOp { get; set; } = true;
+    public HashSet<string> LotIds { get; } = new();
+    public Dictionary<string, string> RefByKey { get; } = new();
+    public Dictionary<string, SheetReplace> ReplaceByKey { get; } = new();
+    public string? PickKey { get; set; }
+}
+
+public sealed class SheetRow : Notify
+{
+    private string _refKey;
+    private SheetReplace _replace;
+    public static IReadOnlyList<KeyValuePair<SheetReplace, string>> ReplaceOptions { get; } = new[]
+    {
+        new KeyValuePair<SheetReplace, string>(SheetReplace.Substituir, "Substituir"),
+        new KeyValuePair<SheetReplace, string>(SheetReplace.Manter, "Manter a atual"),
+        new KeyValuePair<SheetReplace, string>(SheetReplace.NovaVersao, "Nova versão ao lado"),
+    };
+    public SheetRow(SheetSpec spec, List<IdText> refs, string refKey, bool exists, bool edited, SheetReplace replace)
+    {
+        Spec = spec; RefOptions = refs; _refKey = refKey; Exists = exists; Edited = edited; _replace = replace;
+        Title = spec.Title;
+        Conteudo = spec.Detailed ? "1 lote – vértices e azimutes" : $"{spec.LotIds.Count} lotes – visualização";
+        Status = !exists ? "–" : edited ? "Sim – EDITADA por você" : "Sim (sem alterações)";
+    }
+    public SheetSpec Spec { get; }
+    public string Title { get; }
+    public string Conteudo { get; }
+    public List<IdText> RefOptions { get; }
+    public string RefKey { get => _refKey; set => Set(ref _refKey, value ?? ""); }
+    public bool Exists { get; }
+    public bool Edited { get; }
+    public string Status { get; }
+    public SheetReplace Replace { get => _replace; set => Set(ref _replace, value); }
+}
+
 public partial class PranchasWindow : Window
 {
     private readonly ParcelProject _project;
     private readonly List<LotRow> _rows;
+    private readonly PranchasState _state;
+    private readonly Func<SheetSpec, List<IdText>> _refOptions;
+    private readonly Func<SheetSpec, (bool exists, bool edited)> _existing;
+    private List<SheetRow> _sheetRows = new();
     private bool _loading = true;
 
-    public PranchasWindow(ParcelProject project, SheetSettings st, IEnumerable<LotRow> rows, OperationRecord? preselect)
+    public PranchasWindow(ParcelProject project, SheetSettings st, IEnumerable<LotRow> rows, OperationRecord? preselect, PranchasState state,
+        Func<SheetSpec, List<IdText>> refOptions, Func<SheetSpec, (bool exists, bool edited)> existing)
     {
         InitializeComponent();
         _project = project;
+        _state = state;
+        _refOptions = refOptions;
+        _existing = existing;
         _rows = rows.ToList();
+        if (state.LotIds.Count > 0) foreach (var r in _rows) r.Selected = state.LotIds.Contains(r.Lot.Id);
+        if (state.OpId is not null || !state.UseOp) preselect = state.UseOp ? project.Operations.FirstOrDefault(o => o.Id == state.OpId) : null;
         LotsGrid.ItemsSource = _rows;
         var sources = new List<SourceChoice> { new("Lotes marcados (sem operação)", null) };
-        foreach (var op in project.Operations.OrderByDescending(o => o.Date))
+        foreach (var op in project.PhaseOperations.OrderByDescending(o => o.Date))
         {
             var parents = string.Join(", ", op.ParentIds.Select(project.FindLot).Where(l => l is not null).Select(l => l!.DisplayName));
             sources.Add(new SourceChoice($"{op.Label} – {parents}", op));
@@ -57,6 +108,7 @@ public partial class PranchasWindow : Window
         Refresh();
     }
 
+    public PranchasAction Action { get; private set; }
     public OperationRecord? Operation => (Source.SelectedItem as SourceChoice)?.Operation;
     public List<LotRecord> SelectedLots => _rows.Where(r => r.Selected).Select(r => r.Lot).ToList();
     public List<SheetSpec> Specs { get; private set; } = new();
@@ -96,10 +148,21 @@ public partial class PranchasWindow : Window
             foreach (var r in _rows) r.Selected = Operation!.ParentIds.Contains(r.Lot.Id) || Operation.ChildIds.Contains(r.Lot.Id);
             Specs = SheetPlanner.ForOperation(_project, Operation!, Request);
         }
-        else Specs = SheetPlanner.ForLots(SelectedLots, Request, _project.Info.Situacao);
+        else Specs = SheetPlanner.ForLots(SelectedLots, Request, _project.Situacao);
+        SaveRows();
+        _sheetRows = Specs.Select(sp =>
+        {
+            var (exists, edited) = _existing(sp);
+            var refs = _refOptions(sp);
+            string rk = _state.RefByKey.TryGetValue(sp.Key, out var k) && refs.Any(r => r.Id == k) ? k : "";
+            var rep = _state.ReplaceByKey.TryGetValue(sp.Key, out var rr) ? rr : edited ? SheetReplace.Manter : SheetReplace.Substituir;
+            return new SheetRow(sp, refs, rk, exists, edited, rep);
+        }).ToList();
+        SheetsGrid.ItemsSource = _sheetRows;
+        int edits = _sheetRows.Count(r => r.Edited);
         Summary.Text = Specs.Count == 0
             ? "Nenhuma prancha: marque as situações e os lotes."
-            : $"{Specs.Count} prancha(s):\n" + string.Join("\n", Specs.Select((x, i) => $"{i + 1:00}. {x.Title}" + (x.LotIds.Count > 1 ? $" ({x.LotIds.Count} lotes)" : "")));
+            : $"{Specs.Count} prancha(s)." + (edits > 0 ? $"  ⚠ {edits} já existe(m) e foi(ram) EDITADA(S) por você: escolha em 'Se já existir' (padrão: manter a atual)." : "");
         OkButton.IsEnabled = Specs.Count > 0;
     }
 
@@ -109,10 +172,41 @@ public partial class PranchasWindow : Window
         if (dlg.ShowDialog(this) == true) Image.Text = dlg.FileName;
     }
 
+    /// <summary>Guarda as escolhas da tabela (sobrevivem a mudanças de opção e a cliques no desenho).</summary>
+    private void SaveRows()
+    {
+        if (SheetsGrid is null) return;
+        SheetsGrid.CommitEdit(); SheetsGrid.CommitEdit();
+        foreach (var r in _sheetRows)
+        {
+            _state.RefByKey[r.Spec.Key] = r.RefKey;
+            if (r.Exists) _state.ReplaceByKey[r.Spec.Key] = r.Replace;
+        }
+        _state.UseOp = Operation is not null;
+        _state.OpId = Operation?.Id;
+        _state.LotIds.Clear();
+        foreach (var r in _rows.Where(x => x.Selected)) _state.LotIds.Add(r.Lot.Id);
+    }
+
+    private void PickRef_Click(object sender, RoutedEventArgs e)
+    {
+        if (SheetsGrid.SelectedItem is not SheetRow row) { Fmt.Msg("Selecione a prancha na tabela."); return; }
+        SaveRows();
+        _state.PickKey = row.Spec.Key;
+        Action = PranchasAction.PickRef;
+        DialogResult = true;
+    }
+
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
-        Refresh();
+        SaveRows();
         if (Specs.Count == 0) return;
+        var replacing = _sheetRows.Where(r => r.Exists && r.Edited && r.Replace == SheetReplace.Substituir).ToList();
+        if (replacing.Count > 0 && MessageBox.Show(
+                "Estas pranchas foram editadas por você e serão SUBSTITUÍDAS (as edições se perdem):\n\n" + string.Join("\n", replacing.Select(r => "• " + r.Title)) + "\n\nContinuar?",
+                "GeoPoint", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        foreach (var r in _sheetRows) r.Spec.Replace = r.Exists ? r.Replace : SheetReplace.Substituir;
+        Action = PranchasAction.Generate;
         DialogResult = true;
     }
 }

@@ -20,6 +20,7 @@ public sealed class ViaRow : Notify
     public double Largura { get; set; }
     public double Calcada { get; set; }
     public double Prolongamento { get; set; }
+    public string MeioFioText => Via.MeioFio.Count == 0 ? "–" : $"{Via.MeioFio.Count} linha(s)";
 }
 
 public sealed class FrontRow : Notify
@@ -106,6 +107,21 @@ public partial class ViasWindow : Window
     public List<IdText> ViaOptions { get; private set; } = new();
 
     public bool DrawNow => Draw.IsChecked == true;
+    /// <summary>Via para a seleção no desenho (testadas e meio-fio); null = fechar normalmente.</summary>
+    public ViaRecord? PickVia { get; private set; }
+
+    private void Pick_Click(object sender, RoutedEventArgs e)
+    {
+        if (ViasGrid.SelectedItem is not ViaRow row)
+        {
+            AddVia_Click(sender, e);
+            row = (ViaRow)ViasGrid.SelectedItem;
+            row.Prolongamento = 0;
+        }
+        if (!Commit()) return;
+        PickVia = row.Via;
+        DialogResult = true;
+    }
 
     private void RefreshViaOptions()
     {
@@ -157,20 +173,26 @@ public partial class ViasWindow : Window
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
+        if (Commit()) DialogResult = true;
+    }
+
+    /// <summary>Valida e grava as edições no projeto (em memória).</summary>
+    private bool Commit()
+    {
         ViasGrid.CommitEdit(); ViasGrid.CommitEdit();
         CrossGrid.CommitEdit(); CrossGrid.CommitEdit();
         FrontGrid.CommitEdit(); FrontGrid.CommitEdit();
         foreach (var v in _vias)
         {
-            if (string.IsNullOrWhiteSpace(v.Nome)) { Fmt.Msg("Informe o nome de todas as vias."); return; }
-            if (v.Largura <= 0 || v.Largura > 200 || v.Calcada < 0 || v.Calcada > 50 || v.Prolongamento < 0) { Fmt.Msg($"Medidas inválidas na via \"{v.Nome}\"."); return; }
+            if (string.IsNullOrWhiteSpace(v.Nome)) { Fmt.Msg("Informe o nome de todas as vias."); return false; }
+            if (v.Largura <= 0 || v.Largura > 200 || v.Calcada < 0 || v.Calcada > 50 || v.Prolongamento < 0) { Fmt.Msg($"Medidas inválidas na via \"{v.Nome}\"."); return false; }
         }
         var crossings = new List<CruzamentoRecord>();
         foreach (var c in _cross)
         {
             var ids = new[] { (c.V1, c.A1), (c.V2, c.A2), (c.V3, c.A3), (c.V4, c.A4) }.Where(x => !string.IsNullOrEmpty(x.Item1)).ToList();
             if (ids.Count < 2) continue;
-            if (ids.Select(x => x.Item1).Distinct().Count() != ids.Count) { Fmt.Msg("Um cruzamento tem a mesma via repetida."); return; }
+            if (ids.Select(x => x.Item1).Distinct().Count() != ids.Count) { Fmt.Msg("Um cruzamento tem a mesma via repetida."); return false; }
             c.Record.ViaIds = ids.Select(x => x.Item1).ToList();
             c.Record.Atravessam = ids.Where(x => x.Item2).Select(x => x.Item1).ToList();
             c.Record.RaioEsquina = Math.Clamp(c.Raio, 0, 30);
@@ -197,6 +219,6 @@ public partial class ViasWindow : Window
             else if (info.Tipo == ConfrontanteTipo.Via) { info.Tipo = ConfrontanteTipo.Texto; info.ViaId = ""; }
         }
         foreach (var l in _project.Lots) l.EdgeInfos.RemoveAll(i => i.IsEmpty);
-        DialogResult = true;
+        return true;
     }
 }

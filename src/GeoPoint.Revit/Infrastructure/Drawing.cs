@@ -68,12 +68,13 @@ public static class Annotator
     }
 
     /// <summary>Anota um conjunto de lotes de uma vez (divisas e vértices compartilhados uma vez só). Dentro de transação.</summary>
-    public static int Annotate(Document doc, View view, IReadOnlyList<LotRecord> lots, ProjectContext ctx, ValueFormatter fmt, Options o, IList<string>? failures = null)
+    public static int Annotate(Document doc, View view, IReadOnlyList<LotRecord> lots, ProjectContext ctx, ValueFormatter fmt, Options o, IList<string>? failures = null,
+        Func<LotRecord, string>? ownerOf = null, IEnumerable<Obb>? obstacles = null)
     {
         foreach (var l in lots) Clear(doc, l, view);
         // O que outros lotes já anotaram nesta vista não é repetido.
         var existing = new HashSet<string>();
-        foreach (var other in ctx.Project.Lots.Where(l => !lots.Contains(l)))
+        foreach (var other in ctx.Project.PhaseLots.Where(l => !lots.Contains(l)))
             foreach (var rec in other.Annotations.Where(a => a.ViewId == view.UniqueId).ToList())
             {
                 if (ElementUtil.ExistingIds(doc, rec.ElementIds).Count == 0) { other.Annotations.Remove(rec); continue; }
@@ -93,6 +94,7 @@ public static class Annotator
             Edges = o.Edges, EdgeAngle = o.EdgeAngle, Vertices = o.Vertices, Area = o.Area, Dots = o.Dots, Outside = o.Outside,
             Confrontantes = o.Confrontantes, TextM = textM, OffsetM = o.OffsetMm / 1000.0 * scale, DotRadiusM = o.DotMm / 2000.0 * scale,
             PadM = RevitStyles.TextPadMm / 1000.0 * scale, LineFactor = RevitStyles.LineFactor,
+            OwnerOf = ownerOf, Obstacles = obstacles?.ToList() ?? new List<Obb>(),
         }, existing);
         if (plan.Conflicts > 0) Logger.Info($"Anotação: {plan.Conflicts} texto(s) sem espaço livre na vista {view.Name} (posição de menor conflito).");
 
@@ -264,7 +266,11 @@ public static class StreetDrawer
         Clear(doc, p, view);
         var frontages = Frontages(ctx, lots);
         var regions = p.ActiveLots.Select(l => { try { return l.ToRegion(); } catch { return null; } }).Where(r => r is not null).Select(r => r!).ToList();
-        var vias = p.Vias.Where(v => frontages.Any(f => f.ViaId == v.Id)).ToList();
+        var area = BBox.Empty;
+        foreach (var l in lots) { try { area = area.Union(l.ToRegion().Bounds); } catch { } }
+        area = area.IsEmpty ? area : area.Expand(40);
+        var vias = p.Vias.Where(v => frontages.Any(f => f.ViaId == v.Id)
+                                     || v.MeioFio.Any(m => m.Any(pt => !area.IsEmpty && area.Contains(pt.ToVec())))).ToList();
         if (vias.Count == 0) return new List<string> { "Nenhuma divisa está associada a uma via (marque a testada e escolha a via em 'Vias')." };
         var crossings = p.Cruzamentos.Where(c => c.ViaIds.Count(id => vias.Any(v => v.Id == id)) >= 2).ToList();
         var drawing = StreetSchematic.Build(vias, crossings, frontages, regions);

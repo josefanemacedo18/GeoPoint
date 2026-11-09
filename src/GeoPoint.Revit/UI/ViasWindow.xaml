@@ -25,13 +25,17 @@
                     <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
                         <Button Margin="0" Content="Adicionar via" Click="AddVia_Click"/>
                         <Button Content="Remover via" Click="RemoveVia_Click"/>
+                        <Button Content="Selecionar no desenho: testadas e meio-fio…" Style="{StaticResource Primary}" Click="Pick_Click"
+                                ToolTip="Para a via selecionada (ou uma nova): 1) selecione as linhas das testadas (divisas de frente para a rua); 2) selecione a linha do meio-fio do lado dos lotes. A calçada é medida no desenho e a pista (largura do leito) vai do meio-fio até o meio-fio oposto."/>
                     </StackPanel>
+                    <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Hint}" Margin="0,4,0,0" Text="Largura do leito = pista inteira, de meio-fio a meio-fio (padrão 12 m). Vias com meio-fio selecionado usam a calçada medida no desenho; a coluna 'Meio-fio' mostra quantas linhas foram selecionadas."/>
                     <DataGrid x:Name="ViasGrid" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Single">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Nome da via" Binding="{Binding Nome, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
                             <DataGridTextColumn Header="Largura do leito (m)" Binding="{Binding Largura}" Width="130"/>
                             <DataGridTextColumn Header="Calçada (m)" Binding="{Binding Calcada}" Width="100"/>
-                            <DataGridTextColumn Header="Prolongamento nas pontas (m)" Binding="{Binding Prolongamento}" Width="180"/>
+                            <DataGridTextColumn Header="Prolongamento nas pontas (m)" Binding="{Binding Prolongamento}" Width="170"/>
+                            <DataGridTextColumn Header="Meio-fio" Binding="{Binding MeioFioText}" Width="110" IsReadOnly="True"/>
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>

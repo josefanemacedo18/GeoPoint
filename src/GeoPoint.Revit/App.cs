@@ -28,10 +28,12 @@ public sealed class App : IExternalApplication
             Add(lotes, "Reconhecer\nLotes", typeof(Commands.CmdReconhecer), "Reconhece lotes a partir das linhas desenhadas (linhas de modelo, de detalhe ou CAD). Os encontros das linhas viram vértices.", IconKind.Recognize);
             Add(lotes, "Gerenciar\nLotes", typeof(Commands.CmdGerenciar), "Nome, quadra, uso, matrícula, confrontantes, testada, vértice inicial e sentido de cada lote.", IconKind.Manager);
             Add(lotes, "Atualizar\nLotes", typeof(Commands.CmdAtualizar), "Atualiza os lotes depois de editar as linhas no desenho.", IconKind.Sync);
+            Add(lotes, "Fases", typeof(Commands.CmdFases), "Fases do projeto (ex.: situação atual → remembramento → desmembramento). Cada fase tem seus lotes, numeração de vértices, memoriais, pranchas e vista de trabalho.", IconKind.Phases);
             Add(lotes, "Dados do\nImóvel", typeof(Commands.CmdDadosImovel), "Proprietário, matrícula, município, RRT/ART e perfil de parâmetros urbanísticos do projeto.", IconKind.Info);
 
             var geo = app.CreateRibbonPanel(TabName, "Georreferência");
             Add(geo, "Definir\nReferência", typeof(Commands.CmdReferencia), "Informe a coordenada (Google Maps/Earth, QGIS, GPS ou UTM) de um vértice. As demais coordenadas são calculadas pelos azimutes e distâncias do desenho.", IconKind.Reference);
+            Add(geo, "Importar\nKML/KMZ", typeof(Commands.CmdImportarKml), "Importa pontos (marcadores) do Google Earth/QGIS. Você clica onde fica um dos pontos (ou usa a referência do projeto) e todos aparecem no desenho para traçar as divisas com snap.", IconKind.Import);
             Add(geo, "Desenhar por\nAzimutes", typeof(Commands.CmdCaminhamento), "Desenha linhas a partir de azimutes/rumos e distâncias (ex.: colados de um memorial antigo), com erro de fechamento.", IconKind.Traverse);
 
             var ops = app.CreateRibbonPanel(TabName, "Operações");
@@ -103,7 +105,7 @@ public sealed class App : IExternalApplication
     }
 }
 
-public enum IconKind { Recognize, Manager, Sync, Info, Reference, Traverse, Split, Merge, Divide, Setback, Annotate, Table, Native, Memorial, Globe, Excel, Chart, Check, Topo, Settings, Help, Hatch, Street, Signature, Sheet }
+public enum IconKind { Recognize, Manager, Sync, Info, Reference, Traverse, Split, Merge, Divide, Setback, Annotate, Table, Native, Memorial, Globe, Excel, Chart, Check, Topo, Settings, Help, Hatch, Street, Signature, Sheet, Phases, Import }
 
 /// <summary>Ícones vetoriais desenhados em código (sem arquivos externos).</summary>
 public static class Icons
@@ -144,6 +146,17 @@ public static class Icons
     {
         switch (k)
         {
+            case IconKind.Phases:
+                dc.DrawRectangle(Brushes.White, P(Gray, 1.4), new Rect(3, 13, 16, 16));
+                dc.DrawRectangle(Brushes.White, P(Gray, 1.4), new Rect(8, 8, 16, 16));
+                dc.DrawRectangle(Light, P(Blue, 1.8), new Rect(13, 3, 16, 16));
+                break;
+            case IconKind.Import:
+                dc.DrawGeometry(Orange, P(Gray, 1), Geometry.Parse("M 12,22 C 8,15 5,12 5,8.5 A 7,7 0 1 1 19,8.5 C 19,12 16,15 12,22 Z"));
+                dc.DrawEllipse(Brushes.White, null, new Point(12, 8.5), 2.8, 2.8);
+                dc.DrawLine(P(Blue, 2.4), new Point(24, 14), new Point(24, 29));
+                dc.DrawGeometry(Blue, null, Geometry.Parse("M 18,23 L 24,30 L 30,23 Z"));
+                break;
             case IconKind.Hatch:
                 Lot(dc, Brushes.White);
                 dc.PushClip(Geometry.Parse("M 4,26 L 6,8 L 22,5 L 28,24 Z"));

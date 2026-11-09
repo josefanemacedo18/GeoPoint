@@ -155,7 +155,7 @@ public sealed class ProjectContext
     private List<(LotRecord lot, Region region, BBox bb)> Active() => _active ??= Load(Project.ActiveLots);
 
     private List<(LotRecord lot, Region region, BBox bb)> Archived() =>
-        _archived ??= Load(Project.Lots.Where(l => l.Status == LotStatus.Arquivado));
+        _archived ??= Load(Project.PhaseLots.Where(l => l.Status == LotStatus.Arquivado));
 
     private static List<(LotRecord lot, Region region, BBox bb)> Load(IEnumerable<LotRecord> lots)
     {

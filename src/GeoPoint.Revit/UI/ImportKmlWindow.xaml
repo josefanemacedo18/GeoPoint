@@ -1,0 +1,47 @@
+<Window x:Class="GeoPoint.Revit.UI.ImportKmlWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GeoPoint – Importar pontos (KML/KMZ)" Width="820" Height="620" MinWidth="680" MinHeight="480"
+        FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GeoPoint.Revit;component/UI/Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <DockPanel Margin="14">
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource H1}" Text="Importar pontos de coordenadas"/>
+        <TextBlock DockPanel.Dock="Top" x:Name="FileInfo" Style="{StaticResource Hint}"/>
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="Importar" Style="{StaticResource Primary}" Click="Ok_Click" IsDefault="True"/>
+            <Button Content="Cancelar" IsCancel="True"/>
+        </StackPanel>
+        <GroupBox DockPanel.Dock="Bottom" Header="Posição no desenho">
+            <StackPanel>
+                <RadioButton x:Name="ModeClick" GroupName="m" Content="Clicar no desenho onde fica o ponto escolhido abaixo (define o ponto de referência do projeto; o topo da tela é o norte)" Checked="Mode_Changed"/>
+                <StackPanel Orientation="Horizontal" Margin="22,2,0,6">
+                    <Label Content="Ponto que vou clicar:"/>
+                    <ComboBox x:Name="RefPoint" Width="260" DisplayMemberPath="Nome"/>
+                </StackPanel>
+                <RadioButton x:Name="ModeRef" GroupName="m" Content="Usar o ponto de referência já definido no projeto (os pontos vão direto para o lugar certo)" Checked="Mode_Changed"/>
+                <TextBlock x:Name="ModeHint" Style="{StaticResource Hint}" Margin="22,2,0,0"/>
+            </StackPanel>
+        </GroupBox>
+        <DataGrid x:Name="Grid" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column">
+            <DataGrid.Columns>
+                <DataGridTemplateColumn Header="" Width="34">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox IsChecked="{Binding Selected, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Nome" Binding="{Binding Nome, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                <DataGridTextColumn Header="Latitude" Binding="{Binding LatText}" Width="150" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Longitude" Binding="{Binding LonText}" Width="150" IsReadOnly="True"/>
+                <DataGridTextColumn Header="Altitude (m)" Binding="{Binding AltText}" Width="90" IsReadOnly="True"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>

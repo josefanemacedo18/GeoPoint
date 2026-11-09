@@ -62,7 +62,19 @@ public sealed class SheetBuilder
         foreach (var spec in specs)
         {
             i++;
-            try { sheets.Add(BuildOne(spec, i, n)); }
+            var old = SheetRegistry.Find(_s, spec.Key);
+            if (old is not null && spec.Replace == SheetReplace.Manter) { Kept++; continue; }
+            string? number = null;
+            try
+            {
+                if (old is not null && spec.Replace == SheetReplace.Substituir)
+                {
+                    number = (ElementUtil.ByUniqueId(_doc, old.SheetId) as ViewSheet)?.SheetNumber;
+                    SheetRegistry.Delete(_s, old);
+                }
+                var sheet = BuildOne(spec, i, n, number);
+                sheets.Add(sheet);
+            }
             catch (Exception ex)
             {
                 Logger.Error("Prancha " + spec.Title, ex);
@@ -72,11 +84,38 @@ public sealed class SheetBuilder
         return sheets;
     }
 
-    private ViewSheet BuildOne(SheetSpec spec, int index, int count)
+    /// <summary>Pranchas mantidas (já existiam e foram preservadas).</summary>
+    public int Kept { get; private set; }
+
+    /// <summary>Contexto com numeração própria de cada lote (P-01…), para as pranchas de um lote só.</summary>
+    private ProjectContext LocalContext()
+    {
+        var st = _s.Settings.Clone();
+        st.Naming.Numbering = VertexNumbering.Lote;
+        return new ProjectContext(_s.Project, st);
+    }
+
+    /// <summary>Ponto de referência padrão: P-01 do lote (prancha de um lote) ou o ponto de referência do projeto, se for vértice dos lotes.</summary>
+    private Vec2 DefaultRef(SheetSpec spec, List<LotRecord> lots, ProjectContext ctx)
+    {
+        if (!spec.Detailed && _s.Project.Reference.IsSet)
+        {
+            var anchor = new Vec2(_s.Project.Reference.AnchorX, _s.Project.Reference.AnchorY);
+            foreach (var l in lots)
+                if (l.Outer.Any(e => new Vec2(e.X1, e.Y1).DistanceTo(anchor) < 0.01)) return anchor;
+        }
+        return ctx.Report(lots[0]).Vertices[0].Internal;
+    }
+
+    private ViewSheet BuildOne(SheetSpec spec, int index, int count, string? number)
     {
         var lots = spec.LotIds.Select(_s.Project.FindLot).Where(l => l is not null).Select(l => l!).ToList();
         if (lots.Count == 0) throw new InvalidOperationException("Nenhum lote para a prancha.");
         var layout = SheetLayout.A4(_o.Orientation);
+        // Prancha de um lote: numeração própria do lote (P-01…). Prancha com vários lotes: visualização (sem vértices nem azimutes).
+        var ctx = spec.Detailed ? LocalContext() : _ctx;
+        var refPt = spec.RefPoint ?? DefaultRef(spec, lots, ctx);
+        _refText = ReferenceText(refPt, RefName(spec, lots, ctx, refPt));
 
         // ---- Vista: cópia da planta original (o desenho original não é alterado).
         var view = DuplicateView(spec, lots);
@@ -87,7 +126,7 @@ public sealed class SheetBuilder
         LotReport? coordRep = null;
         if (spec.CoordTable && lots.Count == 1)
         {
-            try { coordRep = _ctx.Report(lots[0]); } catch { }
+            try { coordRep = ctx.Report(lots[0]); } catch { }
             // Lotes com muitos vértices: o quadro não cabe na folha A4 (fica no memorial e na Tabela de Coordenadas).
             if (coordRep is not null && coordRep.Vertices.Count <= 24) quadroH = 6 + 4.2 * (coordRep.Vertices.Count + 1);
             else coordRep = null;
@@ -122,16 +161,24 @@ public sealed class SheetBuilder
             foreach (var w in StreetDrawer.Draw(_doc, view, _ctx, lots, _s.Settings.Streets, _o.Font)) Warnings.Add($"{spec.Title}: {w}");
         if (spec.Hatch)
             Hatcher.Apply(_doc, view, lots, l => spec.Colors.TryGetValue(l.Id, out int c) ? c : 0);
+        var obstacles = DrawRefMarker(view, refPt, !spec.Detailed, scale);
         if (_o.Anotacoes)
         {
             var fails = new List<string>();
-            Annotator.Annotate(_doc, view, lots, _ctx, _fmt, Annotator.Options.From(_s.Settings.Annotation), fails);
+            var ao = Annotator.Options.From(_s.Settings.Annotation);
+            ao.Edges = true;
+            ao.Confrontantes = true;
+            ao.Area = true;
+            if (spec.Detailed) { ao.Vertices = true; ao.EdgeAngle = true; ao.Dots = true; }
+            else { ao.Vertices = false; ao.EdgeAngle = false; ao.Dots = false; }
+            Func<LotRecord, string>? owner = spec.Detailed ? null : l => string.IsNullOrWhiteSpace(l.Proprietario) ? _s.Project.Info.Proprietario : l.Proprietario;
+            Annotator.Annotate(_doc, view, lots, ctx, _fmt, ao, fails, owner, obstacles);
             Warnings.AddRange(fails.Select(f => $"{spec.Title}: {f}"));
         }
         _doc.Regenerate();
 
         // ---- Prancha.
-        var sheet = CreateSheet(spec, index);
+        var sheet = CreateSheet(spec, index, number);
         _created.Add(sheet.UniqueId);
         bool customTitleBlock = !string.IsNullOrWhiteSpace(_s.Settings.Sheets.TitleBlock) && TitleBlockId() != ElementId.InvalidElementId;
         if (!customTitleBlock) DrawFrame(sheet, layout, spec, lots, scale, index, count);
@@ -142,7 +189,58 @@ public sealed class SheetBuilder
         if (coordRep is not null) DrawCoordTable(sheet, new PaperRect(area.X0, area.Y0, area.X1, area.Y0 + quadroH), coordRep);
         else if (spec.QuadroIds.Count > 0) DrawQuadro(sheet, new PaperRect(area.X0, area.Y0, area.X1, area.Y0 + quadroH), spec);
         DrawNorth(sheet, view, new Vec2(area.X1 - 10, area.Y1 - 16));
+        _doc.Regenerate();
+        SheetRegistry.Register(_s, spec, sheet, view);
         return sheet;
+    }
+
+    private string _refText = "";
+
+    /// <summary>Nome do ponto de referência: o nome do vértice na prancha de um lote; "PR" nas pranchas de visualização.</summary>
+    private static string RefName(SheetSpec spec, List<LotRecord> lots, ProjectContext ctx, Vec2 p)
+    {
+        foreach (var l in lots)
+        {
+            try
+            {
+                var v = ctx.Report(l).Vertices.FirstOrDefault(x => x.Internal.DistanceTo(p) < 0.01);
+                if (v is not null) return spec.Detailed ? v.Name : $"PR ({v.Name} do {l.DisplayName})";
+            }
+            catch { }
+        }
+        return spec.Detailed ? "Ponto de referência" : "PR";
+    }
+
+    /// <summary>Triângulo do ponto de referência (e "PR" nas pranchas de visualização). Devolve as áreas ocupadas.</summary>
+    private List<Obb> DrawRefMarker(View view, Vec2 p, bool withLabel, int scale)
+    {
+        var res = new List<Obb>();
+        try
+        {
+            double k = scale / 1000.0;               // mm no papel → m no modelo
+            double r = 2.4 * k;
+            var style = RevitStyles.LineStyle(_doc, "GeoPoint - Ponto de referência", new Color(192, 0, 0), 3);
+            double z = ElementUtil.ViewPlaneZ(view);
+            var pts = Enumerable.Range(0, 3).Select(i => p + Vec2.FromAngle(Math.PI / 2 + i * 2 * Math.PI / 3) * r).ToList();
+            for (int i = 0; i < 3; i++)
+            {
+                var dc = _doc.Create.NewDetailCurve(view, Autodesk.Revit.DB.Line.CreateBound(RvtUnits.ToXyz(pts[i], z), RvtUnits.ToXyz(pts[(i + 1) % 3], z)));
+                if (style is not null) dc.LineStyle = style;
+            }
+            res.Add(Obb.Of(p, 0, r * 1.05, r * 1.05));
+            if (withLabel)
+            {
+                double size = _s.Settings.Annotation.TextSizeMm;
+                var type = RevitStyles.TextType(_doc, size, _o.Font, true, true, new Color(192, 0, 0));
+                double hh = RevitStyles.HalfHeightMm(size) * k;
+                double hw = (AnnotationPlanner.TextWidth("PR", size * k, true) / 2) + RevitStyles.TextPadMm * k;
+                var c = p + new Vec2(r + hw + 0.6 * k, r * 0.4);
+                TextNote.Create(_doc, view.Id, RvtUnits.ToXyz(c + new Vec2(0, hh), z), "PR", new TextNoteOptions(type) { HorizontalAlignment = HorizontalTextAlignment.Center });
+                res.Add(Obb.Of(c, 0, hw, hh));
+            }
+        }
+        catch (Exception ex) { Logger.Error("Marcador do ponto de referência", ex); }
+        return res;
     }
 
     // ------------------------------------------------------------------ vista
@@ -175,49 +273,80 @@ public sealed class SheetBuilder
         if (_source.Id != view.Id)
         {
             var detail = new FilteredElementCollector(_doc, _source.Id).OfClass(typeof(CurveElement)).Cast<CurveElement>()
-                .Where(c => c.CurveElementType == CurveElementType.DetailCurve && !IsGeoPointElement(c)).ToList();
-            var keep = detail.Where(c => Keep(c, shownRegions)).Select(c => c.Id).ToList();
+                .Where(c => c.CurveElementType == CurveElementType.DetailCurve && !PhaseViews.IsGeoPointLine(c)).ToList();
+            var allDiv = PhaseViews.AllLotRegions(_s.Project);
+            var keep = detail.Where(c => PhaseViews.Keep(c, shownRegions) || !PhaseViews.OnBoundary(c, allDiv)).Select(c => c.Id).ToList();
             if (keep.Count > 0)
             {
                 try { ElementTransformUtils.CopyElements(_source, keep, view, Transform.Identity, new CopyPasteOptions()); }
                 catch (Exception ex) { Logger.Error("Copiar linhas de detalhe", ex); }
             }
         }
-        // Linhas de modelo internas aos lotes mostrados (ex.: divisas do desmembramento na situação atual) ficam ocultas.
-        var hide = new FilteredElementCollector(_doc, view.Id).OfClass(typeof(CurveElement)).Cast<CurveElement>()
-            .Where(c => c.CurveElementType == CurveElementType.ModelCurve && !Keep(c, shownRegions) && c.CanBeHidden(view)).Select(c => c.Id).ToList();
-        if (hide.Count > 0) view.HideElements(hide);
+        // Linhas de modelo: internas aos lotes mostrados ficam ocultas (ex.: divisas do desmembramento na situação atual);
+        // as que formam as divisas mostradas voltam a aparecer (ex.: ocultadas na vista da fase).
+        var hide = new List<ElementId>();
+        var unhide = new List<ElementId>();
+        var divisas = PhaseViews.AllLotRegions(_s.Project);
+        foreach (var c in new FilteredElementCollector(_doc).OfClass(typeof(CurveElement)).Cast<CurveElement>().Where(c => c.CurveElementType == CurveElementType.ModelCurve))
+        {
+            if (PhaseViews.IsGeoPointLine(c)) continue;
+            bool hidden;
+            try { hidden = c.IsHidden(view); } catch { continue; }
+            if (!PhaseViews.Keep(c, shownRegions) && PhaseViews.OnBoundary(c, divisas)) { if (!hidden && c.CanBeHidden(view)) hide.Add(c.Id); }
+            else if (hidden && PhaseViews.OnBoundary(c, shownRegions)) unhide.Add(c.Id);
+        }
+        try { if (hide.Count > 0) view.HideElements(hide); } catch (Exception ex) { Logger.Error("Ocultar linhas na prancha", ex); }
+        try { if (unhide.Count > 0) view.UnhideElements(unhide); } catch (Exception ex) { Logger.Error("Mostrar linhas na prancha", ex); }
+        CompleteBoundaries(view, lots);
         return view;
     }
 
-    private bool IsGeoPointElement(Element e)
+    /// <summary>Divisas sem linha visível (linha apagada ou de outra fase) são desenhadas como linhas de detalhe na cópia.</summary>
+    private void CompleteBoundaries(View view, List<LotRecord> lots)
     {
-        if (e is CurveElement ce)
+        try
         {
-            try
+            var segs = new List<(Vec2 A, Vec2 B)>();
+            foreach (var c in new FilteredElementCollector(_doc).OfClass(typeof(CurveElement)).Cast<CurveElement>())
             {
-                string style = ce.LineStyle?.Name ?? "";
-                if (style.StartsWith("GeoPoint - Extensão", StringComparison.Ordinal) || style.StartsWith("GeoPoint - Cota", StringComparison.Ordinal)
-                    || style.StartsWith("GeoPoint - Meio-fio", StringComparison.Ordinal) || style.StartsWith("GeoPoint - Alinhamento", StringComparison.Ordinal)) return true;
+                bool relevant = c.CurveElementType == CurveElementType.ModelCurve || (c.CurveElementType == CurveElementType.DetailCurve && c.OwnerViewId == view.Id);
+                if (!relevant || PhaseViews.IsGeoPointLine(c)) continue;
+                try
+                {
+                    if (c.IsHidden(view)) continue;
+                    var pts = c.GeometryCurve.Tessellate().Select(RvtUnits.ToVec).ToList();
+                    for (int i = 0; i + 1 < pts.Count; i++) segs.Add((pts[i], pts[i + 1]));
+                }
+                catch { }
             }
-            catch { }
+            static double Dist(Vec2 p, Vec2 a, Vec2 b)
+            {
+                var ab = b - a; double l2 = ab.LengthSquared;
+                double t = l2 < 1e-12 ? 0 : Math.Clamp((p - a).Dot(ab) / l2, 0, 1);
+                return p.DistanceTo(a + ab * t);
+            }
+            var missing = new List<Curve2>();
+            foreach (var lot in lots)
+                foreach (var e in lot.Outer.Concat(lot.Holes.SelectMany(h => h)).Select(x => x.ToCurve()))
+                {
+                    bool covered = new[] { 0.25, 0.5, 0.75 }.All(t => { var p = e.PointAt(t); return segs.Any(sg => Dist(p, sg.A, sg.B) <= 0.01); });
+                    if (!covered && !missing.Any(m => m.Mid.DistanceTo(e.Mid) < 0.001)) missing.Add(e);
+                }
+            if (missing.Count == 0) return;
+            var style = RevitStyles.LineStyle(_doc, "GeoPoint - Divisa (prancha)", new Color(0, 0, 0), 3);
+            double z = ElementUtil.ViewPlaneZ(view);
+            foreach (var m in missing)
+            {
+                try
+                {
+                    var dc = _doc.Create.NewDetailCurve(view, RvtUnits.ToRevitCurve(m, z));
+                    if (style is not null) dc.LineStyle = style;
+                }
+                catch { }
+            }
+            Logger.Info($"Prancha: {missing.Count} divisa(s) sem linha visível desenhada(s) na cópia da vista.");
         }
-        return false;
-    }
-
-    /// <summary>Mantém linhas sobre as divisas dos lotes mostrados ou fora deles; oculta as internas.</summary>
-    private static bool Keep(CurveElement c, List<Region> shown)
-    {
-        Curve? g;
-        try { g = c.GeometryCurve; } catch { return true; }
-        if (g is null || !g.IsBound) return true;
-        var samples = new[] { 0.2, 0.5, 0.8 }.Select(t => RvtUnits.ToVec(g.Evaluate(t, true))).ToList();
-        const double tol = 0.01;
-        bool onShownBoundary = samples.All(p => shown.Any(r => r.AllRings().Any(ring => ring.Edges.Any(e => e.Bounds.Expand(tol).Contains(p) && e.DistanceTo(p) <= tol))));
-        if (onShownBoundary) return true;
-        var mid = samples[1];
-        bool inside = shown.Any(r => r.Bounds.Contains(mid) && r.Contains(mid));
-        return !inside;
+        catch (Exception ex) { Logger.Error("Completar divisas", ex); }
     }
 
     private string UniqueViewName(string name)
@@ -244,16 +373,21 @@ public sealed class SheetBuilder
         return tb?.Id ?? ElementId.InvalidElementId;
     }
 
-    private ViewSheet CreateSheet(SheetSpec spec, int index)
+    private ViewSheet CreateSheet(SheetSpec spec, int index, string? reuseNumber)
     {
         var tb = string.IsNullOrWhiteSpace(_s.Settings.Sheets.TitleBlock) ? ElementId.InvalidElementId : TitleBlockId();
         if (tb != ElementId.InvalidElementId && _doc.GetElement(tb) is FamilySymbol fs && !fs.IsActive) fs.Activate();
         var sheet = ViewSheet.Create(_doc, tb);
         var numbers = new FilteredElementCollector(_doc).OfClass(typeof(ViewSheet)).Cast<ViewSheet>().Select(v => v.SheetNumber).ToHashSet(StringComparer.OrdinalIgnoreCase);
         string prefix = string.IsNullOrWhiteSpace(_o.NumberPrefix) ? "GP" : _o.NumberPrefix.Trim();
-        int k = 1;
-        while (numbers.Contains($"{prefix}-{k:00}")) k++;
-        sheet.SheetNumber = $"{prefix}-{k:00}";
+        if (_s.Project.Fases.Count > 1) prefix += $"-F{_s.Project.Fase.Numero}";
+        if (!string.IsNullOrWhiteSpace(reuseNumber) && !numbers.Contains(reuseNumber)) sheet.SheetNumber = reuseNumber;
+        else
+        {
+            int k = 1;
+            while (numbers.Contains($"{prefix}-{k:00}")) k++;
+            sheet.SheetNumber = $"{prefix}-{k:00}";
+        }
         sheet.Name = Clean(spec.Title.Length > 0 ? spec.Title : "GeoPoint");
         return sheet;
     }
@@ -341,7 +475,7 @@ public sealed class SheetBuilder
             ["matricula"] = matr,
             ["area"] = (lots.Count > 1 ? "Total: " : "") + _fmt.Area(area),
             ["perimetro"] = reports.Count == 1 ? _fmt.Distance(reports[0].PerimeterLocal) : "ver quadro de áreas",
-            ["coordenada"] = ReferenceText(),
+            ["coordenada"] = _refText,
             ["escala"] = $"1:{scale}",
             ["data"] = DateTime.Now.ToString("dd/MM/yyyy"),
             ["folha"] = $"{index:00}/{count:00}",
@@ -353,7 +487,8 @@ public sealed class SheetBuilder
             if (cell.Key == "titulo")
             {
                 Text(sheet, r.X0 + 2, r.Y1 - 1.6, spec.Title, cell.ValueMm, true, widthMm: r.Width - 4);
-                string sub = string.Join(" – ", new[] { spec.Subtitle, info.Situacao.Length > 0 && !spec.Subtitle.Contains(info.Situacao.ToUpperInvariant()) ? info.Situacao.ToUpperInvariant() : "" }.Where(x => x.Length > 0));
+                string sit = _s.Project.Situacao;
+                string sub = string.Join(" – ", new[] { spec.Subtitle, sit.Length > 0 && !spec.Subtitle.Contains(sit.ToUpperInvariant()) ? sit.ToUpperInvariant() : "" }.Where(x => x.Length > 0));
                 if (sub.Length > 0) Text(sheet, r.X0 + 2, r.Y0 + 1.2, sub, 1.9, false, v: VerticalTextAlignment.Bottom, widthMm: r.Width - 4);
                 continue;
             }
@@ -397,14 +532,12 @@ public sealed class SheetBuilder
         }
     }
 
-    private string ReferenceText()
+    private string ReferenceText(Vec2 p, string name)
     {
-        var r = _s.Project.Reference;
-        if (!r.IsSet) return "Coordenadas locais (sem georreferência)";
-        var anchor = new Vec2(r.AnchorX, r.AnchorY);
-        var utm = _ctx.Coords.ToCrs(anchor, CrsDef.Utm());
-        string name = string.IsNullOrWhiteSpace(r.AnchorLabel) ? "Ponto de referência" : r.AnchorLabel;
-        string geo = $"{_fmt.Lat(r.Lat)}  {_fmt.Lon(r.Lon)}";
+        if (!_s.Project.Reference.IsSet) return $"{name}: coordenadas locais (sem georreferência)";
+        var utm = _ctx.Coords.ToCrs(p, CrsDef.Utm());
+        var g = _ctx.Coords.ToGeodetic(p);
+        string geo = g is { } gg ? $"{_fmt.Lat(gg.LatDeg)}  {_fmt.Lon(gg.LonDeg)}" : "";
         return utm is { } u
             ? $"{name}: E {_fmt.Plane(u.A)} m  N {_fmt.Plane(u.B)} m – UTM {u.ZoneLabel} SIRGAS 2000\n{geo}"
             : $"{name}: {geo} (SIRGAS 2000)";

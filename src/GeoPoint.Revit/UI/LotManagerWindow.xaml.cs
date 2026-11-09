@@ -71,7 +71,7 @@ public sealed class SegmentRow : Notify
 
     public List<IdText> AlvoOptions => _tipo switch
     {
-        ConfrontanteTipo.Lote => ProjectContext.SortLots(_project.Lots.Where(l => l.Id != _lot.Id))
+        ConfrontanteTipo.Lote => ProjectContext.SortLots(_project.PhaseLots.Where(l => l.Id != _lot.Id))
             .Select(l => new IdText(l.Id, l.DisplayName + (l.Status == LotStatus.Arquivado ? " (arquivado)" : ""))).Prepend(new IdText("", "(escolha o lote)")).ToList(),
         ConfrontanteTipo.Via => _project.Vias.Select(v => new IdText(v.Id, v.Nome)).Prepend(new IdText("", "(escolha a via)")).ToList(),
         _ => new List<IdText>(),
@@ -190,13 +190,13 @@ public partial class LotManagerWindow : Window
     {
         bool arch = ShowArchived.IsChecked == true;
         _ctx.Invalidate();
-        _rows = ProjectContext.SortLots(_project.Lots.Where(l => arch || l.Status == LotStatus.Ativo))
+        _rows = ProjectContext.SortLots(_project.PhaseLots.Where(l => arch || l.Status == LotStatus.Ativo))
             .Select(l => new LotRow(l, SafeArea(l))).ToList();
         LotsGrid.ItemsSource = _rows;
         var sel = _rows.FirstOrDefault(r => r.Lot.Id == (selectId ?? _current?.Id)) ?? _rows.FirstOrDefault();
         LotsGrid.SelectedItem = sel;
         if (sel is null) ShowLot(null);
-        Status.Text = $"{_project.ActiveLots.Count()} lote(s) ativo(s), {_project.Lots.Count(l => l.Status == LotStatus.Arquivado)} arquivado(s).";
+        Status.Text = $"{_project.Fase.Label}: {_project.ActiveLots.Count()} lote(s) ativo(s), {_project.PhaseLots.Count(l => l.Status == LotStatus.Arquivado)} arquivado(s).";
     }
 
     private static double SafeArea(LotRecord l)

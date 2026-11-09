@@ -245,3 +245,29 @@ public class DesmembramentoFlowTests
         Assert.Contains(ctx.Report(kids.First(k => ctx.Report(k).Segments.Any(s => s.ConfrontanteViaId == via.Id))).Segments, s => s.Confrontante == "Rua 1" && s.Lado == LadoLote.Frente);
     }
 }
+
+public class GeneralSheetAnnotationTests
+{
+    [Fact]
+    public void GeneralSheet_NoVerticesNoAzimuths_WithOwner_AvoidsObstacle()
+    {
+        var a = TestProjects.Rect(0, 0, 10, 30, "01");
+        var b = TestProjects.Rect(10, 0, 10, 30, "02");
+        b.Proprietario = "Maria";
+        var ctx = TestProjects.Context(TestProjects.Project(a, b));
+        var reps = new[] { ctx.Report(a), ctx.Report(b) };
+        var marker = Obb.Of(new Vec2(0, 0), 0, 1.2, 1.2);
+        var o = new AnnotationPlanOptions
+        {
+            TextM = 0.5, OffsetM = 0.375, DotRadiusM = 0.15, PadM = 0.1, Vertices = false, EdgeAngle = false, Dots = false,
+            OwnerOf = l => string.IsNullOrWhiteSpace(l.Proprietario) ? "Fulano de Tal" : l.Proprietario, Obstacles = { marker },
+        };
+        var plan = AnnotationPlanner.Plan(reps, new GeoPoint.Core.Memorial.ValueFormatter(ctx.Settings.Format), o);
+        Assert.DoesNotContain(plan.Texts, t => t.Kind is AnnoTextKind.Vertex or AnnoTextKind.Azimuth);
+        Assert.Empty(plan.Dots);
+        Assert.Equal(7, plan.Texts.Count(t => t.Kind == AnnoTextKind.Distance));
+        Assert.Contains(plan.Texts, t => t.Kind == AnnoTextKind.LotLabel && t.Text.Contains("Prop.: Maria"));
+        Assert.Contains(plan.Texts, t => t.Kind == AnnoTextKind.LotLabel && t.Text.Contains("Prop.: Fulano de Tal"));
+        Assert.DoesNotContain(plan.Texts, t => t.Box.Intersects(marker));
+    }
+}

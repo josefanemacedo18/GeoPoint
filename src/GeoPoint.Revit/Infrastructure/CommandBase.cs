@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Interop;
 using Autodesk.Revit.Attributes;
@@ -23,6 +24,14 @@ public sealed class GpSession
         if (Doc.IsFamilyDocument) throw new InvalidOperationException("O GeoPoint funciona em projetos, não em famílias.");
         Settings = SettingsStore.Load();
         Project = ProjectStore.Load(Doc);
+        // Abrir a vista de uma fase torna essa fase a ativa.
+        try
+        {
+            var uid = UiDoc.ActiveView?.UniqueId;
+            var f = uid is null ? null : Project.Fases.FirstOrDefault(x => x.ViewIds.Contains(uid));
+            if (f is not null && f.Id != Project.Fase.Id) Project.ActiveFaseId = f.Id;
+        }
+        catch { }
     }
 
     public UIApplication UiApp { get; }

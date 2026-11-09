@@ -24,7 +24,7 @@ internal static class PickerRows
     public static List<LotRow> Build(GpSession s, bool activeOnly, Func<LotRecord, bool>? filter = null)
     {
         var pre = LotServices.LotsFromSelection(s);
-        return ProjectContext.SortLots(s.Project.Lots.Where(l => !activeOnly || l.Status == LotStatus.Ativo).Where(l => filter?.Invoke(l) ?? true))
+        return ProjectContext.SortLots(s.Project.PhaseLots.Where(l => !activeOnly || l.Status == LotStatus.Ativo).Where(l => filter?.Invoke(l) ?? true))
             .Select(l =>
             {
                 double a = 0;
@@ -84,7 +84,7 @@ public sealed class CmdAnotar : CommandBase
         {
             t.Start();
             // Anotações de lotes arquivados (ex.: lote original de um desmembramento) saem desta vista.
-            foreach (var arch in s.Project.Lots.Where(l => l.Status == LotStatus.Arquivado))
+            foreach (var arch in s.Project.Lots.Where(l => l.Status == LotStatus.Arquivado || l.FaseId != s.Project.Fase.Id))
             {
                 Annotator.Clear(s.Doc, arch, view);
                 Hatcher.Clear(s.Doc, arch, view);
@@ -262,6 +262,18 @@ public sealed class CmdVerificar : CommandBase
                     ? $"O norte usado nos azimutes, coordenadas e no Google Earth aponta para o topo da vista \"{av.Name}\" (orientação: {mode})."
                     : $"Na vista \"{av.Name}\" o topo da tela aponta para {AngleText.FormatDms(azTop, 0, AngleKind.Azimuth)} ({NorthGuard.DirectionName(azTop)}) pelo norte usado pelo GeoPoint (orientação: {mode}). " +
                       "Se você desenhou com o norte para cima, use Definir Referência › 'O topo da tela é o norte'.",
+            });
+        }
+
+        // Pontos importados (KML/KMZ): distância até o vértice mais próximo.
+        foreach (var r in ControlPointCheck.Compare(ctx))
+        {
+            if (r.Distance is not double d) continue;
+            rows.Add(new ReportRow
+            {
+                Nivel = d > 1.0 ? "Atenção" : "Info", Categoria = "Pontos KML", Lote = r.Lot?.DisplayName ?? "", LotId = r.Lot?.Id,
+                Mensagem = $"\"{r.Point.Nome}\" ({r.Point.Origem}): vértice mais próximo {r.VertexName} a {Fmt.N(d, 2)} m." +
+                           (d > 1.0 ? " Diferença grande: confira o vértice ou o ponto (coordenadas do Google têm erro de alguns metros)." : ""),
             });
         }
 

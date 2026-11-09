@@ -93,10 +93,23 @@ public sealed class CmdMemorial : CommandBase
         var phrases = MemorialPhrases.Load(m.PhrasesPath);
         ctx = s.NewContext();
         var gen = new MemorialGenerator(ctx, phrases);
+        // Memoriais individuais: numeração própria de cada lote (P-01…), como nas pranchas individuais.
+        var localSettings = s.Settings.Clone();
+        localSettings.Naming.Numbering = VertexNumbering.Lote;
+        var genLocal = new MemorialGenerator(new ProjectContext(s.Project, localSettings), phrases);
 
-        var jobs = new List<(MemorialRequest req, string name)>();
+        var jobs = new List<(MemorialRequest req, string name, bool local)>();
         if (w.Kind == MemorialKind.Lotes && m.OneFilePerLot && w.Lots.Count > 1)
-            foreach (var l in w.Lots) jobs.Add((new MemorialRequest { Kind = MemorialKind.Lotes, Lots = new() { l }, Date = w.MemorialDate }, $"Memorial descritivo - {l.DisplayName}"));
+            foreach (var l in w.Lots) jobs.Add((new MemorialRequest { Kind = MemorialKind.Lotes, Lots = new() { l }, Date = w.MemorialDate }, $"Memorial descritivo - {l.DisplayName}", false));
+        else if (w.Kind == MemorialKind.Desmembramento && w.Operation is { } op)
+        {
+            if (w.SplitIndividual)
+                foreach (var c in ProjectContext.SortLots(op.ChildIds.Select(s.Project.FindLot).Where(l => l is not null).Select(l => l!)))
+                    jobs.Add((new MemorialRequest { Kind = MemorialKind.Lotes, Lots = new() { c }, Operation = op, Date = w.MemorialDate },
+                        $"Memorial descritivo - {c.DisplayName} (desmembramento)", true));
+            if (w.SplitGeneral)
+                jobs.Add((new MemorialRequest { Kind = MemorialKind.Desmembramento, Lots = w.Lots, Operation = op, Date = w.MemorialDate }, "Memorial descritivo - Desmembramento (geral)", false));
+        }
         else
         {
             string name = w.Kind switch
@@ -106,8 +119,11 @@ public sealed class CmdMemorial : CommandBase
                 MemorialKind.Loteamento => "Memorial descritivo - Loteamento",
                 _ => w.Lots.Count == 1 ? $"Memorial descritivo - {w.Lots[0].DisplayName}" : "Memorial descritivo - Lotes",
             };
-            jobs.Add((new MemorialRequest { Kind = w.Kind, Lots = w.Lots, Operation = w.Operation, Date = w.MemorialDate }, name));
+            jobs.Add((new MemorialRequest { Kind = w.Kind, Lots = w.Lots, Operation = w.Operation, Date = w.MemorialDate }, name, false));
         }
+        if (jobs.Count == 0) { Ui.Info("Memorial", "Nada a gerar: a operação não tem lotes resultantes."); return Result.Cancelled; }
+        if (s.Project.Fases.Count > 1)
+            jobs = jobs.Select(j => (j.req, $"{j.name} - Fase {s.Project.Fase.Numero}", j.local)).ToList();
 
         string folder = Folders.Default(s, m.OutputFolder);
         var files = new List<string>();
@@ -115,24 +131,24 @@ public sealed class CmdMemorial : CommandBase
         {
             var path = Ui.SaveFile("Salvar memorial descritivo", "Documento do Word (*.docx)|*.docx", jobs[0].name + ".docx", folder);
             if (path is null) return Result.Cancelled;
-            var bytes = gen.Generate(jobs[0].req, template);
+            var bytes = (jobs[0].local ? genLocal : gen).Generate(jobs[0].req, template);
             if (!Ui.TryWrite(path, bytes)) return Result.Failed;
             files.Add(path);
         }
         else
         {
-            var dir = Ui.PickFolder("Pasta para os memoriais (um arquivo por lote)", folder);
+            var dir = Ui.PickFolder($"Pasta para os memoriais ({jobs.Count} arquivos)", folder);
             if (dir is null) return Result.Cancelled;
-            foreach (var (req, name) in jobs)
+            foreach (var (req, name, local) in jobs)
             {
                 var path = Path.Combine(dir, Ui.SafeFileName(name) + ".docx");
-                if (!Ui.TryWrite(path, gen.Generate(req, template))) return Result.Failed;
+                if (!Ui.TryWrite(path, (local ? genLocal : gen).Generate(req, template))) return Result.Failed;
                 files.Add(path);
             }
         }
         Folders.Remember(s, files[0]);
 
-        var warnings = gen.Warnings.Distinct().ToList();
+        var warnings = gen.Warnings.Concat(genLocal.Warnings).Distinct().ToList();
         foreach (var l in w.Lots.Where(l => l.Status == LotStatus.Ativo))
         {
             try
@@ -166,7 +182,7 @@ public sealed class CmdExportarSig : CommandBase
         if (!s.Project.Lots.Any()) { Ui.Info("Nenhum lote cadastrado", "Use 'Reconhecer Lotes' primeiro."); return Result.Cancelled; }
         var ctx = s.NewContext();
         var pre = LotServices.LotsFromSelection(s);
-        var rows = ProjectContext.SortLots(s.Project.Lots).Select(l => new LotRow(l, SafeArea(l)) { Selected = pre.Count == 0 ? l.Status == LotStatus.Ativo : pre.Contains(l.Id) }).ToList();
+        var rows = ProjectContext.SortLots(s.Project.PhaseLots).Select(l => new LotRow(l, SafeArea(l)) { Selected = pre.Count == 0 ? l.Status == LotStatus.Ativo : pre.Contains(l.Id) }).ToList();
         var k = s.Settings.Kml;
         var opts = new List<OptionItem>
         {
@@ -243,7 +259,7 @@ public sealed class CmdExportarExcel : CommandBase
         if (!NorthGuard.Ensure(s)) return Result.Cancelled;
         var ctx = s.NewContext();
         var pre = LotServices.LotsFromSelection(s);
-        var rows = ProjectContext.SortLots(s.Project.Lots).Select(l =>
+        var rows = ProjectContext.SortLots(s.Project.PhaseLots).Select(l =>
         {
             double a = 0; try { a = l.ToRegion().Area; } catch { }
             return new LotRow(l, a) { Selected = pre.Count == 0 ? l.Status == LotStatus.Ativo : pre.Contains(l.Id) };

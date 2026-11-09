@@ -36,6 +36,18 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 8. **Desmembramento** / **Remembramento** – com prévia; o original fica arquivado no histórico.
 9. **Pranchas A4**, **Anotar Lotes**, **Hachuras**, **Memorial Descritivo**, **Anuência de Confrontantes**, **Planilha Excel**, **Quadro de Áreas**.
 
+### Fases do projeto
+Use **Fases** (painel Lotes) para separar as etapas, ex.: *Fase 0 – Situação atual* → *Fase 1 – Remembramento* → *Fase 2 – Desmembramento*.
+- **Nova fase**: parte dos lotes **ativos** da fase escolhida (cópias independentes, com confrontantes e testadas). A situação atual
+  de cada fase é a proposta da fase anterior.
+- Cada fase tem seus **lotes, operações, numeração de vértices (começa em P-01)**, memoriais e pranchas (número `GP-F1-01`…).
+- Cada fase tem uma **vista de trabalho** ("F1 – Remembramento"), cópia da planta. Nela as divisas internas dos lotes da fase ficam
+  ocultas (só linhas de divisa são ocultadas; outras linhas do seu desenho continuam visíveis). A vista em que você estava passa a
+  ser a vista da fase de partida.
+- **Abrir a vista de uma fase torna essa fase a ativa.** Todos os comandos (Gerenciar, Anotar, Memorial, Pranchas, Excel, Google Earth)
+  trabalham só com os lotes da fase ativa.
+- As fases anteriores ficam preservadas como estavam (o histórico do processo).
+
 ### Numeração única dos vértices
 Cada ponto do projeto tem **um único número** (registro de vértices). Num desmembramento os vértices do lote original mantêm
 o número e só os pontos novos (onde as novas divisas encontram o contorno) recebem números novos. A numeração pode ser por
@@ -114,6 +126,15 @@ plano topográfico local, com distâncias horizontais verdadeiras).
 > implantação e conferência sobre satélite. Para registro em cartório ou SIGEF/INCRA, a coordenada de partida precisa vir de
 > levantamento geodésico (GNSS RTK/PPP ou marco oficial) feito por profissional habilitado.
 
+**Importar KML/KMZ** – importa os pontos (marcadores) de um arquivo do Google Earth ou do QGIS:
+1. escolha o arquivo e marque os pontos (o nome pode ser editado);
+2. posição: **clique no desenho onde fica um dos pontos** (esse ponto passa a ser a referência do projeto e o topo da tela é o norte)
+   ou use a referência já definida (os pontos vão direto para o lugar certo);
+3. cada ponto aparece **sempre** no desenho como uma cruz laranja com o ponto e o nome. Desenhe as linhas de limite usando o
+   **snap de interseção** no cruzamento da cruz.
+Os pontos acompanham mudanças da referência e aparecem também nas vistas de fase. **Verificar Projeto** e a planilha Excel
+(aba *Pontos de controle*) mostram a distância de cada ponto ao vértice mais próximo do desenho (conferência).
+
 **Desenhar por Azimutes** – cole o texto de um memorial antigo: o GeoPoint encontra os pares *azimute/rumo + distância*
 (também "medindo", "extensão"), mostra o **erro de fechamento** e a **precisão (1:x)**, distribui o erro (Bowditch, opcional)
 e desenha as linhas a partir de um ponto clicado ou do ponto de referência. Arcos: informe o raio (a distância é a corda).
@@ -149,7 +170,7 @@ arredondados, como manda a definição de afastamento) e desenha o contorno (est
 
 **Anotar Lotes** – na vista de planta atual:
 - distância (junto da linha) e azimute/rumo (logo abaixo) de cada divisa, **do lado de fora do lote**;
-- **ponto preenchido** em cada vértice e o nome do vértice fora do conjunto de lotes;
+- **ponto preenchido** em cada vértice (2,2 mm no papel; ajuste em Configurações) e o nome do vértice fora do conjunto de lotes;
 - nome e área no centro (o remanescente aparece em destaque);
 - **confrontantes**: nome do confrontante do lado de fora e, quando uma divisa tem vários confrontantes, a **extensão de cada um**
   (cota vermelha com marcas tracejadas nos pontos de mudança);
@@ -164,7 +185,11 @@ O tamanho é dado em mm no papel e acompanha a escala da vista. Executar de novo
 **Hachuras** – hachura cada lote com uma cor (o **remanescente** recebe hachura cruzada), com bordas invisíveis.
 
 **Vias** – desenho esquemático simples da rua:
-- aba *Vias*: nome, largura do leito (padrão 12 m), calçada (padrão 2,5 m) e prolongamento das pontas;
+- **Selecionar no desenho: testadas e meio-fio** (recomendado): para a via escolhida, selecione as linhas das **testadas** (frente dos
+  lotes) e depois a linha do **meio-fio** do lado dos lotes (que você desenhou). A **calçada é medida** no desenho (da testada ao
+  meio-fio) e a **pista de 12 m** (leito inteiro, de meio-fio a meio-fio) é desenhada a partir do seu meio-fio, com o meio-fio e
+  a calçada do outro lado e o nome da rua no meio. Seu meio-fio não é redesenhado;
+- aba *Vias*: nome, largura do leito (pista inteira, padrão 12 m), calçada (padrão 2,5 m; medida quando há meio-fio) e prolongamento das pontas;
 - aba *Testadas*: escolha a via de cada divisa de frente (a via vira o confrontante da divisa);
 - aba *Cruzamentos*: esquinas de **2, 3 ou 4 vias** – marque *atravessa* para a via que continua do outro lado (L: nenhuma; T: a principal; +: as duas);
   raio de concordância do meio-fio.
@@ -188,6 +213,9 @@ Use as **Tabelas (Schedules)** nativas do Revit para montar quadros com esses pa
   área no plano local, UTM ou ambas; m² e/ou hectares.
 - Quadros de coordenadas e de segmentos, notas técnicas (sistema de referência, convenções e origem da coordenada).
 - Um arquivo por lote (opcional).
+- **Desmembramento**: por padrão gera **um memorial por lote resultante** (só individuais), cada um com a origem (lote desmembrado,
+  matrícula e área, lote remanescente e demais lotes) e a **numeração própria de vértices** (P-01… como nas pranchas individuais).
+  Também é possível gerar só o geral ou os dois.
 
 **Anuência de Confrontantes** – declaração de anuência (concordância com o limite) para cada confrontante do lote, com a descrição
 da divisa comum (vértices, azimutes, distâncias e coordenadas), campos de assinatura do confrontante e de testemunhas. Opcionalmente
@@ -195,6 +223,13 @@ inclui as vias (declaração do poder público).
 
 **Pranchas A4** – pranchas por situação, cada uma numa **cópia** da planta (o desenho original não é alterado):
 - *Situação atual* (todos juntos e/ou cada lote individualmente) e *Situação proposta* (total e/ou cada lote individualmente);
+- **pranchas com vários lotes (geral)** são de visualização: distâncias, nome e área de cada lote, **proprietário** e confrontantes –
+  **sem** números de vértice e **sem** azimutes;
+- **pranchas de um lote** têm a **numeração própria do lote** (P-01…), **todos os azimutes**, pontos nos vértices e o quadro de coordenadas;
+- **coordenada de referência**: escolha, para cada prancha, o vértice cuja coordenada vai no carimbo (lista ou *Escolher o ponto de
+  referência no desenho…*). O ponto é marcado no desenho com um triângulo vermelho ("PR" nas pranchas gerais);
+- **pranchas já geradas**: a tabela mostra se você **editou** a prancha depois de gerada (textos movidos, linhas, cotas…) e você escolhe
+  *Substituir*, *Manter a atual* (padrão para as editadas) ou *Nova versão ao lado*. Antes de substituir uma prancha editada o GeoPoint avisa;
 - sem operação (regularização, levantamento…): planta de situação dos lotes marcados;
 - folha A4 **retrato** (carimbo embaixo) ou **paisagem** (carimbo à direita), margens ABNT (25 mm à esquerda, 7 mm nas demais);
 - carimbo com título, situação, proprietário, imóvel, município/UF, matrícula, área, perímetro, coordenada de referência,
@@ -204,7 +239,7 @@ inclui as vias (declaração do poder público).
   **quadro de coordenadas** (prancha de um lote só: vértice, E, N, azimute, distância e confrontante);
 - a cópia da vista é girada para o mesmo norte usado nos azimutes e no Google Earth;
 - anotações, hachuras e vias de cada situação; as divisas internas que não pertencem à situação ficam ocultas na cópia.
-Para PDF use o recurso nativo do Revit (*Arquivo › Exportar › PDF*), em A4. Se preferir o seu carimbo (família), informe-o em
+As pranchas ficam **editáveis** no Revit; depois de revisar, exporte em PDF pelo recurso nativo (*Arquivo › Exportar › PDF*), em A4. Se preferir o seu carimbo (família), informe-o em
 Configurações e o GeoPoint coloca a vista e o quadro na prancha com o seu carimbo.
 
 **Google Earth / QGIS** – KMZ, KML e GeoJSON com os lotes coloridos por uso, **todos os vértices como pontos** (pasta *Vértices*,

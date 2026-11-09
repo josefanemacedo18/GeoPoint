@@ -124,7 +124,13 @@ public sealed class CmdReferencia : CommandBase
         }
 
         s.Project.Reference = r;
-        s.SaveProject("GeoPoint: definir referência");
+        using (var tr = new Transaction(s.Doc, "GeoPoint: definir referência"))
+        {
+            tr.Start();
+            ControlPointDrawer.RedrawAll(s);   // pontos importados acompanham a nova referência
+            ProjectStore.Save(s.Doc, s.Project);
+            tr.Commit();
+        }
 
         var ctx2 = s.NewContext();
         var utm = ctx2.Coords.ToCrs(a, CrsDef.Utm());
@@ -247,6 +253,85 @@ public sealed class CmdCaminhamento : CommandBase
             try { s.UiDoc.ShowElements(ids); } catch { }
         }
         Ui.Info("Caminhamento desenhado", $"{ids.Count} linha(s) criada(s) e selecionada(s). Use 'Reconhecer Lotes' para transformar o contorno em lote.");
+        return Result.Succeeded;
+    }
+}
+
+[Transaction(TransactionMode.Manual)]
+public sealed class CmdImportarKml : CommandBase
+{
+    protected override string Title => "Importar KML/KMZ";
+
+    protected override Result Run(GpSession s)
+    {
+        var view = s.ActiveView;
+        if (!ElementUtil.SupportsDetails(view) || view is ViewSheet || !ElementUtil.IsPlanLike(view))
+        {
+            Ui.Warn("Vista inadequada", "Abra a vista de planta onde os pontos devem aparecer.");
+            return Result.Cancelled;
+        }
+        var path = Ui.OpenFile("Importar pontos do Google Earth / QGIS", "KML/KMZ (*.kml;*.kmz)|*.kml;*.kmz", Folders.Default(s, ""));
+        if (path is null) return Result.Cancelled;
+        List<GeoPoint.Core.Export.KmlPoint> pts;
+        try { pts = GeoPoint.Core.Export.KmlReader.ReadPoints(path); }
+        catch (Exception ex) { Ui.Error("Arquivo inválido", "Não foi possível ler o arquivo: " + ex.Message, ex); return Result.Failed; }
+        if (pts.Count == 0) { Ui.Info("Sem pontos", "O arquivo não tem marcadores (pontos). Linhas e polígonos não são importados."); return Result.Cancelled; }
+
+        var w = new ImportKmlWindow(System.IO.Path.GetFileName(path), pts, s.Project.Reference.IsSet);
+        if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
+        var chosen = w.Selected;
+        string origem = System.IO.Path.GetFileName(path);
+        bool refChanged = false;
+
+        if (w.ClickMode)
+        {
+            var cp = w.ClickPoint!;
+            XYZ pick;
+            try
+            {
+                pick = s.UiDoc.Selection.PickPoint(ObjectSnapTypes.Endpoints | ObjectSnapTypes.Intersections | ObjectSnapTypes.Nearest,
+                    $"GeoPoint: clique no local do ponto \"{cp.Nome}\"");
+            }
+            catch (Autodesk.Revit.Exceptions.OperationCanceledException) { return Result.Cancelled; }
+            var a = RvtUnits.ToVec(pick);
+            var old = s.Project.Reference;
+            s.Project.Reference = new GeoReferenceRecord
+            {
+                IsSet = true, AnchorX = a.X, AnchorY = a.Y, AnchorZFeet = pick.Z, AnchorLabel = cp.Nome,
+                Lat = cp.Point.Lat, Lon = cp.Point.Lon, Height = cp.Point.Alt > 0 ? cp.Point.Alt : old.IsSet ? old.Height : 0,
+                InputText = $"KML/KMZ: {origem} – {cp.Nome}", InputKind = CrsKind.Geographic, InputDatum = DatumId.Wgs84,
+                Precision = PrecisionClass.GoogleMapsEarth,
+                Mode = OrientationMode.ViewUp, RotationRad = NorthGuard.ViewRotation(view), NorthConfirmed = true, SetAt = DateTime.Now,
+            };
+            refChanged = true;
+        }
+
+        var imported = new List<ControlPoint>();
+        foreach (var r in chosen)
+        {
+            var existing = s.Project.ControlPoints.FirstOrDefault(c => c.Origem == origem && c.Nome == r.Nome);
+            var cp = existing ?? new ControlPoint { Origem = origem };
+            cp.Nome = string.IsNullOrWhiteSpace(r.Nome) ? r.Point.Name : r.Nome.Trim();
+            cp.Lat = r.Point.Lat; cp.Lon = r.Point.Lon; cp.Altitude = r.Point.Alt;
+            if (existing is null) s.Project.ControlPoints.Add(cp);
+            imported.Add(cp);
+        }
+        int drawn;
+        using (var t = new Transaction(s.Doc, "GeoPoint: importar pontos"))
+        {
+            t.Start();
+            drawn = ControlPointDrawer.Draw(s, view, imported);
+            if (refChanged) ControlPointDrawer.RedrawAll(s);
+            ProjectStore.Save(s.Doc, s.Project);
+            t.Commit();
+        }
+        string msg = $"{drawn} ponto(s) importado(s) de {origem} na vista \"{view.Name}\"." +
+                     (refChanged ? $"\nO ponto \"{w.ClickPoint!.Nome}\" passou a ser o ponto de referência do projeto (o topo da tela é o norte)." : "") +
+                     "\n\nUse o cruzamento das cruzes laranja (snap de interseção) para desenhar as linhas de limite.";
+        var cmp = ControlPointCheck.Compare(s.NewContext()).Where(x => imported.Contains(x.Point) && x.Distance is not null).ToList();
+        if (cmp.Count > 0)
+            msg += "\n\nConferência com os vértices já desenhados:\n" + string.Join("\n", cmp.Take(12).Select(x => $"• {x.Point.Nome}: {x.VertexName} do {x.Lot!.DisplayName} a {Fmt.N(x.Distance!.Value, 2)} m"));
+        Ui.Info("Pontos importados", msg);
         return Result.Succeeded;
     }
 }

@@ -133,6 +133,10 @@ public sealed class AnnotationPlanOptions
     public double PadM { get; set; } = 0.1;
     /// <summary>Altura de uma linha de texto em relação à altura do texto.</summary>
     public double LineFactor { get; set; } = 1.5;
+    /// <summary>Proprietário mostrado no rótulo do lote (null = não mostrar).</summary>
+    public Func<LotRecord, string>? OwnerOf { get; set; }
+    /// <summary>Áreas já ocupadas (ex.: marcador do ponto de referência) que os textos devem evitar.</summary>
+    public List<Obb> Obstacles { get; set; } = new();
 }
 
 /// <summary>
@@ -217,6 +221,7 @@ public static class AnnotationPlanner
         var plan = new AnnotationPlan();
         var used = new HashSet<string>(existingKeys ?? new HashSet<string>());
         var cx = new Ctx { Margin = o.TextM * 0.12 };
+        cx.Placed.AddRange(o.Obstacles);
         foreach (var r in reports)
         {
             cx.Regions.Add(r.Region);
@@ -251,6 +256,8 @@ public static class AnnotationPlanner
             foreach (var rep in reports)
             {
                 string label = $"{(rep.Lot.IsRemanescente ? rep.Lot.DisplayName.ToUpperInvariant() : rep.Lot.DisplayName)}\n{fmt.Area(rep.AreaLocal)}";
+                string owner = o.OwnerOf?.Invoke(rep.Lot)?.Trim() ?? "";
+                if (owner.Length > 0) label += "\nProp.: " + (owner.Length > 42 ? owner[..41] + "…" : owner);
                 var lines = label.Split('\n');
                 double h = o.TextM * 1.25;
                 double hw = lines.Max(l => TextWidth(l, h, true)) / 2 + o.PadM;

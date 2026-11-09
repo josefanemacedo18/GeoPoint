@@ -213,7 +213,7 @@ public static class LotServices
         var sel = s.UiDoc.Selection.GetElementIds().Select(id => s.Doc.GetElement(id)?.UniqueId).Where(u => u is not null).ToHashSet();
         var res = new HashSet<string>();
         if (sel.Count == 0) return res;
-        foreach (var l in s.Project.Lots)
+        foreach (var l in s.Project.PhaseLots)
             if (l.AllSources().Any(u => sel.Contains(u))) res.Add(l.Id);
         return res;
     }

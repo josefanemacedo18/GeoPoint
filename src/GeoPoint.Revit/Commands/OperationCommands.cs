@@ -219,6 +219,7 @@ public sealed class CmdDesmembramento : CommandBase
             ctx2.Invalidate();
             var shown = newLots.Where(l => l.Status == LotStatus.Ativo).ToList();
             OpHelpers.Redraw(s, ctx2, annotViews, hatchViews, shown);
+            PhaseViews.RefreshAll(s);
             ProjectStore.Save(doc, s.Project);
             t.Commit();
         }
@@ -275,6 +276,7 @@ public sealed class CmdRemembramento : CommandBase
             var hatchViews = lots.SelectMany(l => l.Hatches.Select(a => a.ViewId)).Distinct().ToList();
             foreach (var l in lots) Annotator.ClearEverywhere(s.Doc, l);
             OpHelpers.Redraw(s, s.NewContext(), annotViews, hatchViews, new List<LotRecord> { result });
+            PhaseViews.RefreshAll(s);
             ProjectStore.Save(s.Doc, s.Project);
             t.Commit();
         }

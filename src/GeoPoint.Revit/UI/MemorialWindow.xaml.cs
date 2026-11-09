@@ -73,6 +73,10 @@ public partial class MemorialWindow : Window
     public MemorialKind Kind { get; private set; }
     public List<LotRecord> Lots { get; private set; } = new();
     public OperationRecord? Operation { get; private set; }
+    /// <summary>Desmembramento: true = memoriais individuais dos lotes resultantes.</summary>
+    public bool SplitIndividual { get; private set; }
+    /// <summary>Desmembramento: true = memorial geral.</summary>
+    public bool SplitGeneral { get; private set; }
     public DateTime MemorialDate { get; private set; } = DateTime.Today;
     public bool InfoChanged { get; private set; }
 
@@ -84,10 +88,11 @@ public partial class MemorialWindow : Window
         LotsPanel.Visibility = lots ? Visibility.Visible : Visibility.Collapsed;
         OperationPanel.Visibility = op ? Visibility.Visible : Visibility.Collapsed;
         PlatHint.Visibility = KindPlat.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        SplitModePanel.Visibility = KindSplit.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
         if (op)
         {
             var type = KindSplit.IsChecked == true ? OperationType.Desmembramento : OperationType.Remembramento;
-            var ops = _project.Operations.Where(o => o.Type == type).OrderByDescending(o => o.Date).ToList();
+            var ops = _project.PhaseOperations.Where(o => o.Type == type).OrderByDescending(o => o.Date).ToList();
             Operations.ItemsSource = ops;
             Operations.SelectedIndex = ops.Count > 0 ? 0 : -1;
             OperationHint.Text = ops.Count == 0
@@ -107,6 +112,8 @@ public partial class MemorialWindow : Window
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
+        SplitIndividual = SplitMode.SelectedIndex != 1;
+        SplitGeneral = SplitMode.SelectedIndex != 0;
         if (!int.TryParse(Digits.Text.Trim(), out int digits) || digits < 1 || digits > 5)
         {
             Fmt.Msg("Dígitos dos vértices: informe de 1 a 5.", icon: MessageBoxImage.Warning);
@@ -134,7 +141,7 @@ public partial class MemorialWindow : Window
         else
         {
             Kind = MemorialKind.Loteamento;
-            Lots = _project.Lots.Where(l => l.Status == LotStatus.Ativo || l.Uso == LotUse.Gleba).ToList();
+            Lots = _project.PhaseLots.Where(l => l.Status == LotStatus.Ativo || l.Uso == LotUse.Gleba).ToList();
             if (Lots.Count == 0) { Fmt.Msg("Não há lotes no projeto."); return; }
         }
 

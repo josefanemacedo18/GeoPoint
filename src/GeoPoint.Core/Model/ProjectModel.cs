@@ -265,6 +265,11 @@ public sealed class ViaRecord
     public double Calcada { get; set; } = 2.5;
     /// <summary>Prolongamento das pontas além da última testada (m), quando não há cruzamento.</summary>
     public double Prolongamento { get; set; }
+    /// <summary>
+    /// Linhas do meio-fio do lado dos lotes, selecionadas no desenho (coordenadas internas, m). Quando informadas,
+    /// a rua é desenhada a partir delas: a pista (Largura) vai do meio-fio até o meio-fio oposto.
+    /// </summary>
+    public List<List<PointDto>> MeioFio { get; set; } = new();
     public override string ToString() => Nome;
 }
 
@@ -300,6 +305,8 @@ public sealed class HistoryEntry
 public sealed class LotRecord
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    /// <summary>Fase do projeto a que o lote pertence.</summary>
+    public string FaseId { get; set; } = "";
     public string Nome { get; set; } = "";
     public string Quadra { get; set; } = "";
     public string Numero { get; set; } = "";
@@ -478,6 +485,8 @@ public sealed class ProjectInfo
 public sealed class OperationRecord
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    /// <summary>Fase em que a operação foi feita.</summary>
+    public string FaseId { get; set; } = "";
     public OperationType Type { get; set; }
     public DateTime Date { get; set; } = DateTime.Now;
     public List<string> ParentIds { get; set; } = new();
@@ -492,6 +501,60 @@ public sealed class OperationRecord
     public string Label => $"{(Type == OperationType.Desmembramento ? "Desmembramento" : Type == OperationType.Remembramento ? "Remembramento" : "Parcelamento")} – {Date:dd/MM/yyyy HH:mm}";
 }
 
+/// <summary>
+/// Fase do projeto (ex.: 0 – Situação atual, 1 – Remembramento, 2 – Desmembramento). Cada fase parte dos lotes ativos
+/// da fase anterior e tem seus próprios lotes, operações, numeração de vértices (começa do zero), vistas e pranchas.
+/// </summary>
+public sealed class FaseRecord
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public int Numero { get; set; }
+    public string Nome { get; set; } = "Situação atual";
+    /// <summary>Situação do processo nesta fase (Regularização, Desmembramento...).</summary>
+    public string Situacao { get; set; } = "";
+    public string BaseFaseId { get; set; } = "";
+    public DateTime Created { get; set; } = DateTime.Now;
+    public string Notes { get; set; } = "";
+    /// <summary>Vistas de trabalho da fase (UniqueId).</summary>
+    public List<string> ViewIds { get; set; } = new();
+    /// <summary>Linhas ocultadas pelo GeoPoint em cada vista da fase (vista → elementos).</summary>
+    public Dictionary<string, List<string>> HiddenByView { get; set; } = new();
+    /// <summary>Registro de vértices da fase.</summary>
+    public List<VertexRecord> Vertices { get; set; } = new();
+    public Dictionary<string, int> QuadraVertexCounters { get; set; } = new();
+
+    [JsonIgnore]
+    public string Label => $"Fase {Numero} – {Nome}";
+}
+
+/// <summary>Ponto de controle importado (KML/KMZ, GPS): coordenadas geodésicas SIRGAS 2000/WGS 84.</summary>
+public sealed class ControlPoint
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Nome { get; set; } = "";
+    public string Descricao { get; set; } = "";
+    public double Lat { get; set; }
+    public double Lon { get; set; }
+    public double? Altitude { get; set; }
+    /// <summary>Arquivo de origem.</summary>
+    public string Origem { get; set; } = "";
+    /// <summary>Elementos desenhados (por vista).</summary>
+    public List<AnnotationRecord> Drawings { get; set; } = new();
+}
+
+/// <summary>Prancha gerada pelo GeoPoint (para avisar antes de substituir uma prancha editada).</summary>
+public sealed class GeneratedSheet
+{
+    public string Key { get; set; } = "";
+    public string SheetId { get; set; } = "";
+    public List<string> ViewIds { get; set; } = new();
+    /// <summary>Impressão digital do conteúdo logo após a geração.</summary>
+    public string Fingerprint { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string FaseId { get; set; } = "";
+    public DateTime Created { get; set; } = DateTime.Now;
+}
+
 /// <summary>Dados do GeoPoint gravados no documento do Revit.</summary>
 public sealed class ParcelProject
 {
@@ -499,27 +562,86 @@ public sealed class ParcelProject
     public GeoReferenceRecord Reference { get; set; } = new();
     public SharedFrame Frame { get; set; } = new();
     public ProjectInfo Info { get; set; } = new();
+    /// <summary>Lotes de todas as fases (use <see cref="PhaseLots"/> para os da fase ativa).</summary>
     public List<LotRecord> Lots { get; set; } = new();
     public List<OperationRecord> Operations { get; set; } = new();
-    /// <summary>Registro único de vértices (numeração estável entre operações).</summary>
-    public List<VertexRecord> Vertices { get; set; } = new();
+    public List<FaseRecord> Fases { get; set; } = new();
+    public string ActiveFaseId { get; set; } = "";
+    /// <summary>Registro de vértices de versões anteriores (migrado para a Fase 0).</summary>
+    [JsonPropertyName("Vertices")]
+    public List<VertexRecord>? LegacyVertices { get; set; }
+    [JsonPropertyName("QuadraVertexCounters")]
+    public Dictionary<string, int>? LegacyQuadraCounters { get; set; }
     /// <summary>Desenhos esquemáticos de vias por vista (elementos criados).</summary>
     public List<AnnotationRecord> StreetDrawings { get; set; } = new();
-    /// <summary>Próximo número de vértice em cada quadra.</summary>
-    public Dictionary<string, int> QuadraVertexCounters { get; set; } = new();
     public List<ViaRecord> Vias { get; set; } = new();
     public List<CruzamentoRecord> Cruzamentos { get; set; } = new();
+    public List<ControlPoint> ControlPoints { get; set; } = new();
+    public List<GeneratedSheet> Sheets { get; set; } = new();
 
     public ViaRecord? FindVia(string? id) => string.IsNullOrWhiteSpace(id) ? null : Vias.FirstOrDefault(v => v.Id == id);
 
-    public IEnumerable<LotRecord> ActiveLots => Lots.Where(l => l.Status == LotStatus.Ativo);
+    /// <summary>Fase ativa (cria a Fase 0 e migra dados antigos quando necessário).</summary>
+    [JsonIgnore]
+    public FaseRecord Fase
+    {
+        get
+        {
+            if (Fases.Count == 0)
+            {
+                var f0 = new FaseRecord { Numero = 0, Nome = "Situação atual", Situacao = Info?.Situacao ?? "" };
+                if (LegacyVertices is { Count: > 0 }) f0.Vertices = LegacyVertices;
+                if (LegacyQuadraCounters is { Count: > 0 }) f0.QuadraVertexCounters = LegacyQuadraCounters;
+                Fases.Add(f0);
+                ActiveFaseId = f0.Id;
+            }
+            LegacyVertices = null;
+            LegacyQuadraCounters = null;
+            var f = Fases.FirstOrDefault(x => x.Id == ActiveFaseId);
+            if (f is null)
+            {
+                f = Fases.OrderBy(x => x.Numero).First();
+                ActiveFaseId = f.Id;
+            }
+            // Lotes e operações sem fase (dados antigos ou recém-criados) pertencem à fase ativa.
+            foreach (var l in Lots) if (string.IsNullOrEmpty(l.FaseId)) l.FaseId = f.Id;
+            foreach (var o in Operations) if (string.IsNullOrEmpty(o.FaseId)) o.FaseId = f.Id;
+            return f;
+        }
+    }
+
+    public FaseRecord? FindFase(string? id) => string.IsNullOrEmpty(id) ? null : Fases.FirstOrDefault(f => f.Id == id);
+
+    /// <summary>Registro de vértices da fase ativa.</summary>
+    [JsonIgnore]
+    public List<VertexRecord> Vertices => Fase.Vertices;
+
+    /// <summary>Próximo número de vértice em cada quadra (fase ativa).</summary>
+    [JsonIgnore]
+    public Dictionary<string, int> QuadraVertexCounters => Fase.QuadraVertexCounters;
+
+    /// <summary>Lotes da fase ativa (ativos e arquivados).</summary>
+    [JsonIgnore]
+    public IEnumerable<LotRecord> PhaseLots { get { var id = Fase.Id; return Lots.Where(l => l.FaseId == id); } }
+
+    /// <summary>Lotes ativos da fase ativa.</summary>
+    [JsonIgnore]
+    public IEnumerable<LotRecord> ActiveLots => PhaseLots.Where(l => l.Status == LotStatus.Ativo);
+
+    /// <summary>Operações da fase ativa.</summary>
+    [JsonIgnore]
+    public IEnumerable<OperationRecord> PhaseOperations { get { var id = Fase.Id; return Operations.Where(o => o.FaseId == id); } }
+
+    /// <summary>Situação do processo na fase ativa (ou a dos dados do imóvel).</summary>
+    [JsonIgnore]
+    public string Situacao => string.IsNullOrWhiteSpace(Fase.Situacao) ? Info?.Situacao ?? "" : Fase.Situacao;
 
     public LotRecord? FindLot(string id) => Lots.FirstOrDefault(l => l.Id == id);
 
     public string NextLotName(string prefix = "Lote")
     {
         int max = 0;
-        foreach (var l in Lots)
+        foreach (var l in PhaseLots)
         {
             var n = l.Numero;
             if (int.TryParse(n, out int k)) max = Math.Max(max, k);

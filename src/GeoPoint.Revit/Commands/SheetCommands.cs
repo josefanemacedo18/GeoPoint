@@ -6,9 +6,11 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using GeoPoint.Core.Calc;
+using GeoPoint.Core.Geometry;
 using GeoPoint.Core.Memorial;
 using GeoPoint.Core.Model;
 using GeoPoint.Core.Sheets;
+using GeoPoint.Core.Urban;
 using GeoPoint.Revit.Infrastructure;
 using GeoPoint.Revit.UI;
 
@@ -22,7 +24,7 @@ public sealed class CmdPranchas : CommandBase
     protected override Result Run(GpSession s)
     {
         if (!s.Project.Lots.Any()) { Ui.Info("Nenhum lote cadastrado", "Use 'Reconhecer Lotes' primeiro."); return Result.Cancelled; }
-        return GenerateForOperation(s, s.Project.Operations.OrderByDescending(o => o.Date).FirstOrDefault(), ask: true) ? Result.Succeeded : Result.Cancelled;
+        return GenerateForOperation(s, s.Project.PhaseOperations.OrderByDescending(o => o.Date).FirstOrDefault(), ask: true) ? Result.Succeeded : Result.Cancelled;
     }
 
     /// <summary>Abre a janela de pranchas (pré-selecionando a operação) e gera as pranchas.</summary>
@@ -35,19 +37,77 @@ public sealed class CmdPranchas : CommandBase
             Ui.Warn("Vista inadequada", "Abra a vista de planta onde os lotes estão desenhados e use 'Pranchas A4'.");
             return false;
         }
-        var rows = PickerRows.Build(s, false, l => l.Status == LotStatus.Ativo || s.Project.Operations.Any(o => o.ParentIds.Contains(l.Id) || o.ChildIds.Contains(l.Id)));
-        var w = new PranchasWindow(s.Project, s.Settings.Sheets, rows, op);
-        if (Ui.ShowDialog(w, s.MainWindow) != true) return false;
-        w.Apply(s.Settings.Sheets, s.Project.Info);
+        var state = new PranchasState { OpId = op?.Id, UseOp = op is not null };
+        // Opções de ponto de referência por prancha (chave → ponto do desenho).
+        var points = new Dictionary<string, Vec2>();
+        var localSettings = s.Settings.Clone();
+        localSettings.Naming.Numbering = VertexNumbering.Lote;
+        var local = new ProjectContext(s.Project, localSettings);
+        List<IdText> RefOptions(SheetSpec sp)
+        {
+            var list = new List<IdText> { new("", sp.Detailed ? "Padrão (P-01 do lote)" : "Padrão (ponto de referência do projeto)") };
+            var seen = new HashSet<string>();
+            if (!sp.Detailed && s.Project.Reference.IsSet)
+            {
+                var a = new Vec2(s.Project.Reference.AnchorX, s.Project.Reference.AnchorY);
+                points["anchor"] = a;
+                list.Add(new IdText("anchor", "Ponto de referência do projeto" + (s.Project.Reference.AnchorLabel.Length > 0 ? $" ({s.Project.Reference.AnchorLabel})" : "")));
+            }
+            foreach (var id in sp.LotIds)
+            {
+                var lot = s.Project.FindLot(id);
+                if (lot is null) continue;
+                try
+                {
+                    foreach (var v in local.Report(lot).Vertices)
+                    {
+                        string k = AnnotationPlanner.VertexKey(v.Internal);
+                        points[k] = v.Internal;
+                        if (seen.Add(k)) list.Add(new IdText(k, sp.Detailed ? v.Name : $"{lot.DisplayName} – {v.Name}"));
+                    }
+                }
+                catch { }
+            }
+            return list;
+        }
+        (bool, bool) Existing(SheetSpec sp)
+        {
+            var g = SheetRegistry.Find(s, sp.Key);
+            return g is null ? (false, false) : (true, SheetRegistry.IsEdited(s, g));
+        }
+
+        PranchasWindow w;
+        while (true)
+        {
+            var rows = PickerRows.Build(s, false, l => l.Status == LotStatus.Ativo || s.Project.PhaseOperations.Any(o => o.ParentIds.Contains(l.Id) || o.ChildIds.Contains(l.Id)));
+            w = new PranchasWindow(s.Project, s.Settings.Sheets, rows, op, state, RefOptions, Existing);
+            if (Ui.ShowDialog(w, s.MainWindow) != true || w.Action == PranchasAction.Cancel) return false;
+            w.Apply(s.Settings.Sheets, s.Project.Info);
+            if (w.Action == PranchasAction.Generate) break;
+            // Escolher o ponto de referência no desenho.
+            var spec = w.Specs.FirstOrDefault(x => x.Key == state.PickKey);
+            if (spec is null) continue;
+            try
+            {
+                var pick = RvtUnits.ToVec(s.UiDoc.Selection.PickPoint(Autodesk.Revit.UI.Selection.ObjectSnapTypes.Endpoints | Autodesk.Revit.UI.Selection.ObjectSnapTypes.Intersections,
+                    $"GeoPoint: clique no vértice de referência para \"{spec.Title}\""));
+                var opts = RefOptions(spec).Where(o => o.Id.Length > 0 && points.ContainsKey(o.Id)).ToList();
+                var best = opts.OrderBy(o => points[o.Id].DistanceTo(pick)).FirstOrDefault();
+                if (best is null || points[best.Id].DistanceTo(pick) > 1.0)
+                    Ui.Warn("Ponto de referência", "O ponto clicado não é um vértice dos lotes desta prancha (tolerância de 1 m).");
+                else state.RefByKey[spec.Key] = best.Id;
+            }
+            catch (Autodesk.Revit.Exceptions.OperationCanceledException) { }
+            catch (Autodesk.Revit.Exceptions.InvalidOperationException) { Ui.Warn("Vista sem plano de trabalho", "Abra uma vista de planta para clicar no ponto."); }
+        }
         try { s.SaveSettings(); } catch { }
         var st = s.Settings.Sheets;
         var specs = w.Specs;
+        foreach (var sp in specs)
+            if (state.RefByKey.TryGetValue(sp.Key, out var k) && k.Length > 0 && points.TryGetValue(k, out var pt)) sp.RefPoint = pt;
+        if (s.Project.Fases.Count > 1)
+            foreach (var sp in specs) sp.Subtitle = string.Join(" – ", new[] { sp.Subtitle, s.Project.Fase.Label.ToUpperInvariant() }.Where(x => x.Length > 0));
         var chosenOp = w.Operation;
-
-        // Pranchas anteriores da mesma operação.
-        var old = chosenOp?.GeneratedIds.Select(u => ElementUtil.ByUniqueId(s.Doc, u)).Where(e => e is not null).Select(e => e!).ToList() ?? new List<Element>();
-        bool replace = old.Count > 0 && Ui.Confirm("Pranchas existentes",
-            $"Esta operação já tem {old.OfType<ViewSheet>().Count()} prancha(s) gerada(s) pelo GeoPoint. Substituir (apagar as anteriores e as vistas copiadas)?", "Substituir", "Manter e criar novas");
 
         var builder = new SheetBuilder(s, source, new SheetBuildOptions
         {
@@ -60,14 +120,6 @@ public sealed class CmdPranchas : CommandBase
         using (var t = new Transaction(s.Doc, "GeoPoint: pranchas A4"))
         {
             t.Start();
-            if (replace)
-            {
-                foreach (var e in old.OfType<ViewSheet>().Cast<Element>().Concat(old.Where(e => e is not ViewSheet)))
-                {
-                    try { if (e.IsValidObject) s.Doc.Delete(e.Id); } catch { }
-                }
-                chosenOp!.GeneratedIds.Clear();
-            }
             sheets = builder.Build(specs);
             if (chosenOp is not null) chosenOp.GeneratedIds.AddRange(builder.Created);
             ProjectStore.Save(s.Doc, s.Project);
@@ -77,10 +129,11 @@ public sealed class CmdPranchas : CommandBase
         {
             try { s.UiDoc.ActiveView = sheets[0]; } catch { }
         }
-        string msg = $"{sheets.Count} prancha(s) criada(s): {string.Join(", ", sheets.Select(x => x.SheetNumber))}.";
+        string msg = $"{sheets.Count} prancha(s) criada(s): {string.Join(", ", sheets.Select(x => x.SheetNumber))}." +
+                     (builder.Kept > 0 ? $"\n{builder.Kept} prancha(s) existente(s) mantida(s) como estavam." : "");
         if (builder.Warnings.Count > 0) Ui.Warn("Pranchas geradas com avisos", msg + "\n\n" + string.Join("\n", builder.Warnings.Distinct().Take(20)));
-        else Ui.Info("Pranchas geradas", msg + "\n\nPara imprimir/exportar em PDF use o recurso nativo do Revit (Arquivo › Exportar › PDF), em folha A4.");
-        return sheets.Count > 0;
+        else Ui.Info("Pranchas geradas", msg + "\n\nAs pranchas ficam editáveis no Revit. Depois de revisar, exporte em PDF pelo recurso nativo (Arquivo › Exportar › PDF), em folha A4.");
+        return sheets.Count > 0 || builder.Kept > 0;
     }
 
     /// <summary>Vista de planta com os lotes: a vista ativa ou, se for prancha, a primeira planta usada pelos lotes.</summary>
@@ -88,7 +141,8 @@ public sealed class CmdPranchas : CommandBase
     {
         var v = s.ActiveView;
         if (ElementUtil.IsPlanLike(v) && v is not ViewSheet) return v;
-        foreach (var lot in s.Project.Lots)
+        if (PhaseViews.ActivePhaseView(s) is View pv && ElementUtil.IsPlanLike(pv)) return pv;
+        foreach (var lot in s.Project.PhaseLots)
             if (ElementUtil.ByUniqueId(s.Doc, lot.SourceViewId) is View sv && ElementUtil.IsPlanLike(sv)) return sv;
         return null;
     }
@@ -194,12 +248,77 @@ public sealed class CmdVias : CommandBase
 {
     protected override string Title => "Vias";
 
+    /// <summary>Seleção no desenho: linhas das testadas e linha(s) do meio-fio do lado dos lotes.</summary>
+    private static void PickStreet(GpSession s, ProjectContext ctx, ViaRecord via)
+    {
+        List<Curve2> Pick(string prompt)
+        {
+            try
+            {
+                var refs = s.UiDoc.Selection.PickObjects(Autodesk.Revit.UI.Selection.ObjectType.Element, new LineAndCadFilter(false), prompt);
+                var els = refs.Select(r => s.Doc.GetElement(r)).Where(e => e is not null).Select(e => e!).ToList();
+                return GeometryReader.Read(s.Doc, s.ActiveView, els, null, new List<string>()).Select(c => c.Curve).ToList();
+            }
+            catch (Autodesk.Revit.Exceptions.OperationCanceledException) { return new List<Curve2>(); }
+        }
+        // 1) Testadas: divisas de lotes cobertas pelas linhas selecionadas.
+        var testadas = Pick($"GeoPoint – {via.Nome}: selecione as linhas das TESTADAS (divisas de frente para a rua) e clique em Concluir");
+        int marked = 0;
+        var frontCurves = new List<Curve2>();
+        if (testadas.Count > 0)
+            foreach (var lot in s.Project.ActiveLots)
+            {
+                LotReport rep;
+                try { rep = ctx.Report(lot); } catch { continue; }
+                foreach (var sg in rep.Segments)
+                {
+                    bool covered = new[] { 0.1, 0.5, 0.9 }.All(t => { var p = sg.Curve.PointAt(t); return testadas.Any(c => c.DistanceTo(p) <= 0.02); });
+                    if (!covered) continue;
+                    var info = ProjectContext.FindInfo(lot, sg.Curve.Mid);
+                    if (info is null) { info = new EdgeInfo { MX = sg.Curve.Mid.X, MY = sg.Curve.Mid.Y }; lot.EdgeInfos.Add(info); }
+                    info.Testada = true;
+                    info.Tipo = ConfrontanteTipo.Via;
+                    info.ViaId = via.Id;
+                    info.LotId = "";
+                    frontCurves.Add(sg.Curve);
+                    marked++;
+                }
+            }
+        if (testadas.Count > 0 && marked == 0)
+            Ui.Warn("Testadas", "Nenhuma divisa de lote coincide com as linhas selecionadas. Selecione as linhas que formam a frente dos lotes.");
+        // 2) Meio-fio (lado dos lotes).
+        var curbs = Pick($"GeoPoint – {via.Nome}: selecione a(s) linha(s) do MEIO-FIO do lado dos lotes e clique em Concluir (Esc = manter as atuais)");
+        if (curbs.Count > 0)
+        {
+            via.MeioFio = curbs.Select(c => c.Densify(0.02).Select(p => new PointDto { X = p.X, Y = p.Y }).ToList()).ToList();
+            via.Prolongamento = 0;
+        }
+        // Calçada medida entre testadas e meio-fio.
+        if (frontCurves.Count == 0)
+            frontCurves = s.Project.ActiveLots.SelectMany(l => { try { return ctx.Report(l).Segments.Where(x => x.ConfrontanteViaId == via.Id).Select(x => x.Curve); } catch { return Enumerable.Empty<Curve2>(); } }).ToList();
+        if (via.MeioFio.Count > 0 && frontCurves.Count > 0)
+        {
+            double c = StreetSchematic.MeasureCalcada(frontCurves, via.MeioFio.Select(m => m.Select(p => p.ToVec()).ToList()));
+            if (!double.IsNaN(c) && c > 0.05) via.Calcada = Math.Round(c, 3);
+        }
+        string msg = $"Via \"{via.Nome}\": {marked} testada(s) marcada(s)" + (via.MeioFio.Count > 0 ? $", meio-fio com {via.MeioFio.Count} linha(s), calçada medida de {Fmt.N(via.Calcada, 2)} m." : ".");
+        Logger.Info(msg);
+        Ui.Info("Vias", msg + "\n\nConfira na janela e clique em Salvar para desenhar.");
+    }
+
     protected override Result Run(GpSession s)
     {
         if (!s.Project.ActiveLots.Any()) { Ui.Info("Nenhum lote ativo", "Use 'Reconhecer Lotes' primeiro."); return Result.Cancelled; }
+        ViasWindow w;
         var ctx = s.NewContext();
-        var w = new ViasWindow(s.Project, ctx, s.Settings.Streets);
-        if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
+        while (true)
+        {
+            ctx = s.NewContext();
+            w = new ViasWindow(s.Project, ctx, s.Settings.Streets);
+            if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
+            if (w.PickVia is null) break;
+            PickStreet(s, ctx, w.PickVia);
+        }
         var view = s.ActiveView;
         bool draw = w.DrawNow;
         if (draw && (!ElementUtil.SupportsDetails(view) || view is ViewSheet))

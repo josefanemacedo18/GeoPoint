@@ -78,6 +78,20 @@ public static class ProjectStore
         p.Info ??= new GeoPoint.Core.Model.ProjectInfo();
         p.Lots ??= new();
         p.Operations ??= new();
+        p.Fases ??= new();
+        p.Vias ??= new();
+        p.Cruzamentos ??= new();
+        p.ControlPoints ??= new();
+        p.Sheets ??= new();
+        p.StreetDrawings ??= new();
+        foreach (var f in p.Fases)
+        {
+            f.ViewIds ??= new();
+            f.HiddenByView ??= new();
+            f.Vertices ??= new();
+            f.QuadraVertexCounters ??= new();
+        }
+        _ = p.Fase; // migra projetos antigos para a Fase 0
         foreach (var l in p.Lots)
         {
             l.Outer ??= new();
@@ -95,6 +109,7 @@ public static class ProjectStore
     /// <summary>Deve ser chamado dentro de uma transação aberta.</summary>
     public static void Save(Document doc, ParcelProject project)
     {
+        _ = project.Fase; // lotes e operações novos ficam na fase ativa
         var schema = GetSchema();
         var ds = Find(doc, schema) ?? DataStorage.Create(doc);
         var entity = new Entity(schema);
