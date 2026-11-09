@@ -7,6 +7,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Selection;
 using GeoPoint.Core.Calc;
+using GeoPoint.Core.Geometry;
 using GeoPoint.Core.Memorial;
 using GeoPoint.Core.Model;
 using GeoPoint.Core.Settings;
@@ -49,34 +50,37 @@ public sealed class CmdAnotar : CommandBase
         var a = s.Settings.Annotation;
         var opts = new List<OptionItem>
         {
-            new("edges", "Divisas: azimute/rumo e distância", a.Edges),
-            new("angle", "Incluir o azimute/rumo nas divisas (desmarcado: só a distância)", a.EdgeAzimuth),
+            new("edges", "Divisas: distância", a.Edges),
+            new("angle", "Divisas: azimute/rumo (abaixo da distância)", a.EdgeAzimuth),
+            new("out", "Textos das divisas do lado de fora do lote", a.TextOutside),
             new("vert", "Nomes dos vértices", a.Vertices),
+            new("dots", "Ponto preenchido em cada vértice", a.VertexDots),
+            new("conf", "Confrontantes: nome e extensão (cota vermelha com marcas tracejadas)", a.Confrontantes),
             new("area", "Nome e área no centro do lote", a.AreaLabel),
+            new("opaque", "Fundo opaco nos textos (legíveis sobre hachuras)", a.OpaqueText),
             new("size", "Altura do texto no papel (mm)", a.TextSizeMm),
             new("offset", "Afastamento das linhas no papel (mm)", a.OffsetMm),
+            new("dot", "Diâmetro do ponto no papel (mm)", a.DotMm),
         };
-        var w = new LotPickerWindow("Anotar lotes na vista atual", $"Vista: {view.Name} (escala 1:{view.Scale}). Anotações anteriores do GeoPoint nesta vista são substituídas.",
+        var w = new LotPickerWindow("Anotar lotes na vista atual", $"Vista: {view.Name} (escala 1:{view.Scale}). Anotações anteriores do GeoPoint nesta vista são substituídas. Divisas e vértices compartilhados entre os lotes marcados são anotados uma vez só.",
             PickerRows.Build(s, true), opts, "Anotar");
         if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
-        a.Edges = w.Option("edges"); a.EdgeAzimuth = w.Option("angle"); a.Vertices = w.Option("vert"); a.AreaLabel = w.Option("area");
+        a.Edges = w.Option("edges"); a.EdgeAzimuth = w.Option("angle"); a.TextOutside = w.Option("out"); a.Vertices = w.Option("vert");
+        a.VertexDots = w.Option("dots"); a.Confrontantes = w.Option("conf"); a.AreaLabel = w.Option("area"); a.OpaqueText = w.Option("opaque");
         a.TextSizeMm = Math.Clamp(w.Number("size"), 0.5, 20);
         a.OffsetMm = Math.Clamp(w.Number("offset"), 0, 50);
+        a.DotMm = Math.Clamp(w.Number("dot"), 0.2, 10);
         try { s.SaveSettings(); } catch { }
 
         var ctx = s.NewContext();
         var fmt = new ValueFormatter(s.Settings.Format);
-        var o = new Annotator.Options { Edges = a.Edges, EdgeAngle = a.EdgeAzimuth, Vertices = a.Vertices, Area = a.AreaLabel, TextMm = a.TextSizeMm, OffsetMm = a.OffsetMm, Font = a.Font };
-        int total = 0;
+        var o = Annotator.Options.From(a);
+        int total;
         var failed = new List<string>();
         using (var t = new Transaction(s.Doc, "GeoPoint: anotar lotes"))
         {
             t.Start();
-            foreach (var lot in w.SelectedLots)
-            {
-                try { total += Annotator.Annotate(s.Doc, view, lot, ctx.Report(lot), fmt, o); }
-                catch (Exception ex) { Logger.Error("Anotar " + lot.DisplayName, ex); failed.Add($"{lot.DisplayName}: {ex.Message}"); }
-            }
+            total = Annotator.Annotate(s.Doc, view, w.SelectedLots, ctx, fmt, o, failed);
             ProjectStore.Save(s.Doc, s.Project);
             t.Commit();
         }
@@ -221,6 +225,15 @@ public sealed class CmdVerificar : CommandBase
             Nivel = i.Severity switch { DiagnosticSeverity.Error => "Erro", DiagnosticSeverity.Warning => "Atenção", _ => "Info" },
             Categoria = i.Category, Lote = i.LotName, Mensagem = i.Message, LotId = i.LotId,
         }).ToList();
+
+        // Orientação: para onde o topo da vista atual aponta.
+        string viewNorth = CmdReferencia.ViewNorthText(s, out _);
+        if (!string.IsNullOrWhiteSpace(viewNorth))
+            rows.Add(new ReportRow
+            {
+                Nivel = "Info", Categoria = "Norte",
+                Mensagem = viewNorth + $" Modo de orientação da referência: {s.Project.Reference.Mode}. Rotação usada: {Fmt.N(AngleUtil.ToDeg(ctx.Coords.Rotation), 4)}°.",
+            });
 
         // Verificações que dependem do desenho do Revit.
         var sync = LotServices.ComputeSync(s, s.Project.ActiveLots);

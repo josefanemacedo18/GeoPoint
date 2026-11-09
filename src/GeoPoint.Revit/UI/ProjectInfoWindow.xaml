@@ -27,7 +27,7 @@
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 <Grid.RowDefinitions>
-                    <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                    <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
                 </Grid.RowDefinitions>
                 <Label Grid.Row="0" Content="Proprietário(s):"/>
                 <TextBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="4" x:Name="Proprietario"/>
@@ -67,6 +67,8 @@
                 <TextBox Grid.Row="9" Grid.Column="1" x:Name="RrtArt"/>
                 <Label Grid.Row="9" Grid.Column="3" Content="Perfil urbanístico:"/>
                 <ComboBox Grid.Row="9" Grid.Column="4" x:Name="Profile" ToolTip="Parâmetros (área mínima, testada etc.) usados no quadro de áreas e na verificação. Edite os perfis em Configurações."/>
+                <Label Grid.Row="10" Content="Situação:"/>
+                <ComboBox Grid.Row="10" Grid.Column="1" x:Name="Situacao" IsEditable="True" ToolTip="Aparece no memorial (subtítulo) e no carimbo da prancha. Escolha ou digite outra."/>
             </Grid>
         </ScrollViewer>
     </DockPanel>

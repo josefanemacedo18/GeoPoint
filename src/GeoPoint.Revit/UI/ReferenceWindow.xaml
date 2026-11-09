@@ -78,6 +78,8 @@
                     <StackPanel>
                         <RadioButton x:Name="OriProject" GroupName="ori" IsChecked="True" Content="Usar o norte verdadeiro definido no projeto (recomendado)"/>
                         <TextBlock x:Name="ProjectNorthInfo" Style="{StaticResource Hint}" Margin="22,0,0,4"/>
+                        <RadioButton x:Name="OriView" GroupName="ori" Content="O topo da vista atual é o norte (desenho feito com o norte para cima)"/>
+                        <TextBlock x:Name="ViewNorthInfo" Style="{StaticResource Hint}" Margin="22,0,0,4"/>
                         <RadioButton x:Name="OriEdge" GroupName="ori" Content="Informar o azimute de uma linha que parte deste ponto"/>
                         <StackPanel Orientation="Horizontal" Margin="22,0,0,4">
                             <Label Content="Azimute verdadeiro:"/>

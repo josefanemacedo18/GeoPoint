@@ -1,0 +1,116 @@
+<Window x:Class="GeoPoint.Revit.UI.ViasWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Name="Root"
+        Title="GeoPoint – Vias" Width="980" Height="680" MinWidth="780" MinHeight="520"
+        FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GeoPoint.Revit;component/UI/Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <DockPanel Margin="14">
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource H1}" Text="Vias (ruas confrontantes)"/>
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Text="1) Cadastre as vias. 2) Em 'Testadas', escolha a via de cada divisa voltada para a rua (a via passa a ser o confrontante da divisa, como no memorial). 3) Em esquinas, cadastre o cruzamento (2, 3 ou 4 vias). O desenho é esquemático: leito da rua, calçadas e o nome da rua no meio."/>
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="False">
+            <CheckBox x:Name="Draw" DockPanel.Dock="Left" IsChecked="True" Content="Desenhar as vias na vista atual ao salvar" VerticalAlignment="Center"/>
+            <Button DockPanel.Dock="Right" Content="Cancelar" IsCancel="True"/>
+            <Button DockPanel.Dock="Right" Content="Salvar" Style="{StaticResource Primary}" Click="Ok_Click" IsDefault="True"/>
+        </DockPanel>
+        <TabControl>
+            <TabItem Header="Vias">
+                <DockPanel Margin="6">
+                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                        <Button Margin="0" Content="Adicionar via" Click="AddVia_Click"/>
+                        <Button Content="Remover via" Click="RemoveVia_Click"/>
+                    </StackPanel>
+                    <DataGrid x:Name="ViasGrid" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Single">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Nome da via" Binding="{Binding Nome, UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                            <DataGridTextColumn Header="Largura do leito (m)" Binding="{Binding Largura}" Width="130"/>
+                            <DataGridTextColumn Header="Calçada (m)" Binding="{Binding Calcada}" Width="100"/>
+                            <DataGridTextColumn Header="Prolongamento nas pontas (m)" Binding="{Binding Prolongamento}" Width="180"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+            <TabItem Header="Testadas">
+                <DockPanel Margin="6">
+                    <CheckBox DockPanel.Dock="Top" x:Name="AllEdges" Content="Mostrar todas as divisas externas (sem lote vizinho)" Click="AllEdges_Click"/>
+                    <DataGrid x:Name="FrontGrid" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Lote" Binding="{Binding Lote}" Width="*" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Divisa" Binding="{Binding Divisa}" Width="110" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Distância (m)" Binding="{Binding Comprimento}" Width="90" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Confrontante atual" Binding="{Binding Atual}" Width="160" IsReadOnly="True"/>
+                            <DataGridTemplateColumn Header="Testada" Width="60">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding Testada, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Via" Width="200">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <ComboBox ItemsSource="{Binding ViaOptions, ElementName=Root}" DisplayMemberPath="Text" SelectedValuePath="Id"
+                                                  SelectedValue="{Binding ViaId, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+            <TabItem Header="Cruzamentos (esquinas)">
+                <DockPanel Margin="6">
+                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Text="Esquina em L: duas vias, nenhuma atravessa. Em T: a via principal atravessa. Em cruz (+): as duas atravessam. Para 3 ou 4 vias que se encontram, preencha Via 3 e Via 4."/>
+                    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                        <Button Margin="0" Content="Adicionar cruzamento" Click="AddCross_Click"/>
+                        <Button Content="Remover" Click="RemoveCross_Click"/>
+                    </StackPanel>
+                    <DataGrid x:Name="CrossGrid" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Single">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Via 1" Width="*">
+                                <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <ComboBox Width="130" ItemsSource="{Binding ViaOptions, ElementName=Root}" DisplayMemberPath="Text" SelectedValuePath="Id" SelectedValue="{Binding V1, UpdateSourceTrigger=PropertyChanged}"/>
+                                        <CheckBox Content="atravessa" IsChecked="{Binding A1, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </StackPanel>
+                                </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Via 2" Width="*">
+                                <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <ComboBox Width="130" ItemsSource="{Binding ViaOptions, ElementName=Root}" DisplayMemberPath="Text" SelectedValuePath="Id" SelectedValue="{Binding V2, UpdateSourceTrigger=PropertyChanged}"/>
+                                        <CheckBox Content="atravessa" IsChecked="{Binding A2, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </StackPanel>
+                                </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Via 3 (opcional)" Width="*">
+                                <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <ComboBox Width="130" ItemsSource="{Binding ViaOptions, ElementName=Root}" DisplayMemberPath="Text" SelectedValuePath="Id" SelectedValue="{Binding V3, UpdateSourceTrigger=PropertyChanged}"/>
+                                        <CheckBox Content="atravessa" IsChecked="{Binding A3, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </StackPanel>
+                                </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="Via 4 (opcional)" Width="*">
+                                <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <ComboBox Width="130" ItemsSource="{Binding ViaOptions, ElementName=Root}" DisplayMemberPath="Text" SelectedValuePath="Id" SelectedValue="{Binding V4, UpdateSourceTrigger=PropertyChanged}"/>
+                                        <CheckBox Content="atravessa" IsChecked="{Binding A4, UpdateSourceTrigger=PropertyChanged}"/>
+                                    </StackPanel>
+                                </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Raio da esquina (m)" Binding="{Binding Raio}" Width="110"/>
+                            <DataGridTextColumn Header="Continuação (m)" Binding="{Binding Continuacao}" Width="100"/>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

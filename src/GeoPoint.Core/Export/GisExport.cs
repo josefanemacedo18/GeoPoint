@@ -128,8 +128,9 @@ public static class GisExport
             if (ks.IncludeVertices)
             {
                 w.WriteStartElement("Folder");
-                w.WriteElementString("name", "Vértices");
+                w.WriteElementString("name", "Vértices (pontos de coordenadas)");
                 w.WriteElementString("visibility", "1");
+                w.WriteElementString("open", "1");
                 var seen = new HashSet<string>();
                 foreach (var lot in ProjectContext.SortLots(lots))
                 {

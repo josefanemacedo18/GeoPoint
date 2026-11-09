@@ -15,7 +15,7 @@ public static class RevitStyles
     public const string LineTabela = "GeoPoint - Tabela";
 
     /// <summary>Estilo de linha (subcategoria de Linhas). Deve ser chamado dentro de transação.</summary>
-    public static GraphicsStyle? LineStyle(Document doc, string name, Color color, int weight)
+    public static GraphicsStyle? LineStyle(Document doc, string name, Color color, int weight, ElementId? pattern = null)
     {
         try
         {
@@ -29,6 +29,7 @@ public static class RevitStyles
                 sub = doc.Settings.Categories.NewSubcategory(lines, name);
                 sub.LineColor = color;
                 sub.SetLineWeight(weight, GraphicsStyleType.Projection);
+                if (pattern is not null && pattern != ElementId.InvalidElementId) sub.SetLinePatternId(pattern, GraphicsStyleType.Projection);
             }
             return sub.GetGraphicsStyle(GraphicsStyleType.Projection);
         }
@@ -40,9 +41,10 @@ public static class RevitStyles
     }
 
     /// <summary>Tipo de texto com tamanho (mm) e fonte. Deve ser chamado dentro de transação.</summary>
-    public static ElementId TextType(Document doc, double sizeMm, string font)
+    public static ElementId TextType(Document doc, double sizeMm, string font, bool opaque = false, bool bold = false, Color? color = null)
     {
-        string name = $"GeoPoint {sizeMm.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} mm {font}";
+        string name = $"GeoPoint {sizeMm.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} mm {font}"
+                      + (opaque ? " opaco" : "") + (bold ? " negrito" : "") + (color is null ? "" : $" #{color.Red:X2}{color.Green:X2}{color.Blue:X2}");
         var existing = new FilteredElementCollector(doc).OfClass(typeof(TextNoteType)).Cast<TextNoteType>().FirstOrDefault(t => t.Name == name);
         if (existing is not null) return existing.Id;
         var defId = doc.GetDefaultElementTypeId(ElementTypeGroup.TextNoteType);
@@ -51,7 +53,77 @@ public static class RevitStyles
         var nt = (TextNoteType)baseType.Duplicate(name);
         nt.get_Parameter(BuiltInParameter.TEXT_SIZE)?.Set(sizeMm / 304.8);
         try { nt.get_Parameter(BuiltInParameter.TEXT_FONT)?.Set(font); } catch { }
-        try { nt.get_Parameter(BuiltInParameter.TEXT_BACKGROUND)?.Set(1); } catch { } // transparente
+        try { nt.get_Parameter(BuiltInParameter.TEXT_BACKGROUND)?.Set(opaque ? 0 : 1); } catch { } // 0 = opaco, 1 = transparente
+        try { nt.get_Parameter(BuiltInParameter.TEXT_STYLE_BOLD)?.Set(bold ? 1 : 0); } catch { }
+        try { nt.get_Parameter(BuiltInParameter.TEXT_BOX_VISIBILITY)?.Set(0); } catch { }
+        if (color is not null) { try { nt.get_Parameter(BuiltInParameter.LINE_COLOR)?.Set(color.Red + color.Green * 256 + color.Blue * 65536); } catch { } }
+        return nt.Id;
+    }
+
+    /// <summary>Padrão de linha tracejado (comprimentos no papel, mm). Dentro de transação.</summary>
+    public static ElementId DashPattern(Document doc, string name, double dashMm, double gapMm)
+    {
+        var ex = new FilteredElementCollector(doc).OfClass(typeof(LinePatternElement)).Cast<LinePatternElement>().FirstOrDefault(e => e.Name == name);
+        if (ex is not null) return ex.Id;
+        try
+        {
+            var lp = new LinePattern(name);
+            lp.SetSegments(new List<LinePatternSegment>
+            {
+                new(LinePatternSegmentType.Dash, dashMm / 304.8),
+                new(LinePatternSegmentType.Space, gapMm / 304.8),
+            });
+            return LinePatternElement.Create(doc, lp).Id;
+        }
+        catch (Exception e)
+        {
+            Logger.Error("Falha ao criar padrão de linha " + name, e);
+            return ElementId.InvalidElementId;
+        }
+    }
+
+    /// <summary>Estilo de linha "&lt;Linhas invisíveis&gt;" (independe do idioma).</summary>
+    public static ElementId InvisibleLines(Document doc)
+    {
+        try
+        {
+            var lines = Category.GetCategory(doc, BuiltInCategory.OST_Lines);
+            foreach (Category c in lines.SubCategories)
+                if (c.Id.Value == (long)BuiltInCategory.OST_InvisibleLines) return c.GetGraphicsStyle(GraphicsStyleType.Projection)?.Id ?? ElementId.InvalidElementId;
+        }
+        catch { }
+        return ElementId.InvalidElementId;
+    }
+
+    /// <summary>Padrão de hachura de desenho (espaçamento no papel, mm). Dentro de transação.</summary>
+    public static ElementId HatchPattern(Document doc, string name, double angleDeg, double spacingMm, bool cross)
+    {
+        var ex = new FilteredElementCollector(doc).OfClass(typeof(FillPatternElement)).Cast<FillPatternElement>().FirstOrDefault(e => e.Name == name);
+        if (ex is not null) return ex.Id;
+        var fp = cross
+            ? new FillPattern(name, FillPatternTarget.Drafting, FillPatternHostOrientation.ToView, angleDeg * Math.PI / 180, spacingMm / 304.8, spacingMm / 304.8)
+            : new FillPattern(name, FillPatternTarget.Drafting, FillPatternHostOrientation.ToView, angleDeg * Math.PI / 180, spacingMm / 304.8);
+        return FillPatternElement.Create(doc, fp).Id;
+    }
+
+    /// <summary>Tipo de região com hachura colorida e fundo claro. Dentro de transação.</summary>
+    public static ElementId HatchType(Document doc, string name, ElementId hatch, Color color, bool lightBackground)
+    {
+        var all = new FilteredElementCollector(doc).OfClass(typeof(FilledRegionType)).Cast<FilledRegionType>().ToList();
+        var ex = all.FirstOrDefault(t => t.Name == name);
+        if (ex is not null) return ex.Id;
+        var baseType = all.FirstOrDefault() ?? throw new InvalidOperationException("O modelo não possui tipos de região preenchida.");
+        var nt = (FilledRegionType)baseType.Duplicate(name);
+        nt.ForegroundPatternId = hatch;
+        nt.ForegroundPatternColor = color;
+        var solid = SolidPattern(doc);
+        if (lightBackground && solid != ElementId.InvalidElementId)
+        {
+            nt.BackgroundPatternId = solid;
+            nt.BackgroundPatternColor = new Color((byte)(255 - (255 - color.Red) * 0.12), (byte)(255 - (255 - color.Green) * 0.12), (byte)(255 - (255 - color.Blue) * 0.12));
+        }
+        else nt.BackgroundPatternId = ElementId.InvalidElementId;
+        try { nt.IsMasking = false; } catch { }
         return nt.Id;
     }
 

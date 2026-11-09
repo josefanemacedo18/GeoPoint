@@ -5,6 +5,8 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using GeoPoint.Core.Calc;
+using Autodesk.Revit.UI.Selection;
+using GeoPoint.Core.Operations;
 using GeoPoint.Core.Geometry;
 using GeoPoint.Core.Memorial;
 using GeoPoint.Core.Model;
@@ -39,32 +41,161 @@ public sealed class CmdDesmembramento : CommandBase
 
     protected override Result Run(GpSession s)
     {
-        if (s.Project.ActiveLots.Count() < 3)
+        if (!s.Project.ActiveLots.Any()) { Ui.Info("Nenhum lote ativo", "Use 'Reconhecer Lotes' primeiro."); return Result.Cancelled; }
+        var state = new DesmembramentoState { ParentId = LotServices.LotsFromSelection(s).FirstOrDefault() };
+        DesmembramentoWindow w;
+        while (true)
         {
-            Ui.Info("Lotes insuficientes", "Para registrar um desmembramento é preciso ter o lote original e pelo menos dois lotes resultantes reconhecidos.\n\n" +
-                                          "Dica: desenhe as novas divisas, use 'Reconhecer Lotes' para os lotes resultantes, ou use 'Dividir Lote' para simular e desenhar a divisão automaticamente.");
-            return Result.Cancelled;
+            var ctx = s.NewContext();
+            w = new DesmembramentoWindow(s.Project, ctx, state);
+            if (Ui.ShowDialog(w, s.MainWindow) != true || w.Action == DesmAction.Cancel) return Result.Cancelled;
+            if (w.Action != DesmAction.PickLines) break;
+            // Seleção das divisas desenhadas pelo usuário.
+            try
+            {
+                var refs = s.UiDoc.Selection.PickObjects(ObjectType.Element, new LineAndCadFilter(false),
+                    "GeoPoint: selecione as linhas das novas divisas e clique em Concluir");
+                var els = refs.Select(r => s.Doc.GetElement(r)).Where(e => e is not null).Select(e => e!).ToList();
+                var warnings = new List<string>();
+                var curves = GeometryReader.Read(s.Doc, s.ActiveView, els, null, warnings);
+                state.LineCuts = curves.Select(c => (c.Curve, c.UniqueId)).ToList();
+                state.Modo = DesmModo.Linhas;
+            }
+            catch (Autodesk.Revit.Exceptions.OperationCanceledException) { }
         }
-        var w = new SubdivisionWindow(s.Project, merge: false, LotServices.LotsFromSelection(s));
-        if (Ui.ShowDialog(w, s.MainWindow) != true || w.ParentLot is null) return Result.Cancelled;
-        var parent = w.ParentLot;
-        var children = w.SelectedLots;
-        var op = new OperationRecord { Type = OperationType.Desmembramento, ParentIds = { parent.Id }, ChildIds = children.Select(c => c.Id).ToList(), Notes = w.NotesText };
-        foreach (var c in children)
-        {
-            OpHelpers.InheritOwner(c, parent);
-            c.History.Add(new HistoryEntry { Description = $"Resultante do desmembramento de {parent.DisplayName}", Area = c.ToRegion().Area });
-        }
-        if (w.ArchiveOriginals)
-        {
-            parent.Status = LotStatus.Arquivado;
-            parent.History.Add(new HistoryEntry { Description = "Desmembrado (arquivado)", Area = parent.ToRegion().Area });
-        }
-        s.Project.Operations.Add(op);
-        s.SaveProject("GeoPoint: registrar desmembramento");
-        if (Ui.Confirm("Desmembramento registrado", $"{parent.DisplayName} → {children.Count} lote(s).\n\nDeseja gerar o memorial descritivo do desmembramento agora?", "Gerar memorial", "Agora não"))
+        var op = Register(s, state, w);
+        if (op is null) return Result.Failed;
+        if (state.Sheets) CmdPranchas.GenerateForOperation(s, op, ask: true);
+        if (Ui.Confirm("Desmembramento registrado", "Deseja gerar o memorial descritivo do desmembramento agora?", "Gerar memorial", "Agora não"))
             return CmdMemorial.Open(s, MemorialKind.Desmembramento, op);
         return Result.Succeeded;
+    }
+
+    /// <summary>Cria os lotes resultantes, aplica remanescente, proprietários, confrontantes e anexações.</summary>
+    internal static OperationRecord? Register(GpSession s, DesmembramentoState st, DesmembramentoWindow w)
+    {
+        var doc = s.Doc;
+        var parent = w.ParentLot!;
+        var rows = w.Rows;
+        using var tg = new TransactionGroup(doc, "GeoPoint: desmembramento");
+        tg.Start();
+
+        // 1) Geometria das partes (com origem rastreada).
+        List<PlannedPiece> pieces;
+        List<LotRecord?> existing = rows.Select(r => r.ExistingLot).ToList();
+        if (w.Modo == DesmModo.Automatico && w.AutoResult is { } res)
+        {
+            var cuts = res.Cuts.Where(c => c.Length >= 0.001).ToList();
+            List<CurveElement> created;
+            using (var t = new Transaction(doc, "GeoPoint: desenhar divisas"))
+            {
+                t.Start();
+                var target = CurveTarget.ForLot(doc, s.ActiveView, parent);
+                created = target.Create(doc, cuts, null);
+                t.Commit();
+            }
+            if (created.Count != cuts.Count) { tg.RollBack(); Ui.Error("Desmembramento", "Não foi possível desenhar todas as divisas."); return null; }
+            var tagged = cuts.Select((c, i) => ((Curve2)c, (string?)created[i].UniqueId)).ToList();
+            var fresh = SubdivisionPlanner.FromCuts(parent, tagged, LotServices.NetworkOptions(s.Settings).Tolerance);
+            // Mesma ordem da prévia: casa cada parte pela posição.
+            pieces = rows.Select(r => fresh.FirstOrDefault(f => f.Region.Contains(r.Piece.Region.InteriorPoint())) ?? r.Piece).ToList();
+        }
+        else pieces = rows.Select(r => r.Piece).ToList();
+
+        // 2) Lotes resultantes.
+        var children = new List<LotRecord>();
+        string parentOwner = string.IsNullOrWhiteSpace(parent.Proprietario) ? s.Project.Info.Proprietario : parent.Proprietario;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var lot = existing[i] ?? new LotRecord
+            {
+                Outer = pieces[i].Outer, Holes = pieces[i].Holes,
+                ZFeet = parent.ZFeet, SourceKind = parent.SourceKind, SourceViewId = parent.SourceViewId, SketchPlaneId = parent.SketchPlaneId,
+                Uso = LotUse.Lote, Created = DateTime.Now.AddMilliseconds(i),
+            };
+            lot.Nome = row.Nome.Trim();
+            lot.Numero = lot.Nome;
+            lot.Quadra = string.IsNullOrWhiteSpace(st.Quadra) ? parent.Quadra : st.Quadra!;
+            lot.IsRemanescente = row.Remanescente;
+            lot.Proprietario = row.Proprietario.Trim();
+            if (lot.Proprietario == parentOwner || string.IsNullOrWhiteSpace(lot.Proprietario))
+            {
+                lot.Proprietario = parent.Proprietario;
+                if (string.IsNullOrWhiteSpace(lot.Documento)) lot.Documento = parent.Documento;
+            }
+            if (string.IsNullOrWhiteSpace(lot.Endereco)) lot.Endereco = parent.Endereco;
+            // Vértices inseridos no original que caem sobre o novo lote.
+            var extras = parent.ExtraVertices.Where(p => lot.Outer.Any(e => e.ToCurve().DistanceTo(p.ToVec()) <= EdgeSplitter.Tolerance)).ToList();
+            foreach (var x in extras) if (!lot.ExtraVertices.Any(v => v.ToVec().DistanceTo(x.ToVec()) < 1e-6)) lot.ExtraVertices.Add(x);
+            EdgeSplitter.Apply(lot);
+            lot.History.Add(new HistoryEntry { Description = $"Resultante do desmembramento de {parent.DisplayName}" + (lot.IsRemanescente ? " (remanescente)" : ""), Area = lot.ToRegion().Area });
+            children.Add(lot);
+        }
+        var ctx = s.NewContext();
+        foreach (var c in children) c.EdgeInfos = ConfrontanteInheritance.Inherit(new[] { parent }, c, children, ctx);
+
+        var op = new OperationRecord
+        {
+            Type = OperationType.Desmembramento, ParentIds = { parent.Id }, ChildIds = children.Select(c => c.Id).ToList(), Notes = st.Notes,
+            RemanescenteId = children.FirstOrDefault(c => c.IsRemanescente)?.Id ?? "",
+        };
+
+        // 3) Anexações (remembramento automático da parte com o lote escolhido).
+        var merges = new List<(LotRecord piece, LotRecord target, LotRecord result, OperationRecord op)>();
+        for (int i = 0; i < rows.Count; i++)
+        {
+            if (string.IsNullOrWhiteSpace(rows[i].AnexarA)) continue;
+            var target = s.Project.FindLot(rows[i].AnexarA);
+            if (target is null) continue;
+            var piece = children[i];
+            var u = ParcelOperations.Union(new[] { piece, target });
+            if (!u.Ok) { Ui.Warn("Anexação não realizada", $"{piece.DisplayName} não pôde ser anexada a {target.DisplayName}: {string.Join(" ", u.Errors)}"); continue; }
+            var result = new LotRecord
+            {
+                Nome = target.Nome, Numero = target.Numero, Quadra = target.Quadra, Uso = target.Uso,
+                Proprietario = target.Proprietario, Documento = target.Documento, Endereco = target.Endereco, Matricula = target.Matricula,
+                Outer = u.Outer, Holes = u.Holes,
+                ZFeet = target.ZFeet, SourceKind = target.SourceKind, SourceViewId = target.SourceViewId, SketchPlaneId = target.SketchPlaneId,
+                Created = DateTime.Now.AddSeconds(1),
+            };
+            result.EdgeInfos = ConfrontanteInheritance.Inherit(new[] { piece, target }, result, Array.Empty<LotRecord>(), ctx);
+            result.History.Add(new HistoryEntry { Description = $"Remembramento de {target.DisplayName} com parte de {parent.DisplayName}", Area = u.Area });
+            var mop = new OperationRecord { Type = OperationType.Remembramento, ParentIds = { piece.Id, target.Id }, ChildIds = { result.Id }, Notes = $"Anexação de parte do desmembramento de {parent.DisplayName}" };
+            merges.Add((piece, target, result, mop));
+        }
+
+        using (var t = new Transaction(doc, "GeoPoint: registrar desmembramento"))
+        {
+            t.Start();
+            foreach (var c in children) if (!s.Project.Lots.Contains(c)) s.Project.Lots.Add(c);
+            parent.Status = LotStatus.Arquivado;
+            parent.History.Add(new HistoryEntry { Description = "Desmembrado (arquivado)", Area = parent.ToRegion().Area });
+            s.Project.Operations.Add(op);
+            var archived = new List<string> { parent.Id };
+            var newLots = new List<LotRecord>(children);
+            foreach (var (piece, target, result, mop) in merges)
+            {
+                piece.Status = LotStatus.Arquivado;
+                target.Status = LotStatus.Arquivado;
+                piece.History.Add(new HistoryEntry { Description = $"Anexado a {target.DisplayName}", Area = piece.ToRegion().Area });
+                target.History.Add(new HistoryEntry { Description = "Remembrado (arquivado)", Area = target.ToRegion().Area });
+                s.Project.Lots.Add(result);
+                s.Project.Operations.Add(mop);
+                archived.Add(piece.Id); archived.Add(target.Id);
+                newLots.Add(result);
+            }
+            ConfrontanteInheritance.Retarget(s.Project, archived, newLots.Where(l => l.Status == LotStatus.Ativo).ToList());
+            var ctx2 = s.NewContext();
+            VertexRegistry.Register(ctx2, children.Concat(merges.Select(m => m.result)));
+            ProjectStore.Save(doc, s.Project);
+            t.Commit();
+        }
+        tg.Assimilate();
+        string msg = $"{parent.DisplayName} → {children.Count} lote(s)" + (op.RemanescenteId.Length > 0 ? $"; remanescente: {s.Project.FindLot(op.RemanescenteId)?.DisplayName}" : "") +
+                     (merges.Count > 0 ? $"; {merges.Count} parte(s) anexada(s) a lote(s) vizinho(s)." : ".");
+        Logger.Info("Desmembramento: " + msg);
+        return op;
     }
 }
 
@@ -76,7 +207,8 @@ public sealed class CmdRemembramento : CommandBase
     protected override Result Run(GpSession s)
     {
         if (s.Project.ActiveLots.Count() < 2) { Ui.Info("Lotes insuficientes", "É preciso ter pelo menos dois lotes ativos."); return Result.Cancelled; }
-        var w = new SubdivisionWindow(s.Project, merge: true, LotServices.LotsFromSelection(s));
+        var ctx = s.NewContext();
+        var w = new SubdivisionWindow(s.Project, merge: true, LotServices.LotsFromSelection(s), ctx.Coords.Rotation);
         if (Ui.ShowDialog(w, s.MainWindow) != true || w.Union is null || !w.Union.Ok) return Result.Cancelled;
         var lots = w.SelectedLots;
         var u = w.Union;
@@ -87,124 +219,31 @@ public sealed class CmdRemembramento : CommandBase
             Outer = u.Outer, Holes = u.Holes,
             ZFeet = first.ZFeet, SourceKind = first.SourceKind, SourceViewId = first.SourceViewId, SketchPlaneId = first.SketchPlaneId,
         };
+        if (w.ResultOwnerText.Length > 0) result.Proprietario = w.ResultOwnerText;
         foreach (var l in lots) OpHelpers.InheritOwner(result, l);
-        result.EdgeInfos = LotBuilder.RemapEdgeInfos(lots.SelectMany(l => l.EdgeInfos).ToList(), result.Outer);
+        foreach (var l in lots)
+            foreach (var x in l.ExtraVertices)
+                if (result.Outer.Any(e => e.ToCurve().DistanceTo(x.ToVec()) <= EdgeSplitter.Tolerance)) result.ExtraVertices.Add(x);
+        EdgeSplitter.Apply(result);
+        result.EdgeInfos = ConfrontanteInheritance.Inherit(lots, result, Array.Empty<LotRecord>(), ctx);
         result.History.Add(new HistoryEntry { Description = "Criado por remembramento de " + string.Join(", ", lots.Select(l => l.DisplayName)), Area = u.Area, Perimeter = result.ToRegion().Outer.Perimeter });
-        if (w.ArchiveOriginals)
-            foreach (var l in lots)
-            {
-                l.Status = LotStatus.Arquivado;
-                l.History.Add(new HistoryEntry { Description = $"Remembrado em {result.DisplayName} (arquivado)", Area = l.ToRegion().Area });
-            }
+        foreach (var l in lots)
+        {
+            l.Status = LotStatus.Arquivado;
+            l.History.Add(new HistoryEntry { Description = $"Remembrado em {result.DisplayName} (arquivado)", Area = l.ToRegion().Area });
+        }
         var op = new OperationRecord { Type = OperationType.Remembramento, ParentIds = lots.Select(l => l.Id).ToList(), ChildIds = { result.Id }, Notes = w.NotesText };
         s.Project.Lots.Add(result);
         s.Project.Operations.Add(op);
+        ConfrontanteInheritance.Retarget(s.Project, lots.Select(l => l.Id).ToList(), new[] { result });
+        VertexRegistry.Register(s.NewContext(), new[] { result });
         s.SaveProject("GeoPoint: registrar remembramento");
+        if (w.SheetsValue) CmdPranchas.GenerateForOperation(s, op, ask: true);
         if (Ui.Confirm("Remembramento registrado",
                 $"{string.Join(", ", lots.Select(l => l.DisplayName))} → {result.DisplayName} ({Fmt.N(u.Area, 2)} m²).\n\n" +
-                "As linhas das divisas internas continuam no desenho; apague-as se desejar.\n\nDeseja gerar o memorial descritivo do remembramento agora?", "Gerar memorial", "Agora não"))
+                "As linhas das divisas internas continuam no desenho (nas pranchas da proposta elas ficam ocultas).\n\nDeseja gerar o memorial descritivo do remembramento agora?", "Gerar memorial", "Agora não"))
             return CmdMemorial.Open(s, MemorialKind.Remembramento, op);
         return Result.Succeeded;
-    }
-}
-
-[Transaction(TransactionMode.Manual)]
-public sealed class CmdDividir : CommandBase
-{
-    protected override string Title => "Dividir lote";
-
-    protected override Result Run(GpSession s)
-    {
-        var rows = OpHelpers.ActiveRows(s.Project);
-        if (rows.Count == 0) { Ui.Info("Nenhum lote ativo", "Use 'Reconhecer Lotes' primeiro."); return Result.Cancelled; }
-        var ctx = s.NewContext();
-        var w = new SplitWindow(ctx, rows, LotServices.LotsFromSelection(s).FirstOrDefault());
-        if (Ui.ShowDialog(w, s.MainWindow) != true || w.Lot is null || w.Result is null) return Result.Cancelled;
-        var lot = w.Lot;
-        var res = w.Result;
-        var doc = s.Doc;
-        var cuts = res.Cuts.Where(c => c.Length >= 0.001).ToList();
-
-        using var tg = new TransactionGroup(doc, "GeoPoint: dividir lote");
-        tg.Start();
-        List<CurveElement> created;
-        using (var t = new Transaction(doc, "GeoPoint: desenhar divisas"))
-        {
-            t.Start();
-            var target = CurveTarget.ForLot(doc, s.ActiveView, lot);
-            var style = RevitStyles.LineStyle(doc, RevitStyles.LineDivisaProposta, RevitStyles.Rgb(230, 90, 0), 3);
-            created = target.Create(doc, cuts, style);
-            t.Commit();
-        }
-
-        var children = new List<LotRecord>();
-        if (w.CreateLotsValue && created.Count == cuts.Count)
-        {
-            var inputs = new List<InputCurve>();
-            var srcs = new List<IEnumerable<string>>();
-            foreach (var dto in lot.Outer.Concat(lot.Holes.SelectMany(h => h)))
-            {
-                inputs.Add(new InputCurve(dto.ToCurve(), srcs.Count));
-                srcs.Add(dto.Src);
-            }
-            for (int i = 0; i < cuts.Count; i++)
-            {
-                inputs.Add(new InputCurve(cuts[i], srcs.Count));
-                srcs.Add(new[] { created[i].UniqueId });
-            }
-            var net = PlanarNetwork.Build(inputs, LotServices.NetworkOptions(s.Settings));
-            var parentRegion = lot.ToRegion();
-            var faces = net.Faces.Where(f => parentRegion.Contains(f.Region.InteriorPoint())).ToList();
-            // Ordena no sentido da divisão (da frente escolhida).
-            var order = res.Positions.Count > 0 ? faces.OrderBy(f => PieceIndex(res, f.Region)).ToList() : faces;
-            var numberer = new Numberer(w.StartNumberText);
-            foreach (var f in order)
-            {
-                var (outer, holes) = LotBuilder.FromFace(net, f, t => srcs[t], false, false);
-                string n = numberer.Next();
-                var child = new LotRecord
-                {
-                    Nome = n, Numero = n, Quadra = w.QuadraText, Uso = LotUse.Lote,
-                    Outer = outer, Holes = holes,
-                    ZFeet = lot.ZFeet, SourceKind = lot.SourceKind, SourceViewId = lot.SourceViewId, SketchPlaneId = lot.SketchPlaneId,
-                };
-                OpHelpers.InheritOwner(child, lot);
-                child.EdgeInfos = LotBuilder.RemapEdgeInfos(lot.EdgeInfos, outer);
-                child.History.Add(new HistoryEntry { Description = $"Criado pela divisão de {lot.DisplayName}", Area = f.Region.Area, Perimeter = f.Region.Outer.Perimeter });
-                children.Add(child);
-            }
-        }
-
-        OperationRecord? op = null;
-        using (var t = new Transaction(doc, "GeoPoint: gravar divisão"))
-        {
-            t.Start();
-            s.Project.Lots.AddRange(children);
-            if (w.RegisterValue && children.Count >= 2)
-            {
-                op = new OperationRecord { Type = OperationType.Desmembramento, ParentIds = { lot.Id }, ChildIds = children.Select(c => c.Id).ToList(), Notes = "Divisão simulada pelo GeoPoint" };
-                s.Project.Operations.Add(op);
-                lot.Status = LotStatus.Arquivado;
-                lot.History.Add(new HistoryEntry { Description = "Dividido (arquivado)", Area = lot.ToRegion().Area });
-            }
-            ProjectStore.Save(doc, s.Project);
-            t.Commit();
-        }
-        tg.Assimilate();
-
-        string msg = $"{created.Count} divisa(s) desenhada(s)" + (children.Count > 0 ? $" e {children.Count} lote(s) criado(s)." : ".");
-        if (op is not null && Ui.Confirm("Divisão concluída", msg + "\n\nDeseja gerar o memorial do desmembramento agora?", "Gerar memorial", "Agora não"))
-            return CmdMemorial.Open(s, MemorialKind.Desmembramento, op);
-        if (op is null) Ui.Info("Divisão concluída", msg);
-        return Result.Succeeded;
-    }
-
-    private static int PieceIndex(Core.Operations.SplitResult res, Region r)
-    {
-        var p = r.InteriorPoint();
-        for (int i = 0; i < res.PieceRegions.Count; i++)
-            if (res.PieceRegions[i].Contains(p)) return i;
-        return int.MaxValue;
     }
 }
 

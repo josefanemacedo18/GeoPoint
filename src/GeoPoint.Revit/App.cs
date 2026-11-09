@@ -35,18 +35,21 @@ public sealed class App : IExternalApplication
             Add(geo, "Desenhar por\nAzimutes", typeof(Commands.CmdCaminhamento), "Desenha linhas a partir de azimutes/rumos e distâncias (ex.: colados de um memorial antigo), com erro de fechamento.", IconKind.Traverse);
 
             var ops = app.CreateRibbonPanel(TabName, "Operações");
-            Add(ops, "Desmem-\nbramento", typeof(Commands.CmdDesmembramento), "Registra o desmembramento de um lote em lotes resultantes e confere as áreas.", IconKind.Split);
-            Add(ops, "Remem-\nbramento", typeof(Commands.CmdRemembramento), "Une lotes contíguos em um único lote (remembramento/unificação).", IconKind.Merge);
-            Add(ops, "Dividir\nLote", typeof(Commands.CmdDividir), "Simula a divisão de um lote/gleba por área, número de partes ou testada, e desenha as divisas.", IconKind.Divide);
+            Add(ops, "Desmem-\nbramento", typeof(Commands.CmdDesmembramento), "Divide um lote: automático (partes iguais, áreas ou testadas definidas), pelas linhas que você desenhou ou por lotes já reconhecidos. Com prévia, lote remanescente, proprietários e anexação a lotes vizinhos.", IconKind.Split);
+            Add(ops, "Remem-\nbramento", typeof(Commands.CmdRemembramento), "Une lotes contíguos em um único lote (remembramento/unificação), com prévia.", IconKind.Merge);
             Add(ops, "Área\nEdificável", typeof(Commands.CmdAreaEdificavel), "Calcula e desenha a área edificável a partir dos recuos de cada divisa.", IconKind.Setback);
 
             var anot = app.CreateRibbonPanel(TabName, "Anotação");
-            Add(anot, "Anotar\nLotes", typeof(Commands.CmdAnotar), "Textos com azimute/rumo e distância das divisas, nomes dos vértices e área, na vista atual.", IconKind.Annotate);
+            Add(anot, "Anotar\nLotes", typeof(Commands.CmdAnotar), "Distâncias e azimutes fora do lote, vértices com ponto preenchido, área e extensão de cada confrontante, na vista atual.", IconKind.Annotate);
+            Add(anot, "Hachuras", typeof(Commands.CmdHachuras), "Hachura cada lote com uma cor (remanescente com hachura cruzada), na vista atual.", IconKind.Hatch);
+            Add(anot, "Vias", typeof(Commands.CmdVias), "Cadastro de vias, testadas e cruzamentos (2, 3 ou 4 vias) e desenho esquemático da rua (meio-fio, calçada e nome).", IconKind.Street);
             Add(anot, "Tabela de\nCoordenadas", typeof(Commands.CmdTabelaCoordenadas), "Cria uma vista de desenho com o quadro de coordenadas para colocar na prancha.", IconKind.Table);
             Add(anot, "Elementos\nNativos", typeof(Commands.CmdElementosNativos), "Cria Linhas de Propriedade nativas (e regiões preenchidas) com parâmetros para tabelas do Revit.", IconKind.Native);
 
             var docs = app.CreateRibbonPanel(TabName, "Documentos");
             Add(docs, "Memorial\nDescritivo", typeof(Commands.CmdMemorial), "Gera o memorial descritivo em Word (lote, desmembramento, remembramento ou loteamento).", IconKind.Memorial);
+            Add(docs, "Anuência de\nConfrontantes", typeof(Commands.CmdAnuencia), "Declaração de anuência (limite) para cada confrontante, com a descrição da divisa comum, em Word.", IconKind.Signature);
+            Add(docs, "Pranchas\nA4", typeof(Commands.CmdPranchas), "Pranchas A4 por situação (atual, proposta, cada lote e total), com carimbo, quadro de áreas e norte.", IconKind.Sheet);
             Add(docs, "Google Earth\n/ QGIS", typeof(Commands.CmdExportarSig), "Exporta KMZ/KML (Google Earth) e GeoJSON (QGIS) para conferir sobre imagem de satélite.", IconKind.Globe);
             Add(docs, "Planilha\nExcel", typeof(Commands.CmdExportarExcel), "Exporta lotes, coordenadas e segmentos para Excel.", IconKind.Excel);
             Add(docs, "Quadro de\nÁreas", typeof(Commands.CmdQuadroAreas), "Quadro de áreas por uso, percentuais e verificação dos parâmetros urbanísticos.", IconKind.Chart);
@@ -100,7 +103,7 @@ public sealed class App : IExternalApplication
     }
 }
 
-public enum IconKind { Recognize, Manager, Sync, Info, Reference, Traverse, Split, Merge, Divide, Setback, Annotate, Table, Native, Memorial, Globe, Excel, Chart, Check, Topo, Settings, Help }
+public enum IconKind { Recognize, Manager, Sync, Info, Reference, Traverse, Split, Merge, Divide, Setback, Annotate, Table, Native, Memorial, Globe, Excel, Chart, Check, Topo, Settings, Help, Hatch, Street, Signature, Sheet }
 
 /// <summary>Ícones vetoriais desenhados em código (sem arquivos externos).</summary>
 public static class Icons
@@ -141,6 +144,30 @@ public static class Icons
     {
         switch (k)
         {
+            case IconKind.Hatch:
+                Lot(dc, Brushes.White);
+                dc.PushClip(Geometry.Parse("M 4,26 L 6,8 L 22,5 L 28,24 Z"));
+                for (int i = -32; i < 32; i += 5) dc.DrawLine(P(Orange, 1.4), new Point(i, 32), new Point(i + 32, 0));
+                dc.Pop();
+                dc.DrawGeometry(null, P(Blue, 2), Geometry.Parse("M 4,26 L 6,8 L 22,5 L 28,24 Z"));
+                break;
+            case IconKind.Street:
+                dc.DrawRectangle(Gray, null, new Rect(0, 11, 32, 10));
+                dc.DrawRectangle(Light, null, new Rect(0, 7, 32, 4));
+                dc.DrawRectangle(Light, null, new Rect(0, 21, 32, 4));
+                for (int i = 1; i < 32; i += 8) dc.DrawLine(P(Brushes.White, 1.6), new Point(i, 16), new Point(i + 4, 16));
+                break;
+            case IconKind.Signature:
+                dc.DrawRectangle(Brushes.White, P(Gray, 1.5), new Rect(5, 3, 22, 27));
+                for (int i = 0; i < 3; i++) dc.DrawLine(P(Gray, 1.2), new Point(9, 8 + i * 4), new Point(23, 8 + i * 4));
+                dc.DrawGeometry(null, P(Blue, 1.8), Geometry.Parse("M 8,25 C 11,19 13,27 16,22 C 18,19 19,26 24,23"));
+                break;
+            case IconKind.Sheet:
+                dc.DrawRectangle(Brushes.White, P(Gray, 1.5), new Rect(6, 2, 20, 28));
+                dc.DrawRectangle(null, P(Gray, 1), new Rect(8, 4, 16, 24));
+                dc.DrawRectangle(Light, P(Gray, 1), new Rect(8, 22, 16, 6));
+                dc.DrawGeometry(null, P(Blue, 1.6), Geometry.Parse("M 10,18 L 11,8 L 19,7 L 22,17 Z"));
+                break;
             case IconKind.Recognize:
                 Lot(dc, Light);
                 foreach (var p in new[] { new Point(4, 26), new Point(6, 8), new Point(22, 5), new Point(28, 24) }) dc.DrawEllipse(Orange, null, p, 2.6, 2.6);

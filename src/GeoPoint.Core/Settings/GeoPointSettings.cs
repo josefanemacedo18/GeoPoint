@@ -151,6 +151,8 @@ public sealed class AnnotationSettings
     public double DotMm { get; set; } = 1.2;
     /// <summary>Fundo opaco nos textos (legíveis sobre hachuras).</summary>
     public bool OpaqueText { get; set; } = true;
+    /// <summary>Nome do confrontante e extensão de cada confrontante ao longo da divisa.</summary>
+    public bool Confrontantes { get; set; } = true;
 }
 
 public sealed class StreetSettings
@@ -164,7 +166,7 @@ public sealed class StreetSettings
 
 public sealed class SheetSettings
 {
-    /// <summary>Nome do tipo de carimbo ("Família: Tipo"); vazio = primeiro disponível.</summary>
+    /// <summary>Carimbo próprio ("Família: Tipo"); vazio = moldura e carimbo A4 desenhados pelo GeoPoint.</summary>
     public string TitleBlock { get; set; } = "";
     public int Scale { get; set; } = 500;
     public string NumberPrefix { get; set; } = "GP";
@@ -174,6 +176,14 @@ public sealed class SheetSettings
     public bool Hachuras { get; set; } = true;
     public bool Anotacoes { get; set; } = true;
     public bool Vias { get; set; } = true;
+    public bool IndividualAtual { get; set; }
+    public bool IndividualProposta { get; set; } = true;
+    /// <summary>0 = retrato, 1 = paisagem (folha A4).</summary>
+    public int Orientation { get; set; }
+    /// <summary>Escala automática (a menor escala usual em que o desenho cabe na folha).</summary>
+    public bool AutoScale { get; set; } = true;
+    /// <summary>Vista com o norte verdadeiro para cima.</summary>
+    public bool NorteParaCima { get; set; } = true;
 }
 
 public sealed class KmlSettings

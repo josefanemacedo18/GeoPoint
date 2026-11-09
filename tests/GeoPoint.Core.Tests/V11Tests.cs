@@ -154,3 +154,82 @@ public class V11Tests
         Assert.Equal("Lote 03 (Remanescente) – Quadra B", l.DisplayName);
     }
 }
+
+public class EdgeSplitterTests
+{
+    [Fact]
+    public void SplitTopEdge_ByConfrontanteExtents()
+    {
+        // Como no exemplo: divisa de 30 m dividida em 12 + 12 + 6 (Lotes 16, 17 e 18).
+        var lot = TestProjects.Rect(0, 0, 30, 12, "15");
+        var top = lot.Outer.Select(e => e.ToCurve()).Single(c => Math.Abs(c.Mid.Y - 12) < 1e-9);
+        var start = top.Start.X < top.End.X ? top : top.Reversed();
+        var pts = Topology.EdgeSplitter.PointsAlong(start, new[] { 12.0, 12.0, 6.0 });
+        Assert.Equal(2, pts.Count);
+        lot.ExtraVertices.AddRange(pts.Select(p => new PointDto { X = p.X, Y = p.Y }));
+        Topology.EdgeSplitter.Apply(lot);
+        Assert.Equal(6, lot.Outer.Count);
+        Assert.Equal(360, lot.ToRegion().Area, 9);
+        var ctx = TestProjects.Context(TestProjects.Project(lot));
+        Assert.Equal(6, ctx.Report(lot).Vertices.Count);
+        // Reaplicar não duplica.
+        Topology.EdgeSplitter.Apply(lot);
+        Assert.Equal(6, lot.Outer.Count);
+    }
+}
+
+public class AnuenciaTests
+{
+    [Fact]
+    public void GeneratesOnePagePerConfrontante()
+    {
+        var a = TestProjects.Rect(0, 0, 10, 30, "01");
+        var b = TestProjects.Rect(10, 0, 10, 30, "02");
+        b.Proprietario = "Valtenes dos Santos Almeida";
+        var p = TestProjects.Project(a, b);
+        var via = new ViaRecord { Nome = "Rua E" };
+        p.Vias.Add(via);
+        a.EdgeInfos.Add(new EdgeInfo { MX = 5, MY = 0, Testada = true, Tipo = ConfrontanteTipo.Via, ViaId = via.Id });
+        a.EdgeInfos.Add(new EdgeInfo { MX = 5, MY = 30, Confrontante = "Jacy Rodrigues Aguiar" });
+        var ctx = TestProjects.Context(p);
+        var groups = Memorial.AnuenciaGenerator.Groups(ctx, a, includeVias: false);
+        Assert.Equal(2, groups.Count);
+        var bytes = new Memorial.AnuenciaGenerator(ctx).Generate(a, groups, new DateTime(2026, 7, 7));
+        var text = ReportAndDocumentTests.DocText(bytes, out var xml);
+        Assert.Contains("DECLARAÇÃO DE ANUÊNCIA DE CONFRONTANTE", text);
+        Assert.Contains("Valtenes dos Santos Almeida", text);
+        Assert.Contains("Jacy Rodrigues Aguiar", text);
+        Assert.Contains("Fulano de Tal", text);
+        Assert.DoesNotContain("Rua E (logradouro", text);
+        Assert.Single(xml.Descendants(Office.Wml.W + "br"), b => (string?)b.Attribute(Office.Wml.W + "type") == "page");
+    }
+}
+
+public class SubdivisionPlannerTests
+{
+    [Fact]
+    public void CustomAreas_And_Frontages()
+    {
+        var lot = TestProjects.Rect(0, 0, 20, 50, "G").ToRegion();
+        var f = new LineCurve(new Vec2(0, 0), new Vec2(20, 0));
+        var r = Operations.AreaSplitter.Split(new Operations.SplitRequest { Region = lot, CutDirection = new Vec2(0, 1), Frontage = f, Mode = Operations.SplitMode.CustomAreas, Values = new[] { 300.0, 200 } });
+        Assert.Equal(new[] { 300.0, 200, 500 }, r.Pieces.Select(p => Math.Round(p.Area, 6)).ToArray());
+        var r2 = Operations.AreaSplitter.Split(new Operations.SplitRequest { Region = lot, CutDirection = new Vec2(0, 1), Frontage = f, Mode = Operations.SplitMode.CustomFrontages, Values = new[] { 12.0, 5 } });
+        Assert.Equal(new[] { 12.0, 5, 3 }, r2.Pieces.Select(p => Math.Round(p.Frontage, 6)).ToArray());
+    }
+
+    [Fact]
+    public void FromDrawnLines_TracksSourcesAndFrontage()
+    {
+        var parent = TestProjects.Rect(0, 0, 20, 30, "Mae");
+        parent.EdgeInfos.Add(new EdgeInfo { MX = 10, MY = 0, Testada = true });
+        // Linha desenhada que passa um pouco além do lote (como no Revit).
+        var cut = new LineCurve(new Vec2(8, -1), new Vec2(8, 31));
+        var pieces = Operations.SubdivisionPlanner.FromCuts(parent, new[] { ((Curve2)cut, (string?)"linha-1") });
+        Assert.Equal(2, pieces.Count);
+        Assert.Equal(new[] { 240.0, 360 }, pieces.Select(p => Math.Round(p.Area, 6)).OrderBy(x => x).ToArray());
+        Assert.Equal(new[] { 8.0, 12 }, pieces.Select(p => Math.Round(p.Frontage, 6)).OrderBy(x => x).ToArray());
+        Assert.All(pieces, p => Assert.Contains(p.Outer, e => e.Src.Contains("linha-1")));
+        Assert.All(pieces, p => Assert.Contains(p.Outer, e => e.Src.Contains("src-Mae-0")));
+    }
+}

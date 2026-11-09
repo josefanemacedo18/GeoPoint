@@ -1,8 +1,9 @@
 <Window x:Class="GeoPoint.Revit.UI.SubdivisionWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="GeoPoint" Width="820" Height="700" MinWidth="640" MinHeight="500"
-        FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip">
+        xmlns:ui="clr-namespace:GeoPoint.Revit.UI"
+        Title="GeoPoint – Remembramento" Width="1100" Height="720" MinWidth="860" MinHeight="520"
+        FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterOwner">
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
@@ -11,59 +12,67 @@
         </ResourceDictionary>
     </Window.Resources>
     <DockPanel Margin="14">
-        <TextBlock x:Name="Header" DockPanel.Dock="Top" Style="{StaticResource H1}"/>
-        <TextBlock x:Name="Intro" DockPanel.Dock="Top" Style="{StaticResource Hint}"/>
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource H1}" Text="Remembramento (unificação de lotes)"/>
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Text="Marque os lotes contíguos que serão unidos. A prévia mostra o lote unificado (contorno vermelho). As divisas internas deixam de existir; os confrontantes e a numeração dos vértices são herdados dos lotes originais."/>
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-            <Button x:Name="OkButton" Content="Registrar" Style="{StaticResource Primary}" Click="Ok_Click" IsDefault="True"/>
+            <Button x:Name="OkButton" Content="Registrar remembramento" Style="{StaticResource Primary}" Click="Ok_Click" IsDefault="True"/>
             <Button Content="Cancelar" IsCancel="True"/>
         </StackPanel>
-        <GroupBox DockPanel.Dock="Bottom" Header="Conferência">
-            <TextBlock x:Name="Check" TextWrapping="Wrap"/>
-        </GroupBox>
-        <StackPanel DockPanel.Dock="Bottom" x:Name="ResultPanel">
-            <GroupBox Header="Lote resultante">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="80"/>
-                        <ColumnDefinition Width="Auto"/><ColumnDefinition Width="140"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Label Content="Nome:"/>
-                    <TextBox Grid.Column="1" x:Name="ResultName"/>
-                    <Label Grid.Column="2" Content="  Quadra:"/>
-                    <TextBox Grid.Column="3" x:Name="ResultQuadra"/>
-                    <Label Grid.Column="4" Content="  Uso:"/>
-                    <ComboBox Grid.Column="5" x:Name="ResultUse" DisplayMemberPath="Value" SelectedValuePath="Key"/>
-                    <Label Grid.Column="6" Content="  Matrícula:"/>
-                    <TextBox Grid.Column="7" x:Name="ResultMatricula"/>
-                </Grid>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="5*"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="4*"/>
+            </Grid.ColumnDefinitions>
+            <DockPanel Grid.Column="0">
+                <GroupBox DockPanel.Dock="Bottom" Header="Conferência">
+                    <TextBlock x:Name="Check" TextWrapping="Wrap"/>
+                </GroupBox>
+                <StackPanel DockPanel.Dock="Bottom">
+                    <GroupBox Header="Lote resultante">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="70"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                            <Label Content="Nome:"/>
+                            <TextBox Grid.Column="1" x:Name="ResultName" TextChanged="Name_Changed"/>
+                            <Label Grid.Column="2" Content="  Quadra:"/>
+                            <TextBox Grid.Column="3" x:Name="ResultQuadra"/>
+                            <Label Grid.Row="1" Content="Uso:"/>
+                            <ComboBox Grid.Row="1" Grid.Column="1" x:Name="ResultUse" DisplayMemberPath="Value" SelectedValuePath="Key"/>
+                            <Label Grid.Row="1" Grid.Column="2" Content="  Matrícula:"/>
+                            <TextBox Grid.Row="1" Grid.Column="3" x:Name="ResultMatricula"/>
+                            <Label Grid.Row="2" Content="Proprietário:"/>
+                            <TextBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" x:Name="ResultOwner" ToolTip="Em branco: herda o proprietário dos lotes originais."/>
+                        </Grid>
+                    </GroupBox>
+                    <CheckBox x:Name="Sheets" IsChecked="True" Content="Gerar pranchas A4 (situação atual e proposta)"/>
+                    <DockPanel>
+                        <Label Content="Observações:"/>
+                        <TextBox x:Name="Notes"/>
+                    </DockPanel>
+                </StackPanel>
+                <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold" Margin="0,8,0,4" Text="Lotes a remembrar"/>
+                <DataGrid x:Name="Grid" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column">
+                    <DataGrid.Columns>
+                        <DataGridTemplateColumn Header="" Width="34">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <CheckBox IsChecked="{Binding Selected, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" Click="Check_Click"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="Lote / área" Binding="{Binding Nome}" Width="*" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Uso" Binding="{Binding Uso}" Width="90" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Área (m²)" Binding="{Binding AreaText}" Width="90" IsReadOnly="True"/>
+                        <DataGridTextColumn Header="Proprietário" Binding="{Binding Lot.Proprietario}" Width="120" IsReadOnly="True"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </DockPanel>
+            <GroupBox Grid.Column="2" Header="Prévia (norte para cima)">
+                <ui:PreviewCanvas x:Name="Preview" MinHeight="260"/>
             </GroupBox>
-        </StackPanel>
-        <StackPanel DockPanel.Dock="Bottom">
-            <CheckBox x:Name="Archive" IsChecked="True"/>
-            <StackPanel Orientation="Horizontal">
-                <Label Content="Observações:"/>
-                <TextBox x:Name="Notes" Width="560"/>
-            </StackPanel>
-        </StackPanel>
-        <StackPanel DockPanel.Dock="Top" x:Name="ParentPanel">
-            <Label Content="Lote original (a desmembrar):"/>
-            <ComboBox x:Name="ParentBox" DisplayMemberPath="Nome" SelectionChanged="Parent_Changed"/>
-        </StackPanel>
-        <TextBlock x:Name="ListTitle" DockPanel.Dock="Top" FontWeight="SemiBold" Margin="0,8,0,4"/>
-        <DataGrid x:Name="Grid">
-            <DataGrid.Columns>
-                <DataGridTemplateColumn Header="" Width="34">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <CheckBox IsChecked="{Binding Selected, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" Click="Check_Click"/>
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Lote / área" Binding="{Binding Nome}" Width="*" IsReadOnly="True"/>
-                <DataGridTextColumn Header="Uso" Binding="{Binding Uso}" Width="110" IsReadOnly="True"/>
-                <DataGridTextColumn Header="Área (m²)" Binding="{Binding AreaText}" Width="100" IsReadOnly="True"/>
-                <DataGridTextColumn Header="Matrícula" Binding="{Binding Lot.Matricula}" Width="110" IsReadOnly="True"/>
-            </DataGrid.Columns>
-        </DataGrid>
+        </Grid>
     </DockPanel>
 </Window>

@@ -51,6 +51,21 @@ internal sealed class Numberer
     }
 }
 
+/// <summary>Numeração acessível às janelas.</summary>
+public sealed class NumbererPublic
+{
+    private readonly string _start;
+    public NumbererPublic(string start) { _start = start; }
+    /// <summary>Nome da i-ésima parte (0 = primeira) sem alterar o estado.</summary>
+    public string Peek(int i)
+    {
+        var n = new Numberer(_start);
+        string r = n.Next();
+        for (int k = 0; k < i; k++) r = n.Next();
+        return r;
+    }
+}
+
 [Transaction(TransactionMode.Manual)]
 public sealed class CmdReconhecer : CommandBase
 {

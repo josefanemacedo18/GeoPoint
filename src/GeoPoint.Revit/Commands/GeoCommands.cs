@@ -37,8 +37,9 @@ public sealed class CmdReferencia : CommandBase
         var ctx = s.NewContext();
         string label = FindVertexLabel(ctx, a, out string where);
         string north = ProjectNorthText(ctx);
+        string viewInfo = ViewNorthText(s, out double viewRotation);
         string info = $"Ponto clicado: X = {Fmt.Raw(a.X, 3)} m, Y = {Fmt.Raw(a.Y, 3)} m (coordenadas do desenho)" + (where.Length > 0 ? $" – {where}" : "");
-        var w = new ReferenceWindow("Coordenada do ponto de referência", info, true, north, s.Project.Reference);
+        var w = new ReferenceWindow("Coordenada do ponto de referência", info, true, north, s.Project.Reference, viewInfo);
         if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
 
         var r = new GeoReferenceRecord
@@ -55,7 +56,14 @@ public sealed class CmdReferencia : CommandBase
         };
 
         string extra = "";
-        if (w.Mode == OrientationMode.EdgeAzimuth)
+        if (w.Mode == OrientationMode.ViewUp)
+        {
+            r.Mode = OrientationMode.ViewUp;
+            r.RotationRad = viewRotation;
+            double diff = AngleUtil.ToDeg(AngleUtil.NormPi(viewRotation - s.Project.Frame.AngleRad));
+            extra = $"\nO norte considerado é o topo da vista \"{s.ActiveView.Name}\" (diferença de {Fmt.N(diff, 4)}° em relação ao norte verdadeiro gravado no projeto).";
+        }
+        else if (w.Mode == OrientationMode.EdgeAzimuth)
         {
             var reference = uidoc.Selection.PickObject(ObjectType.Element, new LineAndCadFilter(false), "GeoPoint: clique na linha que parte do ponto de referência");
             if (s.Doc.GetElement(reference) is not CurveElement ce) return Result.Cancelled;
@@ -141,6 +149,30 @@ public sealed class CmdReferencia : CommandBase
             catch { }
         }
         return "";
+    }
+
+    /// <summary>Para onde o topo da vista atual aponta segundo o norte verdadeiro do projeto.</summary>
+    internal static string ViewNorthText(GpSession s, out double viewRotation)
+    {
+        var v = s.ActiveView;
+        var up = v.UpDirection;
+        // Rotação que leva a direção "para cima na tela" ao norte (+Y do sistema leste/norte).
+        viewRotation = AngleUtil.NormPi(Math.PI / 2 - Math.Atan2(up.Y, up.X));
+        if (Math.Abs(up.Z) > 0.5) return "";
+        double az = CoordinateService.AzimuthOfEnuVector(new Vec2(up.X, up.Y).Rotate(s.Project.Frame.AngleRad));
+        string orient = "";
+        try
+        {
+            var prm = v.get_Parameter(BuiltInParameter.PLAN_VIEW_NORTH);
+            if (prm is not null && prm.HasValue) orient = prm.AsInteger() == 1 ? "orientada pelo norte verdadeiro" : "orientada pelo norte do projeto";
+        }
+        catch { }
+        bool same = Math.Min(az, 360 - az) < 0.01;
+        string text = $"Vista \"{v.Name}\"{(orient.Length > 0 ? " (" + orient + ")" : "")}: pelo norte verdadeiro gravado no projeto, o topo da tela aponta para o azimute {AngleText.FormatDms(az, 0, AngleKind.Azimuth)}.";
+        text += same
+            ? " Coincide com o norte – as duas opções dão o mesmo resultado."
+            : " Se o seu desenho foi feito com o norte para cima nesta vista, escolha esta opção (ex.: 270° significa que o projeto colocaria o norte do desenho no oeste).";
+        return text;
     }
 
     internal static string ProjectNorthText(ProjectContext ctx)

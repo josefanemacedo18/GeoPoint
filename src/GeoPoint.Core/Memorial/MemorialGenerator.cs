@@ -193,7 +193,9 @@ public sealed class MemorialGenerator
             }
             default:
             {
-                subtitle = lots.Count == 1 ? "" : "LOTES";
+                var sit = (info.Situacao ?? "").Trim();
+                subtitle = sit.Length > 0 && !sit.Equals("Levantamento planimétrico", StringComparison.OrdinalIgnoreCase)
+                    ? sit.ToUpperInvariant() : lots.Count == 1 ? "" : "LOTES";
                 if (lots.Count == 1)
                 {
                     var r = _ctx.Report(main);
@@ -682,6 +684,7 @@ public sealed class MemorialGenerator
             {
                 OrientationMode.EdgeAzimuth => "a orientação foi definida pelo azimute informado de uma divisa",
                 OrientationMode.TwoPoints => "a orientação foi definida por dois pontos de coordenadas conhecidas",
+                OrientationMode.ViewUp => "a orientação considera o norte para cima no desenho",
                 _ => "a orientação segue o norte verdadeiro definido no projeto",
             };
             res.Add($"O georreferenciamento parte {anchor}, com coordenadas obtidas de {precision} (precisão estimada {pmText}); {orient}. As demais coordenadas foram calculadas a partir das distâncias e azimutes do desenho.");

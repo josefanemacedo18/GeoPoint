@@ -19,7 +19,7 @@ public partial class ReferenceWindow : Window
 
     private readonly bool _orientation;
 
-    public ReferenceWindow(string header, string pointInfo, bool showOrientation, string projectNorthInfo, GeoReferenceRecord? existing)
+    public ReferenceWindow(string header, string pointInfo, bool showOrientation, string projectNorthInfo, GeoReferenceRecord? existing, string viewNorthInfo = "")
     {
         InitializeComponent();
         Header.Text = header;
@@ -27,6 +27,8 @@ public partial class ReferenceWindow : Window
         _orientation = showOrientation;
         OrientationBox.Visibility = showOrientation ? Visibility.Visible : Visibility.Collapsed;
         ProjectNorthInfo.Text = projectNorthInfo;
+        ViewNorthInfo.Text = viewNorthInfo;
+        ViewNorthInfo.Visibility = string.IsNullOrWhiteSpace(viewNorthInfo) ? Visibility.Collapsed : Visibility.Visible;
         DatumBox.ItemsSource = new List<DatumChoice>
         {
             new(DatumId.Wgs84, "WGS 84 – GPS, Google Maps/Earth (≈ SIRGAS 2000)"),
@@ -46,6 +48,7 @@ public partial class ReferenceWindow : Window
             OriProject.IsChecked = existing.Mode == OrientationMode.ProjectTrueNorth;
             OriEdge.IsChecked = existing.Mode == OrientationMode.EdgeAzimuth;
             OriTwo.IsChecked = existing.Mode == OrientationMode.TwoPoints;
+            OriView.IsChecked = existing.Mode == OrientationMode.ViewUp;
             if (existing.EdgeAzimuthDeg is double az) EdgeAz.Text = AngleText.FormatDms(az, 2, AngleKind.Azimuth);
         }
         UpdatePreview();
@@ -175,7 +178,9 @@ public partial class ReferenceWindow : Window
         AltitudeValue = h;
         InputDatum = KindKml.IsChecked == true ? DatumId.Wgs84 : SelectedDatum;
         Precision = (PrecisionBox.SelectedItem as PrecisionChoice)?.Id ?? PrecisionClass.Desconhecida;
-        Mode = !_orientation || OriProject.IsChecked == true ? OrientationMode.ProjectTrueNorth : OriEdge.IsChecked == true ? OrientationMode.EdgeAzimuth : OrientationMode.TwoPoints;
+        Mode = !_orientation || OriProject.IsChecked == true ? OrientationMode.ProjectTrueNorth
+            : OriView.IsChecked == true ? OrientationMode.ViewUp
+            : OriEdge.IsChecked == true ? OrientationMode.EdgeAzimuth : OrientationMode.TwoPoints;
         if (Mode == OrientationMode.EdgeAzimuth)
         {
             if (!AngleText.TryParseAngle(EdgeAz.Text, out double az) || az < 0 || az >= 360)

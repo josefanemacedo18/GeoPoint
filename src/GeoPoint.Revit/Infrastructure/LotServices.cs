@@ -188,6 +188,7 @@ public static class LotServices
         lot.EdgeInfos = LotBuilder.RemapEdgeInfos(lot.EdgeInfos, item.NewOuter);
         lot.Outer = item.NewOuter;
         lot.Holes = item.NewHoles ?? new();
+        GeoPoint.Core.Topology.EdgeSplitter.Apply(lot);
         lot.Modified = DateTime.Now;
         lot.History.Add(new HistoryEntry { Description = "Atualizado a partir das linhas do desenho", Area = item.NewArea, Perimeter = item.NewPerimeter });
         if (lot.StartX is double sx && lot.StartY is double sy)

@@ -11,6 +11,10 @@ public enum SplitMode
     TargetArea = 1,
     /// <summary>Lotes com testada (frente) fixa medida ao longo da frente.</summary>
     FixedFrontage = 2,
+    /// <summary>Área de cada lote informada separadamente (o resto fica no último).</summary>
+    CustomAreas = 3,
+    /// <summary>Testada de cada lote informada separadamente (o resto fica no último).</summary>
+    CustomFrontages = 4,
 }
 
 public sealed class SplitRequest
@@ -28,6 +32,8 @@ public sealed class SplitRequest
     public double FrontageWidth { get; init; }
     /// <summary>No modo área-alvo: se o resto for menor que isto, é incorporado ao último lote.</summary>
     public double MinRemainderArea { get; init; }
+    /// <summary>Valores por lote (áreas ou testadas) nos modos personalizados.</summary>
+    public IReadOnlyList<double> Values { get; init; } = Array.Empty<double>();
 }
 
 public sealed class SplitPiece
@@ -220,6 +226,42 @@ public static class AreaSplitter
                     if (t >= total - 1e-6) break;
                     res.Positions.Add(SolvePosition(region, n, t, min, max));
                 }
+                break;
+            }
+            case SplitMode.CustomAreas:
+            {
+                double acc = 0;
+                foreach (var v in req.Values)
+                {
+                    if (v <= 0) throw new ArgumentException("As áreas devem ser positivas.");
+                    acc += v;
+                    if (acc >= total - 1e-6) { res.Warnings.Add("A soma das áreas informadas alcança ou passa a área do lote; as últimas foram ignoradas."); break; }
+                    res.Positions.Add(SolvePosition(region, n, acc, min, max));
+                }
+                break;
+            }
+            case SplitMode.CustomFrontages:
+            {
+                if (req.Frontage is null) throw new ArgumentException("Selecione a frente (testada).");
+                var pts = req.Frontage.Densify(1e-5);
+                if (!req.FromFrontageStart) pts.Reverse();
+                double target = 0;
+                var marks = new List<double>();
+                foreach (var v in req.Values) { if (v <= 0) throw new ArgumentException("As testadas devem ser positivas."); target += v; marks.Add(target); }
+                double acc = 0; int mi = 0;
+                for (int i = 0; i < pts.Count - 1 && mi < marks.Count; i++)
+                {
+                    double segLen = pts[i].DistanceTo(pts[i + 1]);
+                    while (mi < marks.Count && acc + segLen >= marks[mi] - 1e-9 && segLen > 0)
+                    {
+                        var p = Vec2.Lerp(pts[i], pts[i + 1], (marks[mi] - acc) / segLen);
+                        double s = n.Dot(p);
+                        if (s > min + 1e-6 && s < max - 1e-6) res.Positions.Add(s);
+                        mi++;
+                    }
+                    acc += segLen;
+                }
+                if (mi < marks.Count) res.Warnings.Add("A soma das testadas informadas passa o comprimento da frente; as últimas foram ignoradas.");
                 break;
             }
             case SplitMode.FixedFrontage:

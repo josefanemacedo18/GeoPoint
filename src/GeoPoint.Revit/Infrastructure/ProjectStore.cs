@@ -114,17 +114,30 @@ public static class ProjectStore
             f.OriginE = p0.EastWest * RvtUnits.FtToM;
             f.OriginN = p0.NorthSouth * RvtUnits.FtToM;
             f.OriginElevation = p0.Elevation * RvtUnits.FtToM;
+            f.ReportedAngleRad = p0.Angle;
             try
             {
-                // Direção do eixo X interno no sistema compartilhado (Y = norte verdadeiro).
+                // Direção do eixo X interno no sistema compartilhado (Y = norte verdadeiro), como em
+                // "Informar coordenadas compartilhadas" do Revit.
                 var p1 = loc.GetProjectPosition(new XYZ(100, 0, 0));
                 double dE = p1.EastWest - p0.EastWest, dN = p1.NorthSouth - p0.NorthSouth;
-                f.AngleRad = Math.Abs(dE) + Math.Abs(dN) > 1e-9 ? Math.Atan2(dN, dE) : p0.Angle;
+                if (Math.Abs(dE) + Math.Abs(dN) > 1e-9)
+                {
+                    f.AngleRad = Math.Atan2(dN, dE);
+                    f.Method = "coordenadas compartilhadas de dois pontos";
+                }
+                else
+                {
+                    f.AngleRad = p0.Angle;
+                    f.Method = "ângulo do ProjectPosition";
+                }
             }
             catch
             {
                 f.AngleRad = p0.Angle;
+                f.Method = "ângulo do ProjectPosition";
             }
+            Logger.Info($"Norte verdadeiro: rotação {f.AngleRad * 180 / Math.PI:0.######}° ({f.Method}); ProjectPosition.Angle = {p0.Angle * 180 / Math.PI:0.######}°");
         }
         catch (Exception ex)
         {

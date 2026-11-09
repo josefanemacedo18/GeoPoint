@@ -29,6 +29,8 @@ public enum OrientationMode
     EdgeAzimuth = 1,
     /// <summary>Dois pontos com coordenadas conhecidas.</summary>
     TwoPoints = 2,
+    /// <summary>O topo da vista em que o ponto foi definido é o norte (desenho feito com o norte para cima).</summary>
+    ViewUp = 3,
 }
 
 public enum PrecisionClass
@@ -202,6 +204,13 @@ public sealed class EdgeDto
     }
 }
 
+public sealed class PointDto
+{
+    public double X { get; set; }
+    public double Y { get; set; }
+    public Vec2 ToVec() => new(X, Y);
+}
+
 /// <summary>Atributos de uma divisa do lote, identificada pelo ponto médio.</summary>
 public sealed class EdgeInfo
 {
@@ -276,6 +285,8 @@ public sealed class AnnotationRecord
 {
     public string ViewId { get; set; } = "";
     public List<string> ElementIds { get; set; } = new();
+    /// <summary>Chaves das anotações (divisas/vértices) para não repetir entre lotes vizinhos.</summary>
+    public List<string> Keys { get; set; } = new();
 }
 
 public sealed class HistoryEntry
@@ -334,6 +345,11 @@ public sealed class LotRecord
     public string PropertyLineId { get; set; } = "";
     public List<string> FilledRegionIds { get; set; } = new();
     public List<string> AuxElementIds { get; set; } = new();
+    /// <summary>
+    /// Vértices inseridos pelo usuário sobre as divisas (mudança de confrontante ao longo de uma divisa).
+    /// São reaplicados quando a geometria do lote é atualizada.
+    /// </summary>
+    public List<PointDto> ExtraVertices { get; set; } = new();
     /// <summary>Hachuras do lote (por vista).</summary>
     public List<AnnotationRecord> Hatches { get; set; } = new();
 
@@ -378,6 +394,10 @@ public sealed class SharedFrame
     public double AngleRad { get; set; }
     /// <summary>Elevação compartilhada (m) da origem interna.</summary>
     public double OriginElevation { get; set; }
+    /// <summary>Diagnóstico: ângulo informado em ProjectPosition.Angle (rad).</summary>
+    public double ReportedAngleRad { get; set; }
+    /// <summary>Diagnóstico: como o ângulo foi obtido.</summary>
+    public string Method { get; set; } = "";
 
     public Vec2 ToShared(Vec2 internalM) => new Vec2(OriginE, OriginN) + internalM.Rotate(AngleRad);
 }
@@ -441,6 +461,16 @@ public sealed class ProjectInfo
     public string Finalidade { get; set; } = "";
     public string RrtArt { get; set; } = "";
     public string RuleProfileName { get; set; } = "";
+    /// <summary>Situação do processo (Regularização, Desmembramento, Remembramento...).</summary>
+    public string Situacao { get; set; } = "Regularização";
+    /// <summary>Imagem de localização usada no carimbo das pranchas.</summary>
+    public string ImagemLocalizacao { get; set; } = "";
+
+    public static IReadOnlyList<string> Situacoes { get; } = new[]
+    {
+        "Regularização", "Desmembramento", "Remembramento", "Unificação", "Desdobro", "Retificação de área",
+        "Usucapião", "Loteamento", "Condomínio", "Levantamento planimétrico",
+    };
 }
 
 public sealed class OperationRecord
@@ -471,6 +501,8 @@ public sealed class ParcelProject
     public List<OperationRecord> Operations { get; set; } = new();
     /// <summary>Registro único de vértices (numeração estável entre operações).</summary>
     public List<VertexRecord> Vertices { get; set; } = new();
+    /// <summary>Desenhos esquemáticos de vias por vista (elementos criados).</summary>
+    public List<AnnotationRecord> StreetDrawings { get; set; } = new();
     /// <summary>Próximo número de vértice em cada quadra.</summary>
     public Dictionary<string, int> QuadraVertexCounters { get; set; } = new();
     public List<ViaRecord> Vias { get; set; } = new();

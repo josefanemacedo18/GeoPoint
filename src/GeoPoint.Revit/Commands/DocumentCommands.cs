@@ -171,7 +171,7 @@ public sealed class CmdExportarSig : CommandBase
             new("kmz", "KMZ – Google Earth (recomendado)", true),
             new("kml", "KML – Google Earth / QGIS", false),
             new("geojson", "GeoJSON – QGIS", true),
-            new("vert", "Incluir os vértices como pontos", k.IncludeVertices),
+            new("vert", "Incluir cada vértice como ponto (nome e coordenadas) – recomendado para conferir no Earth", true),
             new("edges", "Incluir as divisas como linhas (com azimute e distância)", k.IncludeEdges),
             new("open", "Abrir o KMZ no Google Earth ao terminar", true),
             new("opacity", "Opacidade do preenchimento (0 a 1)", k.FillOpacity),
@@ -214,6 +214,7 @@ public sealed class CmdExportarSig : CommandBase
         {
             var ctx = s.NewContext();
             var lots = s.Project.ActiveLots.ToList();
+            ctx.Settings.Kml.IncludeVertices = true; // conferência: sempre com todos os pontos
             var kml = GisExport.BuildKml(ctx, lots, Folders.ProjectName(s));
             var dir = Path.Combine(Path.GetTempPath(), "GeoPoint");
             Directory.CreateDirectory(dir);

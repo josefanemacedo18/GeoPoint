@@ -29,6 +29,8 @@ public partial class ProjectInfoWindow : Window
         Car.Text = info.Car;
         Finalidade.Text = info.Finalidade;
         RrtArt.Text = info.RrtArt;
+        Situacao.ItemsSource = GeoPoint.Core.Model.ProjectInfo.Situacoes;
+        Situacao.Text = info.Situacao;
         var names = settings.RuleProfiles.Select(p => p.Name).ToList();
         Profile.ItemsSource = names;
         var current = settings.FindProfile(info.RuleProfileName)?.Name;
@@ -53,6 +55,7 @@ public partial class ProjectInfoWindow : Window
         _info.Car = Car.Text.Trim();
         _info.Finalidade = Finalidade.Text.Trim();
         _info.RrtArt = RrtArt.Text.Trim();
+        _info.Situacao = Situacao.Text.Trim();
         _info.RuleProfileName = Profile.SelectedItem as string ?? "";
         DialogResult = true;
     }

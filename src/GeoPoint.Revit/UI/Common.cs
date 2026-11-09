@@ -99,3 +99,11 @@ public static class UseOptions
     public static IReadOnlyList<KeyValuePair<LotUse, string>> All { get; } =
         LotUseInfo.All.Select(u => new KeyValuePair<LotUse, string>(u, LotUseInfo.Label(u))).ToList();
 }
+
+public sealed class EdgeChoice
+{
+    public EdgeChoice(string text, GeoPoint.Core.Geometry.Curve2 curve, bool testada) { Text = text; Curve = curve; Testada = testada; }
+    public string Text { get; }
+    public GeoPoint.Core.Geometry.Curve2 Curve { get; }
+    public bool Testada { get; }
+}
