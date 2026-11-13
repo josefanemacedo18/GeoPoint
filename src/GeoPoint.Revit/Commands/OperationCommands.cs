@@ -58,6 +58,7 @@ internal static class OpHelpers
 public sealed class CmdDesmembramento : CommandBase
 {
     protected override string Title => "Desmembramento";
+    protected override string? BackupReason => "desmembramento";
 
     protected override Result Run(GpSession s)
     {
@@ -255,6 +256,7 @@ public sealed class CmdDesmembramento : CommandBase
 public sealed class CmdRemembramento : CommandBase
 {
     protected override string Title => "Remembramento";
+    protected override string? BackupReason => "remembramento";
 
     protected override Result Run(GpSession s)
     {
@@ -311,6 +313,7 @@ public sealed class CmdRemembramento : CommandBase
 public sealed class CmdAreaEdificavel : CommandBase
 {
     protected override string Title => "Área edificável";
+    protected override string? BackupReason => "area edificavel";
 
     protected override Result Run(GpSession s)
     {

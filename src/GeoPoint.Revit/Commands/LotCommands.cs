@@ -74,6 +74,7 @@ public sealed class NumbererPublic
 public sealed class CmdReconhecer : CommandBase
 {
     protected override string Title => "Reconhecer lotes";
+    protected override string? BackupReason => "reconhecer lotes";
 
     protected override Result Run(GpSession s)
     {
@@ -259,6 +260,7 @@ public sealed class CmdReconhecer : CommandBase
 public sealed class CmdGerenciar : CommandBase
 {
     protected override string Title => "Gerenciar lotes";
+    protected override string? BackupReason => "gerenciar lotes";
 
     protected override Result Run(GpSession s)
     {
@@ -314,6 +316,7 @@ public sealed class CmdGerenciar : CommandBase
 public sealed class CmdAtualizar : CommandBase
 {
     protected override string Title => "Atualizar lotes";
+    protected override string? BackupReason => "atualizar lotes";
 
     protected override Result Run(GpSession s)
     {
@@ -349,6 +352,7 @@ public sealed class CmdAtualizar : CommandBase
 public sealed class CmdDadosImovel : CommandBase
 {
     protected override string Title => "Dados do imóvel";
+    protected override string? BackupReason => "dados do imovel";
 
     protected override Result Run(GpSession s)
     {
@@ -365,6 +369,7 @@ public sealed class CmdDadosImovel : CommandBase
 public sealed class CmdGerarLote : CommandBase
 {
     protected override string Title => "Gerar lote";
+    protected override string? BackupReason => "gerar lote";
 
     protected override Result Run(GpSession s)
     {

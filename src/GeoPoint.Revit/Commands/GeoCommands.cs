@@ -18,6 +18,7 @@ namespace GeoPoint.Revit.Commands;
 public sealed class CmdReferencia : CommandBase
 {
     protected override string Title => "Definir referência";
+    protected override string? BackupReason => "referencia";
 
     protected override Result Run(GpSession s)
     {
@@ -202,6 +203,7 @@ public sealed class CmdReferencia : CommandBase
 public sealed class CmdCaminhamento : CommandBase
 {
     protected override string Title => "Desenhar por azimutes";
+    protected override string? BackupReason => "desenhar por azimutes";
 
     protected override Result Run(GpSession s)
     {
@@ -260,7 +262,8 @@ public sealed class CmdCaminhamento : CommandBase
 [Transaction(TransactionMode.Manual)]
 public sealed class CmdImportarKml : CommandBase
 {
-    protected override string Title => "Importar KML/KMZ";
+    protected override string Title => "Importar pontos";
+    protected override string? BackupReason => "importar pontos";
 
     protected override Result Run(GpSession s)
     {
@@ -270,12 +273,58 @@ public sealed class CmdImportarKml : CommandBase
             Ui.Warn("Vista inadequada", "Abra a vista de planta onde os pontos devem aparecer.");
             return Result.Cancelled;
         }
-        var path = Ui.OpenFile("Importar pontos do Google Earth / QGIS", "KML/KMZ (*.kml;*.kmz)|*.kml;*.kmz", Folders.Default(s, ""));
-        if (path is null) return Result.Cancelled;
+        // Origem: KML/KMZ, planilha (CSV/TXT) ou coordenadas copiadas (Excel, SIGEF, memorial).
+        var src = new TaskDialog("GeoPoint – Importar pontos")
+        {
+            MainInstruction = "De onde vêm as coordenadas?",
+            MainContent = "Planilhas: uma linha por ponto com nome e as duas coordenadas (UTM E/N ou latitude/longitude, em graus decimais ou graus/minutos/segundos), separadas por ponto e vírgula, tabulação ou vírgula.",
+            CommonButtons = TaskDialogCommonButtons.Cancel,
+        };
+        src.AddCommandLink(TaskDialogCommandLinkId.CommandLink1, "Arquivo KML/KMZ (Google Earth / QGIS)");
+        src.AddCommandLink(TaskDialogCommandLinkId.CommandLink2, "Planilha CSV ou TXT");
+        src.AddCommandLink(TaskDialogCommandLinkId.CommandLink3, "Colar as coordenadas copiadas (Excel, SIGEF, memorial)");
+        var choice = src.Show();
+        if (choice is not (TaskDialogResult.CommandLink1 or TaskDialogResult.CommandLink2 or TaskDialogResult.CommandLink3)) return Result.Cancelled;
+        string path;
         List<GeoPoint.Core.Export.KmlPoint> pts;
-        try { pts = GeoPoint.Core.Export.KmlReader.ReadPoints(path); }
-        catch (Exception ex) { Ui.Error("Arquivo inválido", "Não foi possível ler o arquivo: " + ex.Message, ex); return Result.Failed; }
-        if (pts.Count == 0) { Ui.Info("Sem pontos", "O arquivo não tem marcadores (pontos). Linhas e polígonos não são importados."); return Result.Cancelled; }
+        if (choice == TaskDialogResult.CommandLink1)
+        {
+            var p0 = Ui.OpenFile("Importar pontos do Google Earth / QGIS", "KML/KMZ (*.kml;*.kmz)|*.kml;*.kmz", Folders.Default(s, ""));
+            if (p0 is null) return Result.Cancelled;
+            path = p0;
+            try { pts = GeoPoint.Core.Export.KmlReader.ReadPoints(path); }
+            catch (Exception ex) { Ui.Error("Arquivo inválido", "Não foi possível ler o arquivo: " + ex.Message, ex); return Result.Failed; }
+            if (pts.Count == 0) { Ui.Info("Sem pontos", "O arquivo não tem marcadores (pontos). Linhas e polígonos não são importados."); return Result.Cancelled; }
+        }
+        else
+        {
+            string text;
+            if (choice == TaskDialogResult.CommandLink2)
+            {
+                var p0 = Ui.OpenFile("Importar coordenadas de planilha", "Planilha/texto (*.csv;*.txt)|*.csv;*.txt|Todos|*.*", Folders.Default(s, ""));
+                if (p0 is null) return Result.Cancelled;
+                path = p0;
+                text = System.IO.File.ReadAllText(path);
+            }
+            else
+            {
+                path = "Coordenadas coladas";
+                text = System.Windows.Clipboard.ContainsText() ? System.Windows.Clipboard.GetText() : "";
+                if (string.IsNullOrWhiteSpace(text)) { Ui.Info("Área de transferência vazia", "Copie as linhas da planilha (nome, E, N ou latitude, longitude) e use de novo."); return Result.Cancelled; }
+            }
+            // Fuso UTM: o do projeto; sem referência, o do primeiro sistema UTM das configurações (ou 23).
+            var zone = s.NewContext().Coords.AutoZone;
+            int zn = zone?.Number ?? (s.Settings.Memorial.CoordinateSystems.FirstOrDefault(c => c.Kind == CrsKind.Utm && c.UtmZone > 0)?.UtmZone ?? 23);
+            bool south = zone?.South ?? true;
+            GeoPoint.Core.Export.CoordinateTableReader.Result parsed;
+            try { parsed = GeoPoint.Core.Export.CoordinateTableReader.Parse(text, zn, south); }
+            catch (Exception ex) { Ui.Warn("Coordenadas", ex.Message); return Result.Cancelled; }
+            pts = parsed.Points;
+            if (pts.Count == 0) { Ui.Info("Sem coordenadas", "Nenhuma linha com nome e duas coordenadas foi encontrada." + (parsed.Warnings.Count > 0 ? "\n\n" + string.Join("\n", parsed.Warnings.Take(8)) : "")); return Result.Cancelled; }
+            if (parsed.Kind == "UTM" && zone is null)
+                Ui.Info("Fuso UTM", $"As coordenadas foram lidas como UTM SIRGAS 2000 fuso {zn}{(south ? "S" : "N")}. Se o fuso for outro, defina a referência do projeto (ou o fuso em Configurações) e importe de novo.");
+            if (parsed.Warnings.Count > 0) Logger.Info("Importar coordenadas: " + string.Join(" | ", parsed.Warnings));
+        }
 
         var w = new ImportKmlWindow(System.IO.Path.GetFileName(path), pts, s.Project.Reference.IsSet);
         if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
@@ -316,16 +365,27 @@ public sealed class CmdImportarKml : CommandBase
             if (existing is null) s.Project.ControlPoints.Add(cp);
             imported.Add(cp);
         }
-        int drawn;
+        int drawn, lines = 0;
         using (var t = new Transaction(s.Doc, "GeoPoint: importar pontos"))
         {
             t.Start();
             drawn = ControlPointDrawer.Draw(s, view, imported);
             if (refChanged) ControlPointDrawer.RedrawAll(s);
+            // Polígono ligando os pontos na ordem (linhas de modelo prontas para Reconhecer Lotes).
+            if (w.ConnectLines && imported.Count >= 3)
+            {
+                var ctxL = s.NewContext();
+                var pos = imported.Select(cp => ControlPointCheck.Position(ctxL, cp)).Where(p => p is not null).Select(p => p!.Value).ToList();
+                var curves = new List<Curve2>();
+                for (int i = 0; i < pos.Count; i++)
+                    if (pos[i].DistanceTo(pos[(i + 1) % pos.Count]) > 0.001) curves.Add(new LineCurve(pos[i], pos[(i + 1) % pos.Count]));
+                var target = CurveTarget.ForActiveView(s.Doc, view, false);
+                lines = target.Create(s.Doc, curves, null).Count;
+            }
             ProjectStore.Save(s.Doc, s.Project);
             t.Commit();
         }
-        string msg = $"{drawn} ponto(s) importado(s) de {origem} na vista \"{view.Name}\"." +
+        string msg = $"{drawn} ponto(s) importado(s) de {origem} na vista \"{view.Name}\"." + (lines > 0 ? $"\n{lines} linha(s) ligando os pontos: use Reconhecer Lotes para criar o lote." : "") +
                      (refChanged ? $"\nO ponto \"{w.ClickPoint!.Nome}\" passou a ser o ponto de referência do projeto (o topo da tela é o norte)." : "") +
                      "\n\nUse o cruzamento das cruzes laranja (snap de interseção) para desenhar as linhas de limite.";
         var cmp = ControlPointCheck.Compare(s.NewContext()).Where(x => imported.Contains(x.Point) && x.Distance is not null).ToList();

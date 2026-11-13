@@ -20,6 +20,7 @@ namespace GeoPoint.Revit.Commands;
 public sealed class CmdPranchas : CommandBase
 {
     protected override string Title => "Pranchas";
+    protected override string? BackupReason => "pranchas";
 
     protected override Result Run(GpSession s)
     {
@@ -300,6 +301,7 @@ public sealed class CmdAnuencia : CommandBase
 public sealed class CmdVias : CommandBase
 {
     protected override string Title => "Vias";
+    protected override string? BackupReason => "vias";
 
     /// <summary>Seleção no desenho: linhas das testadas e linha(s) do meio-fio do lado dos lotes.</summary>
     private static void PickStreet(GpSession s, ProjectContext ctx, ViaRecord via)

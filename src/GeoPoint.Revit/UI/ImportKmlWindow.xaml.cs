@@ -38,6 +38,8 @@ public partial class ImportKmlWindow : Window
 
     public List<KmlRow> Selected => _rows.Where(r => r.Selected).ToList();
     public bool ClickMode => ModeClick.IsChecked == true;
+    /// <summary>Desenhar linhas ligando os pontos (polígono fechado).</summary>
+    public bool ConnectLines => Connect.IsChecked == true;
     public KmlRow? ClickPoint => RefPoint.SelectedItem as KmlRow;
 
     private void Mode_Changed(object sender, RoutedEventArgs e)

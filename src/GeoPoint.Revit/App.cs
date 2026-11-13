@@ -34,7 +34,7 @@ public sealed class App : IExternalApplication
 
             var geo = app.CreateRibbonPanel(TabName, "Georreferência");
             Add(geo, "Definir\nReferência", typeof(Commands.CmdReferencia), "Informe a coordenada (Google Maps/Earth, QGIS, GPS ou UTM) de um vértice. As demais coordenadas são calculadas pelos azimutes e distâncias do desenho.", IconKind.Reference);
-            Add(geo, "Importar\nKML/KMZ", typeof(Commands.CmdImportarKml), "Importa pontos (marcadores) do Google Earth/QGIS. Você clica onde fica um dos pontos (ou usa a referência do projeto) e todos aparecem no desenho para traçar as divisas com snap.", IconKind.Import);
+            Add(geo, "Importar\nPontos", typeof(Commands.CmdImportarKml), "Importa pontos do Google Earth/QGIS (KML/KMZ), de planilha (CSV/TXT) ou coordenadas copiadas do Excel/SIGEF (UTM ou latitude/longitude). Os pontos aparecem no desenho para traçar as divisas com snap; opcionalmente já ligados em polígono.", IconKind.Import);
             Add(geo, "Desenhar por\nAzimutes", typeof(Commands.CmdCaminhamento), "Desenha linhas a partir de azimutes/rumos e distâncias (ex.: colados de um memorial antigo), com erro de fechamento.", IconKind.Traverse);
 
             var ops = app.CreateRibbonPanel(TabName, "Operações");
@@ -53,6 +53,7 @@ public sealed class App : IExternalApplication
             Add(docs, "Memorial\nDescritivo", typeof(Commands.CmdMemorial), "Gera o memorial descritivo em Word (lote, desmembramento, remembramento ou loteamento).", IconKind.Memorial);
             Add(docs, "Anuência de\nConfrontantes", typeof(Commands.CmdAnuencia), "Declaração de anuência (limite) para cada confrontante, com a descrição da divisa comum, em Word.", IconKind.Signature);
             Add(docs, "Pranchas", typeof(Commands.CmdPranchas), "Pranchas por situação (atual, proposta, cada lote e total) pelo modelo escolhido: mapa com grade de coordenadas, norte, tabela de coordenadas, coordenada de referência, croqui de satélite e carimbo.", IconKind.Sheet);
+            Add(docs, "Exportar\nPDF", typeof(Commands.CmdExportarPdf), "Exporta as pranchas em PDF pelo recurso do próprio Revit, em escala real e no papel de cada prancha (um arquivo só ou um por prancha).", IconKind.Pdf);
             Add(docs, "Google Earth\n/ QGIS", typeof(Commands.CmdExportarSig), "Exporta KMZ/KML (Google Earth) e GeoJSON (QGIS) para conferir sobre imagem de satélite.", IconKind.Globe);
             Add(docs, "Planilha\nExcel", typeof(Commands.CmdExportarExcel), "Exporta lotes, coordenadas e segmentos para Excel.", IconKind.Excel);
 
@@ -104,7 +105,7 @@ public sealed class App : IExternalApplication
     }
 }
 
-public enum IconKind { Recognize, Manager, Sync, Info, Reference, Traverse, Split, Merge, Divide, Setback, Annotate, Table, Native, Memorial, Globe, Excel, Chart, Check, Topo, Settings, Help, Hatch, Street, Signature, Sheet, Phases, Import, Generate, Building }
+public enum IconKind { Recognize, Manager, Sync, Info, Reference, Traverse, Split, Merge, Divide, Setback, Annotate, Table, Native, Memorial, Globe, Excel, Chart, Check, Topo, Settings, Help, Hatch, Street, Signature, Sheet, Phases, Import, Generate, Building, Pdf }
 
 /// <summary>Ícones vetoriais desenhados em código (sem arquivos externos).</summary>
 public static class Icons
@@ -224,6 +225,11 @@ public static class Icons
             case IconKind.Divide:
                 dc.DrawRectangle(Light, P(Blue, 2), new Rect(3, 6, 26, 20));
                 for (int i = 1; i < 4; i++) dc.DrawLine(P(Orange, 1.8), new Point(3 + i * 6.5, 6), new Point(3 + i * 6.5, 26));
+                break;
+            case IconKind.Pdf:
+                dc.DrawGeometry(Brushes.White, P(Gray, 1.5), Geometry.Parse("M 7,3 L 21,3 L 27,9 L 27,29 L 7,29 Z"));
+                dc.DrawRectangle(Freeze(new SolidColorBrush(Color.FromRgb(0xC6, 0x28, 0x28))), null, new Rect(3, 14, 18, 10));
+                dc.DrawText(new FormattedText("PDF", System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal), 8, Brushes.White, 1.0), new Point(4.5, 14.5));
                 break;
             case IconKind.Building:
                 dc.DrawRectangle(Light, P(Blue, 1.6), new Rect(2, 4, 28, 25));

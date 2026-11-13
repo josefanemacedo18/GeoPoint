@@ -67,12 +67,16 @@ public abstract class CommandBase : IExternalCommand
 
     protected abstract Result Run(GpSession s);
 
+    /// <summary>Motivo da cópia de segurança dos dados do GeoPoint feita antes do comando (null = sem cópia).</summary>
+    protected virtual string? BackupReason => null;
+
     public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
     {
         try
         {
             var s = new GpSession(commandData.Application);
             Logger.Info($"Comando: {GetType().Name}");
+            if (BackupReason is { } reason) Backups.Save(s, reason);
             return Run(s);
         }
         catch (Autodesk.Revit.Exceptions.OperationCanceledException)

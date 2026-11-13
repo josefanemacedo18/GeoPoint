@@ -77,8 +77,24 @@ public sealed class CmdMemorial : CommandBase
                     "Gerar com coordenadas locais", "Cancelar (definir a referência antes)"))
                 return Result.Cancelled;
         }
-        if (string.IsNullOrWhiteSpace(s.Settings.Technician.Nome))
-            Ui.Warn("Responsável técnico não informado", "O memorial será gerado sem o nome do responsável técnico. Informe em Configurações › Responsável técnico.");
+        // Conferência antes de emitir (mesma das pranchas): dados que faltam e diferenças com a matrícula.
+        {
+            var pend = GeoPoint.Core.Sheets.SheetContent.Build(s.NewContext(), new ValueFormatter(s.Settings.Format),
+                new GeoPoint.Core.Sheets.SheetSpec { LotIds = w.Lots.Select(l => l.Id).ToList(), OperationId = operation?.Id ?? "" }, w.Lots,
+                m.CoordinateSystems.FirstOrDefault() ?? CrsDef.Utm()).Pendencias.Where(p => !p.StartsWith("Projeto sem georreferência")).Distinct().ToList();
+            if (pend.Count > 0)
+            {
+                var td = new TaskDialog("GeoPoint – Conferência antes de emitir")
+                {
+                    MainInstruction = $"{pend.Count} pendência(s) no memorial",
+                    MainContent = "• " + string.Join("\n• ", pend.Take(15)),
+                    CommonButtons = TaskDialogCommonButtons.Cancel,
+                };
+                td.AddCommandLink(TaskDialogCommandLinkId.CommandLink1, "Gerar o memorial mesmo assim");
+                td.AddCommandLink(TaskDialogCommandLinkId.CommandLink2, "Voltar e corrigir");
+                if (td.Show() != TaskDialogResult.CommandLink1) return Result.Cancelled;
+            }
+        }
 
         byte[]? template = null;
         if (!string.IsNullOrWhiteSpace(m.TemplatePath))
@@ -275,3 +291,78 @@ public sealed class CmdExportarExcel : CommandBase
     }
 }
 
+
+/// <summary>Exporta as pranchas em PDF pelo recurso nativo do Revit (escala real, papel de cada prancha).</summary>
+[Transaction(TransactionMode.Manual)]
+public sealed class CmdExportarPdf : CommandBase
+{
+    protected override string Title => "Exportar PDF";
+
+    protected override Result Run(GpSession s)
+    {
+        var gp = new HashSet<string>(s.Project.Sheets.Select(g => g.SheetId));
+        var sheets = new FilteredElementCollector(s.Doc).OfClass(typeof(ViewSheet)).Cast<ViewSheet>()
+            .Where(v => !v.IsPlaceholder).OrderBy(v => v.SheetNumber, StringComparer.CurrentCultureIgnoreCase).ToList();
+        if (sheets.Count == 0) { Ui.Info("Nenhuma prancha", "Gere as pranchas primeiro (Pranchas)."); return Result.Cancelled; }
+        var faseSheets = new HashSet<string>(s.Project.Sheets.Where(g => g.FaseId == s.Project.Fase.Id).Select(g => g.SheetId));
+        var rows = sheets.Select(v =>
+        {
+            var (fmt, orient, text) = Paper(v);
+            return new SheetPickRow
+            {
+                Number = v.SheetNumber, Name = v.Name, PaperText = text, IsGeoPoint = gp.Contains(v.UniqueId),
+                Selected = faseSheets.Contains(v.UniqueId), Tag = (v, fmt, orient, text),
+            };
+        }).ToList();
+        if (!rows.Any(r => r.Selected)) foreach (var r in rows.Where(r => r.IsGeoPoint)) r.Selected = true;
+        var w = new SheetExportWindow(rows, Folders.Default(s, s.Settings.Memorial.OutputFolder), Folders.ProjectName(s) + " - Pranchas");
+        if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
+        Directory.CreateDirectory(w.OutFolder);
+        var chosen = w.Selected.Select(r => ((ViewSheet v, ExportPaperFormat f, PageOrientationType o, string t))r.Tag!).ToList();
+        var groups = chosen.GroupBy(x => (x.f, x.o)).ToList();
+        int ok = 0;
+        var errors = new List<string>();
+        foreach (var g in groups)
+        {
+            var opt = new PDFExportOptions
+            {
+                PaperFormat = g.Key.f, PaperOrientation = g.Key.o,
+                ZoomType = g.Key.f == ExportPaperFormat.Default ? ZoomType.FitToPage : ZoomType.Zoom, ZoomPercentage = 100,
+                PaperPlacement = PaperPlacementType.LowerLeft, OriginOffsetX = 0, OriginOffsetY = 0,
+                HideCropBoundaries = true, HideScopeBoxes = true, HideReferencePlane = true, HideUnreferencedViewTags = true,
+                ColorDepth = ColorDepthType.Color, RasterQuality = RasterQualityType.High, MaskCoincidentLines = true,
+                Combine = w.CombineAll,
+            };
+            if (w.CombineAll) opt.FileName = groups.Count == 1 ? w.OutName : $"{w.OutName} ({g.First().t})";
+            try
+            {
+                if (s.Doc.Export(w.OutFolder, g.Select(x => x.v.Id).ToList(), opt)) ok += g.Count();
+                else errors.Add($"{g.First().t}: o Revit não conseguiu exportar.");
+            }
+            catch (Exception ex) { errors.Add($"{g.First().t}: {ex.Message}"); Logger.Error("Exportar PDF", ex); }
+        }
+        Folders.Remember(s, Path.Combine(w.OutFolder, "x.pdf"));
+        if (w.OpenFolder && ok > 0) Ui.OpenFile(w.OutFolder);
+        if (errors.Count > 0) Ui.Warn("Exportar PDF", $"{ok} prancha(s) exportada(s).\n\n" + string.Join("\n", errors));
+        else Ui.Info("Exportar PDF", $"{ok} prancha(s) exportada(s) em {w.OutFolder}.");
+        return Result.Succeeded;
+    }
+
+    /// <summary>Papel da prancha pelo contorno (A4…A0, retrato/paisagem); "Padrão" quando não bate com um tamanho ISO.</summary>
+    private static (ExportPaperFormat, PageOrientationType, string) Paper(ViewSheet v)
+    {
+        try
+        {
+            var o = v.Outline;
+            double w = (o.Max.U - o.Min.U) * 304.8, h = (o.Max.V - o.Min.V) * 304.8;
+            var sizes = new[] { (ExportPaperFormat.ISO_A4, 210.0, 297.0, "A4"), (ExportPaperFormat.ISO_A3, 297.0, 420.0, "A3"), (ExportPaperFormat.ISO_A2, 420.0, 594.0, "A2"), (ExportPaperFormat.ISO_A1, 594.0, 841.0, "A1"), (ExportPaperFormat.ISO_A0, 841.0, 1189.0, "A0") };
+            foreach (var (f, a, b, name) in sizes)
+            {
+                if (Math.Abs(w - a) < 4 && Math.Abs(h - b) < 4) return (f, PageOrientationType.Portrait, name + " retrato");
+                if (Math.Abs(w - b) < 4 && Math.Abs(h - a) < 4) return (f, PageOrientationType.Landscape, name + " paisagem");
+            }
+            return (ExportPaperFormat.Default, PageOrientationType.Auto, $"{w:0}×{h:0} mm");
+        }
+        catch { return (ExportPaperFormat.Default, PageOrientationType.Auto, "padrão"); }
+    }
+}

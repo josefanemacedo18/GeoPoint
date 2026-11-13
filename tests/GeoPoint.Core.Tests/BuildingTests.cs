@@ -90,3 +90,29 @@ public class PivotSplitTests
         Assert.All(p2, p => Assert.Equal(300, p.Area, 4));
     }
 }
+
+public class CoordinateTableTests
+{
+    [Fact]
+    public void Parse_Utm_Geographic_Dms()
+    {
+        var utm = GeoPoint.Core.Export.CoordinateTableReader.Parse("Vértice;E;N\nP-01;235.142,50;9.299.292,99\nP-02;235113,25;9299307,98\n", 23, true);
+        Assert.Equal("UTM", utm.Kind);
+        Assert.Equal(2, utm.Points.Count);
+        Assert.Equal("P-01", utm.Points[0].Name);
+        Assert.InRange(utm.Points[0].Lat, -6.40, -6.30);
+        Assert.InRange(utm.Points[0].Lon, -47.45, -47.35);
+        var dec = GeoPoint.Core.Export.CoordinateTableReader.Parse("M1\t-6,333656\t-47,394191\nM2\t-6,333520\t-47,394450", 23, true);
+        Assert.Equal("Geográficas", dec.Kind);
+        Assert.Equal(-6.333656, dec.Points[0].Lat, 6);
+        Assert.Equal(-47.394191, dec.Points[0].Lon, 6);
+        var dms = GeoPoint.Core.Export.CoordinateTableReader.Parse("V-01; 6°20'01,1641\" S; 47°23'39,0858\" O", 23, true);
+        Assert.Single(dms.Points);
+        Assert.Equal(-(6 + 20 / 60.0 + 1.1641 / 3600), dms.Points[0].Lat, 7);
+        Assert.Equal(-(47 + 23 / 60.0 + 39.0858 / 3600), dms.Points[0].Lon, 7);
+        // Nome numérico e N antes de E.
+        var num = GeoPoint.Core.Export.CoordinateTableReader.Parse("1 9299292.99 235142.50", 23, true);
+        Assert.Equal("1", num.Points.Single().Name);
+        Assert.Equal(utm.Points[0].Lat, num.Points[0].Lat, 6);
+    }
+}

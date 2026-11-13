@@ -23,6 +23,7 @@ namespace GeoPoint.Revit.Commands;
 public sealed class CmdAreaEdificada : CommandBase
 {
     protected override string Title => "Área edificada";
+    protected override string? BackupReason => "area edificada";
 
     protected override Result Run(GpSession s)
     {

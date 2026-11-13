@@ -17,6 +17,7 @@ namespace GeoPoint.Revit.Commands;
 public sealed class CmdFases : CommandBase
 {
     protected override string Title => "Fases do projeto";
+    protected override string? BackupReason => "fases";
 
     protected override Result Run(GpSession s)
     {

@@ -26,6 +26,7 @@
                 </StackPanel>
                 <RadioButton x:Name="ModeRef" GroupName="m" Content="Usar o ponto de referência já definido no projeto (os pontos vão direto para o lugar certo)" Checked="Mode_Changed"/>
                 <TextBlock x:Name="ModeHint" Style="{StaticResource Hint}" Margin="22,2,0,0"/>
+                <CheckBox x:Name="Connect" Margin="4,8,4,2" Content="Ligar os pontos marcados com linhas, na ordem da lista (fecha o polígono) – pronto para Reconhecer Lotes"/>
             </StackPanel>
         </GroupBox>
         <DataGrid x:Name="Grid" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column">

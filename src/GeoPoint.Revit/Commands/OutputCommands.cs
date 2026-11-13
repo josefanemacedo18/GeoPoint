@@ -38,6 +38,7 @@ internal static class PickerRows
 public sealed class CmdAnotar : CommandBase
 {
     protected override string Title => "Anotar lotes";
+    protected override string? BackupReason => "anotar";
 
     protected override Result Run(GpSession s)
     {
@@ -297,31 +298,142 @@ public sealed class CmdAjuda : CommandBase
             MainInstruction = $"GeoPoint {version} – georreferenciamento de lotes no Revit",
             MainContent =
                 "Fluxo recomendado:\n" +
-                "1. Desenhe as divisas com linhas (modelo ou detalhe), usando snap nos encontros.\n" +
-                "2. Reconhecer Lotes: selecione as linhas e clique dentro de cada lote.\n" +
-                "3. Gerenciar Lotes: nomes, quadra, uso, confrontantes e testada.\n" +
-                "4. Definir Referência: cole a coordenada de um vértice (Google Maps/Earth, QGIS, GPS ou UTM).\n" +
-                "5. Google Earth / QGIS: confira sobre a imagem de satélite.\n" +
-                "6. Memorial Descritivo, Planilha, Anotar Lotes, Tabela de Coordenadas.\n\n" +
-                "Desmembramento: desenhe as novas divisas (ou use Dividir Lote), reconheça os lotes e registre.\n" +
-                "Remembramento: escolha os lotes contíguos e registre.\n\n" +
-                "Os dados ficam gravados no próprio arquivo .rvt (Desfazer funciona normalmente).\n" +
-                $"Configurações e registros: {SettingsStore.DefaultFolder}",
+                "1. Desenhe as divisas com linhas (modelo ou detalhe), com snap nos encontros – ou use Importar Pontos / Gerar Lote.\n" +
+                "2. Reconhecer Lotes. 3. Gerenciar Lotes (nomes, confrontantes, testada). 4. Definir Referência.\n" +
+                "5. Anotar Lotes, Área Edificada, Vias. 6. Memorial, Pranchas e Exportar PDF.\n\n" +
+                "Atalhos de teclado: os comandos do GeoPoint aparecem em Vista › Interface do usuário › Atalhos de teclado (filtro \"Ferramentas externas\"/\"GeoPoint\"), onde você define as teclas.\n\n" +
+                "Os dados ficam no próprio .rvt (Desfazer funciona). Antes de cada operação o GeoPoint guarda uma cópia dos seus dados.\n" +
+                $"Configurações, modelos e registros: {SettingsStore.DefaultFolder}",
             CommonButtons = TaskDialogCommonButtons.Close,
         };
-        td.AddCommandLink(TaskDialogCommandLinkId.CommandLink1, "Abrir o manual (MANUAL.md, na pasta do plugin)");
-        td.AddCommandLink(TaskDialogCommandLinkId.CommandLink2, "Abrir a pasta de configurações e registros");
+        td.AddCommandLink(TaskDialogCommandLinkId.CommandLink1, "Abrir o manual", "MANUAL.md, na pasta do plugin.");
+        td.AddCommandLink(TaskDialogCommandLinkId.CommandLink2, "Restaurar uma cópia de segurança dos dados do GeoPoint", "Volta lotes, fases e operações para um momento anterior (o desenho do Revit não muda).");
+        td.AddCommandLink(TaskDialogCommandLinkId.CommandLink3, "Gerar arquivo de diagnóstico", "Um .zip na Área de Trabalho com registros, configurações e dados do projeto, para enviar ao suporte.");
+        td.AddCommandLink(TaskDialogCommandLinkId.CommandLink4, "Criar um projeto de exemplo nesta vista", "Três lotes, uma via, uma edificação e a referência, para experimentar as ferramentas.");
         var r = td.Show();
-        if (r == TaskDialogResult.CommandLink1)
+        switch (r)
         {
-            var path = Path.Combine(Path.GetDirectoryName(typeof(CmdAjuda).Assembly.Location) ?? "", "MANUAL.md");
-            if (File.Exists(path)) Ui.OpenFile(path); else Ui.Info("Manual não encontrado", path);
+            case TaskDialogResult.CommandLink1:
+            {
+                var path = Path.Combine(Path.GetDirectoryName(typeof(CmdAjuda).Assembly.Location) ?? "", "MANUAL.md");
+                if (File.Exists(path)) Ui.OpenFile(path); else Ui.Info("Manual não encontrado", path);
+                break;
+            }
+            case TaskDialogResult.CommandLink2: return Restore(s);
+            case TaskDialogResult.CommandLink3:
+            {
+                try
+                {
+                    var zip = Backups.Diagnostic(s);
+                    Ui.Info("Arquivo de diagnóstico", $"Gerado em:\n{zip}\n\nEle contém os dados do projeto (nomes, matrículas, coordenadas). Envie só para quem for analisar o problema.");
+                    Ui.OpenFile(Path.GetDirectoryName(zip)!);
+                }
+                catch (Exception ex) { Ui.Error("Diagnóstico", ex.Message, ex); }
+                break;
+            }
+            case TaskDialogResult.CommandLink4: return Example(s);
         }
-        else if (r == TaskDialogResult.CommandLink2)
+        return Result.Succeeded;
+    }
+
+    private static Result Restore(GpSession s)
+    {
+        var list = Backups.List(s.Doc);
+        if (list.Count == 0) { Ui.Info("Cópias de segurança", "Ainda não há cópias deste projeto.\nPasta: " + Backups.Folder(s.Doc)); return Result.Cancelled; }
+        var rows = list.Select(b => new SheetPickRow { Number = b.When.ToString("dd/MM/yyyy HH:mm:ss"), Name = $"antes de: {b.Reason}", PaperText = $"{b.Lots} lote(s)", IsGeoPoint = true, Tag = b }).ToList();
+        var w = new SheetExportWindow(rows, Backups.Folder(s.Doc), "") { Title = "GeoPoint – Restaurar cópia de segurança" };
+        w.ConfigureAsPicker("Restaurar cópia de segurança", "Marque UMA cópia. Os dados atuais do GeoPoint também são guardados antes (dá para voltar).", "Restaurar");
+        if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
+        var chosen = w.Selected.FirstOrDefault()?.Tag as Backups.Entry;
+        if (chosen is null) return Result.Cancelled;
+        if (w.Selected.Count > 1) { Ui.Warn("Restaurar", "Marque só uma cópia."); return Result.Cancelled; }
+        var data = Backups.Load(chosen.Path);
+        Backups.Save(s, "antes de restaurar");
+        using (var t = new Transaction(s.Doc, "GeoPoint: restaurar cópia de segurança"))
         {
-            Directory.CreateDirectory(SettingsStore.DefaultFolder);
-            Ui.OpenFile(SettingsStore.DefaultFolder);
+            t.Start();
+            ProjectStore.Save(s.Doc, data);
+            t.Commit();
         }
+        Ui.Info("Cópia restaurada", $"Dados do GeoPoint de {chosen.When:dd/MM/yyyy HH:mm} restaurados ({chosen.Lots} lote(s)).\nUse 'Atualizar Lotes' se o desenho mudou depois disso. Para desfazer, use Desfazer do Revit.");
+        return Result.Succeeded;
+    }
+
+    /// <summary>Projeto de exemplo: três lotes 12 × 30 m, uma via, uma edificação e a referência (Porto Franco – MA).</summary>
+    private static Result Example(GpSession s)
+    {
+        var view = s.ActiveView;
+        if (!ElementUtil.IsPlanLike(view) || view is ViewSheet) { Ui.Warn("Vista inadequada", "Abra uma planta (de preferência num projeto vazio) para criar o exemplo."); return Result.Cancelled; }
+        if (s.Project.ActiveLots.Any()) { Ui.Warn("Projeto com lotes", "O exemplo é para um projeto vazio: este já tem lotes do GeoPoint. Crie um projeto novo no Revit e use de novo."); return Result.Cancelled; }
+        using var tg = new TransactionGroup(s.Doc, "GeoPoint: projeto de exemplo");
+        tg.Start();
+        List<CurveElement> lotLines, bLines;
+        using (var t = new Transaction(s.Doc, "GeoPoint: linhas do exemplo"))
+        {
+            t.Start();
+            var target = CurveTarget.ForActiveView(s.Doc, view, false);
+            var c = new List<Curve2>();
+            Vec2 P(double x, double y) => new(x, y);
+            c.Add(new LineCurve(P(0, 0), P(36, 0))); c.Add(new LineCurve(P(36, 0), P(36, 30)));
+            c.Add(new LineCurve(P(36, 30), P(0, 30))); c.Add(new LineCurve(P(0, 30), P(0, 0)));
+            c.Add(new LineCurve(P(12, 0), P(12, 30))); c.Add(new LineCurve(P(24, 0), P(24, 30)));
+            lotLines = target.Create(s.Doc, c, null);
+            var b = new List<Curve2> { new LineCurve(P(15, 6), P(21, 6)), new LineCurve(P(21, 6), P(21, 16)), new LineCurve(P(21, 16), P(15, 16)), new LineCurve(P(15, 16), P(15, 6)) };
+            bLines = target.Create(s.Doc, b, null);
+            t.Commit();
+        }
+        var rec = LotServices.Recognize(s, lotLines.Cast<Element>().ToList(), null);
+        var via = new ViaRecord { Nome = "Rua Exemplo" };
+        s.Project.Vias.Add(via);
+        var names = new Dictionary<int, string>();
+        foreach (var face in rec.Network.Faces.OrderBy(f => f.Region.InteriorPoint().X))
+        {
+            string n = (names.Count + 1).ToString("00");
+            names[face.Id] = n;
+            var lot = LotServices.CreateLot(rec, face, s.Settings, n, n, "A", LotUse.Lote);
+            var reg = lot.ToRegion();
+            var bb = reg.Bounds;
+            lot.EdgeInfos.Add(new EdgeInfo { MX = bb.Center.X, MY = 0, Tipo = ConfrontanteTipo.Via, ViaId = via.Id, Testada = true });
+            lot.EdgeInfos.Add(new EdgeInfo { MX = bb.Center.X, MY = 30, Confrontante = "Lote " + (10 + names.Count) + " – Quadra A" });
+            if (bb.MinX < 0.01) lot.EdgeInfos.Add(new EdgeInfo { MX = 0, MY = 15, Confrontante = "José da Silva" });
+            if (bb.MaxX > 35.99) lot.EdgeInfos.Add(new EdgeInfo { MX = 36, MY = 15, Confrontante = "Maria Souza" });
+            lot.AreaTitulo = 360;
+            s.Project.Lots.Add(lot);
+        }
+        // Confrontantes entre os lotes do exemplo.
+        var lots = s.Project.Lots.Where(l => l.Status == LotStatus.Ativo).OrderBy(l => l.Nome).ToList();
+        for (int i = 0; i + 1 < lots.Count; i++)
+        {
+            double x = 12 * (i + 1);
+            lots[i].EdgeInfos.Add(new EdgeInfo { MX = x, MY = 15, Tipo = ConfrontanteTipo.Lote, LotId = lots[i + 1].Id });
+            lots[i + 1].EdgeInfos.Add(new EdgeInfo { MX = x, MY = 15, Tipo = ConfrontanteTipo.Lote, LotId = lots[i].Id });
+        }
+        var brec = LotServices.Recognize(s, bLines.Cast<Element>().ToList(), null);
+        var bface = brec.Network.Faces.FirstOrDefault();
+        if (bface is not null && lots.Count >= 2)
+        {
+            var (outer, _) = LotBuilder.FromFace(brec.Network, bface, brec.SourcesOfTag, false, true);
+            s.Project.Buildings.Add(new BuildingRecord { FaseId = s.Project.Fase.Id, LotId = lots[1].Id, Nome = "Edificação 1", Pavimentos = 1, Outer = outer, SourceIds = outer.SelectMany(e => e.Src).Distinct().ToList() });
+        }
+        var info = s.Project.Info;
+        info.Proprietario = "Proprietário Exemplo"; info.Documento = "000.000.000-00"; info.Matricula = "0000";
+        info.Municipio = "Porto Franco"; info.UF = "MA"; info.Endereco = "Rua Exemplo, s/n"; info.Bairro = "Centro"; info.Cep = "65970-000";
+        info.Situacao = "Regularização";
+        s.Project.Reference = new GeoReferenceRecord
+        {
+            IsSet = true, AnchorX = 0, AnchorY = 0, AnchorLabel = "P-01 (exemplo)", Lat = -6.338400, Lon = -47.398700,
+            InputText = "Exemplo: -6.338400, -47.398700", InputKind = CrsKind.Geographic, InputDatum = DatumId.Wgs84,
+            Precision = PrecisionClass.GoogleMapsEarth, Mode = OrientationMode.ViewUp, RotationRad = NorthGuard.ViewRotation(view), NorthConfirmed = true, SetAt = DateTime.Now,
+        };
+        using (var t = new Transaction(s.Doc, "GeoPoint: dados do exemplo"))
+        {
+            t.Start();
+            ProjectStore.Save(s.Doc, s.Project);
+            t.Commit();
+        }
+        tg.Assimilate();
+        try { s.UiDoc.GetOpenUIViews().FirstOrDefault(v => v.ViewId == view.Id)?.ZoomToFit(); } catch { }
+        Ui.Info("Projeto de exemplo criado", "Três lotes (01, 02 e 03 – Quadra A), a Rua Exemplo na frente e uma edificação no lote 02, com a referência em Porto Franco – MA.\n\nExperimente: Anotar Lotes, Área Edificada, Vias, Memorial, Pranchas e Desmembramento (desenhando com a ferramenta Linha).");
         return Result.Succeeded;
     }
 }
