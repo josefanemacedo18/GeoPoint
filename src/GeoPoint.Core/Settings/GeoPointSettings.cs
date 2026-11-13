@@ -209,8 +209,19 @@ public sealed class SheetSettings
     public bool NorteParaCima { get; set; } = true;
     /// <summary>Modelo de prancha (biblioteca de modelos); vazio = padrão.</summary>
     public string Template { get; set; } = "";
-    /// <summary>Croqui de localização automático (imagem de satélite com o lote).</summary>
-    public bool CroquiAuto { get; set; } = true;
+    /// <summary>Coordenadas mostradas na prancha (grade, tabela, chamadas e carimbo).</summary>
+    public SheetCoordSystem SistemaCoordenadas { get; set; } = SheetCoordSystem.GeograficasSirgas;
+}
+
+/// <summary>Sistema de coordenadas das pranchas.</summary>
+public enum SheetCoordSystem
+{
+    /// <summary>Geográficas (latitude/longitude) – SIRGAS 2000 (padrão).</summary>
+    GeograficasSirgas = 0,
+    /// <summary>UTM – SIRGAS 2000 (fuso do projeto).</summary>
+    UtmSirgas = 1,
+    /// <summary>O primeiro sistema de coordenadas do memorial (Configurações).</summary>
+    Memorial = 2,
 }
 
 public sealed class KmlSettings
@@ -229,7 +240,6 @@ public sealed class GeoPointSettings
     public NamingSettings Naming { get; set; } = new();
     public FormatSettings Format { get; set; } = new();
     public MemorialSettings Memorial { get; set; } = new();
-    public GeoPoint.Core.Imagery.ImagerySettings Imagery { get; set; } = new();
     public TechnicianSettings Technician { get; set; } = new();
     public AnnotationSettings Annotation { get; set; } = new();
     public KmlSettings Kml { get; set; } = new();
@@ -245,37 +255,15 @@ public sealed class GeoPointSettings
         return RuleProfiles.FirstOrDefault(p => p.Name == name) ?? RuleProfiles.FirstOrDefault();
     }
 
-    public GeoPointSettings Clone()
+    public GeoPointSettings Clone() => SettingsStore.Deserialize(SettingsStore.Serialize(this)) ?? new GeoPointSettings();
+
+    /// <summary>Sistema de coordenadas das pranchas (escolhido na janela de Pranchas; padrão: geográficas SIRGAS 2000).</summary>
+    public CrsDef SheetCrs() => Sheets.SistemaCoordenadas switch
     {
-        var c = SettingsStore.Deserialize(SettingsStore.Serialize(this)) ?? new GeoPointSettings();
-        // A chave do Google não é serializada (fica no cofre): copia direto.
-        c.Imagery ??= new();
-        c.Imagery.GoogleKey = Imagery?.GoogleKey ?? "";
-        return c;
-    }
-}
-
-/// <summary>Cofre de segredos (chaves de API). No Revit é o Gerenciador de Credenciais do Windows.</summary>
-public interface ISecretStore
-{
-    string? Read(string name);
-    /// <summary>Grava (valor vazio = apaga).</summary>
-    void Write(string name, string? value);
-}
-
-/// <summary>Cofre em memória (testes e quando não há cofre do sistema).</summary>
-public sealed class MemorySecretStore : ISecretStore
-{
-    private readonly Dictionary<string, string> _d = new();
-    public string? Read(string name) => _d.TryGetValue(name, out var v) ? v : null;
-    public void Write(string name, string? value) { if (string.IsNullOrEmpty(value)) _d.Remove(name); else _d[name] = value; }
-}
-
-public static class Secrets
-{
-    public const string GoogleKeyName = "GeoPoint/GoogleMapsStaticKey";
-    /// <summary>Cofre em uso (o suplemento troca pelo do Windows ao iniciar).</summary>
-    public static ISecretStore Store { get; set; } = new MemorySecretStore();
+        SheetCoordSystem.UtmSirgas => CrsDef.Utm(),
+        SheetCoordSystem.Memorial => Memorial.CoordinateSystems.FirstOrDefault() ?? CrsDef.Utm(),
+        _ => CrsDef.Geographic(),
+    };
 }
 
 public static class JsonOptions
@@ -332,10 +320,9 @@ public static class SettingsStore
                 return Normalize(new GeoPointSettings());
             }
             s = Normalize(s);
-            // Chave do Google em texto (configurações antigas): vai para o cofre e sai do arquivo.
-            if (!string.IsNullOrWhiteSpace(s.Imagery.LegacyGoogleKey))
+            // Configurações de versões com o croqui de satélite (fornecedor, chave do Google): saem do arquivo.
+            if (json.Contains("\"Imagery\"", StringComparison.OrdinalIgnoreCase))
             {
-                s.Imagery.GoogleKey = s.Imagery.LegacyGoogleKey.Trim();
                 try { Save(s, path); } catch { }
             }
             return s;
@@ -350,18 +337,9 @@ public static class SettingsStore
     {
         path ??= DefaultPath;
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        // A chave do Google vai para o cofre; se o cofre falhar, fica no arquivo como antes (para não perder a chave).
-        s.Imagery ??= new();
-        s.Imagery.LegacyGoogleKey = null;
-        try { Secrets.Store.Write(Secrets.GoogleKeyName, s.Imagery.GoogleKey.Trim()); }
-        catch { if (!string.IsNullOrWhiteSpace(s.Imagery.GoogleKey)) s.Imagery.LegacyGoogleKey = s.Imagery.GoogleKey.Trim(); }
         var tmp = path + ".tmp";
-        try
-        {
-            File.WriteAllText(tmp, Serialize(s));
-            File.Move(tmp, path, true);
-        }
-        finally { s.Imagery.LegacyGoogleKey = null; }
+        File.WriteAllText(tmp, Serialize(s));
+        File.Move(tmp, path, true);
     }
 
     private static GeoPointSettings Normalize(GeoPointSettings s)
@@ -375,11 +353,6 @@ public static class SettingsStore
         s.Kml ??= new();
         s.Streets ??= new();
         s.Sheets ??= new();
-        s.Imagery ??= new();
-        if (string.IsNullOrWhiteSpace(s.Imagery.LegacyGoogleKey))
-        {
-            try { s.Imagery.GoogleKey = Secrets.Store.Read(Secrets.GoogleKeyName) ?? ""; } catch { s.Imagery.GoogleKey = ""; }
-        }
         s.Streets.Largura = Math.Clamp(s.Streets.Largura, 1, 200);
         s.Streets.Calcada = Math.Clamp(s.Streets.Calcada, 0, 50);
         s.Streets.RaioEsquina = Math.Clamp(s.Streets.RaioEsquina, 0, 50);

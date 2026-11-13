@@ -18,7 +18,7 @@ public class V153Tests
     }
 
     [Fact]
-    public void Settings_V1File_MigratesToCurrent_AndMovesGoogleKeyOutOfFile()
+    public void Settings_V1File_MigratesToCurrent_AndDropsSatelliteSettings()
     {
         var dir = TempDir();
         try
@@ -44,46 +44,15 @@ public class V153Tests
             Assert.Equal(2, s.Streets.Calcada, 6);
             Assert.Equal(2, s.Streets.RaioEsquina, 6);
             Assert.False(s.Memorial.IncludeSide);
-            // A chave continua disponível, mas saiu do arquivo (foi para o cofre).
-            Assert.Equal("AIza-teste-153", s.Imagery.GoogleKey);
+            // Sem croqui de satélite: o fornecedor e a chave do Google saem do arquivo; coordenadas da prancha geográficas SIRGAS.
             Assert.DoesNotContain("AIza-teste-153", File.ReadAllText(path));
+            Assert.DoesNotContain("Imagery", File.ReadAllText(path));
             Assert.DoesNotContain("IncludeSystemDeclaration", File.ReadAllText(path));
-            Assert.Equal("AIza-teste-153", Secrets.Store.Read(Secrets.GoogleKeyName));
-            // Ler de novo: a chave vem do cofre; a cópia das configurações também leva a chave.
-            var again = SettingsStore.Load(path);
-            Assert.Equal("AIza-teste-153", again.Imagery.GoogleKey);
-            Assert.Equal("AIza-teste-153", again.Clone().Imagery.GoogleKey);
-            Assert.DoesNotContain("AIza", SettingsStore.Serialize(again));
-            // Apagar a chave.
-            again.Imagery.GoogleKey = "";
-            SettingsStore.Save(again, path);
-            Assert.Null(Secrets.Store.Read(Secrets.GoogleKeyName));
+            Assert.Equal(SheetCoordSystem.GeograficasSirgas, s.Sheets.SistemaCoordenadas);
+            Assert.Equal(CrsKind.Geographic, s.SheetCrs().Kind);
+            Assert.Equal(DatumId.Sirgas2000, s.SheetCrs().Datum);
         }
         finally { Directory.Delete(dir, true); }
-    }
-
-    [Fact]
-    public void Settings_KeepsKeyInFile_WhenVaultFails()
-    {
-        var dir = TempDir();
-        var old = Secrets.Store;
-        try
-        {
-            Secrets.Store = new BrokenStore();
-            string path = Path.Combine(dir, "c.json");
-            var s = new GeoPointSettings();
-            s.Imagery.GoogleKey = "k-sem-cofre";
-            SettingsStore.Save(s, path);
-            Assert.Contains("k-sem-cofre", File.ReadAllText(path));
-            Assert.Equal("k-sem-cofre", SettingsStore.Load(path).Imagery.GoogleKey);
-        }
-        finally { Secrets.Store = old; Directory.Delete(dir, true); }
-    }
-
-    private sealed class BrokenStore : ISecretStore
-    {
-        public string? Read(string name) => throw new InvalidOperationException();
-        public void Write(string name, string? value) => throw new InvalidOperationException();
     }
 
     [Fact]

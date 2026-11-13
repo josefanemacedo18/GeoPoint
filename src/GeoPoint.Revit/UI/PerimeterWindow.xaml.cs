@@ -7,10 +7,12 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using GeoPoint.Core.Calc;
+using GeoPoint.Core.Documents;
 using GeoPoint.Core.Export;
 using GeoPoint.Core.Geodesy;
 using GeoPoint.Core.Geometry;
 using GeoPoint.Core.Memorial;
+using GeoPoint.Revit.Infrastructure;
 
 namespace GeoPoint.Revit.UI;
 
@@ -48,6 +50,27 @@ public sealed class CoordRow : Notify
     public bool Bad { get => _bad; set => Set(ref _bad, value); }
 }
 
+/// <summary>Campo lido da certidão (vai para os Dados do Imóvel ou para o lote).</summary>
+public sealed class CertFieldRow : Notify
+{
+    private bool _use = true;
+    private string _value = "";
+    public string Key { get; init; } = "";
+    public string Label { get; init; } = "";
+    public bool Use { get => _use; set => Set(ref _use, value); }
+    public string Value { get => _value; set => Set(ref _value, value ?? ""); }
+}
+
+/// <summary>Confrontante de uma divisa (na ordem do perímetro).</summary>
+public sealed class CertConfRow : Notify
+{
+    private string _conf = "";
+    private bool _testada;
+    public string Trecho { get; init; } = "";
+    public string Confrontante { get => _conf; set => Set(ref _conf, value ?? ""); }
+    public bool Testada { get => _testada; set => Set(ref _testada, value); }
+}
+
 public enum PerimeterPlacement { Click, ProjectReference, Coordinates }
 
 /// <summary>O que desenhar e onde.</summary>
@@ -67,6 +90,20 @@ public sealed class PerimeterDrawingData
     public int Vertices { get; set; }
     /// <summary>Resumo (perímetro, área, conferência) para a mensagem final.</summary>
     public string Summary { get; set; } = "";
+    /// <summary>O polígono fecha (dá para cadastrar o lote).</summary>
+    public bool Closed { get; set; }
+
+    // ---- Certidão
+    /// <summary>Arquivo da certidão/memorial importado ("" = nenhum).</summary>
+    public string SourceFile { get; set; } = "";
+    /// <summary>Preencher os Dados do Imóvel (campos marcados); Replace = também os já preenchidos.</summary>
+    public bool FillInfo { get; set; }
+    public bool ReplaceInfo { get; set; }
+    public Dictionary<string, string> Fields { get; } = new();
+    /// <summary>Cadastrar o lote junto com as linhas.</summary>
+    public bool RegisterLot { get; set; }
+    /// <summary>Confrontante de cada trecho (mesma ordem de <see cref="Curves"/>).</summary>
+    public List<(string Name, bool Testada)> Confrontantes { get; } = new();
 }
 
 /// <summary>Desenhar perímetro: por azimutes e distâncias ou pelas coordenadas dos vértices.</summary>
@@ -87,6 +124,14 @@ public partial class PerimeterWindow : Window
     private CoordinateTextResult? _azCoords;
     private PerimeterResult? _per;
     private TraverseResult? _trav;
+    /// <summary>Aba do perímetro em uso (a aba "Dados da certidão" não muda o modo).</summary>
+    private bool _coordMode;
+    // ---- Certidão importada
+    private ReadDocument? _read;
+    private CertidaoData? _cert;
+    private string _certPath = "";
+    private readonly ObservableCollection<CertFieldRow> _certFields = new();
+    private readonly ObservableCollection<CertConfRow> _certConfs = new();
 
     public const string TemplateText =
         "Inicia-se no vértice P-01; deste, segue com azimute de 90°00'00\" e distância de 30,00 m até o vértice P-02;\r\n" +
@@ -114,6 +159,9 @@ public partial class PerimeterWindow : Window
         _height = height;
         Grid.ItemsSource = _rows;
         CGrid.ItemsSource = _coords;
+        CertFields.ItemsSource = _certFields;
+        CertConfs.ItemsSource = _certConfs;
+        DocView.SetDocument(Array.Empty<System.Windows.Media.Imaging.BitmapSource?>(), Array.Empty<DocPage>());
         CKind.SelectedIndex = 0;
         CDatum.SelectedIndex = 0;
         CZone.Text = zone > 0 ? zone.ToString(CultureInfo.InvariantCulture) : "23";
@@ -134,7 +182,7 @@ public partial class PerimeterWindow : Window
 
     public PerimeterDrawingData? ResultData { get; private set; }
     public bool UseDetailLines => DetailLines.IsChecked == true;
-    private bool CoordMode => Tabs.SelectedIndex == 1;
+    private bool CoordMode => _coordMode;
     private bool AdjustClosure => Adjust.IsChecked == true;
     private PerimeterCoordKind Kind => (PerimeterCoordKind)Math.Max(0, CKind.SelectedIndex);
     private DatumId Datum => CDatum.SelectedIndex switch { 1 => DatumId.Wgs84, 2 => DatumId.Sad69, 3 => DatumId.CorregoAlegre, _ => DatumId.Sirgas2000 };
@@ -494,11 +542,207 @@ public partial class PerimeterWindow : Window
         Preview.SetItems(items, 0);
     }
 
+    // ================================================================== certidão (PDF ou imagem)
+
+    private async void ImportDoc_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Certidão, matrícula, memorial ou tabela de coordenadas",
+            Filter = "Documentos (PDF e imagens)|*.pdf;*.png;*.jpg;*.jpeg;*.tif;*.tiff;*.bmp|PDF|*.pdf|Imagens|*.png;*.jpg;*.jpeg;*.tif;*.tiff;*.bmp",
+        };
+        if (dlg.ShowDialog(this) != true) return;
+        string path = dlg.FileName;
+        ImportBtn.IsEnabled = false;
+        Cursor = System.Windows.Input.Cursors.Wait;
+        var progress = new Progress<string>(m => ImportStatus.Text = m);
+        try
+        {
+            var read = await System.Threading.Tasks.Task.Run(() => DocumentReader.ReadAsync(path, progress));
+            ApplyDocument(path, read);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Importar certidão", ex);
+            ImportStatus.Text = "Não foi possível ler o documento.";
+            Fmt.Msg(ex.Message, icon: MessageBoxImage.Warning);
+        }
+        finally
+        {
+            ImportBtn.IsEnabled = true;
+            Cursor = null;
+        }
+    }
+
+    private void OpenDoc_Click(object sender, RoutedEventArgs e)
+    {
+        if (_certPath.Length == 0 || !System.IO.File.Exists(_certPath)) return;
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_certPath) { UseShellExecute = true }); }
+        catch (Exception ex) { Fmt.Msg(ex.Message, icon: MessageBoxImage.Warning); }
+    }
+
+    /// <summary>Usa o documento lido: perímetro na aba certa, dados e confrontantes na aba "Dados da certidão", páginas na aba "Documento".</summary>
+    private void ApplyDocument(string path, ReadDocument read)
+    {
+        _read = read;
+        _certPath = path;
+        DocView.SetDocument(read.PageImages, read.Doc.Pages);
+        string text = read.Doc.Text;
+        string how = read.Doc.UsedOcr ? $"OCR do Windows ({read.OcrLanguage})" : "texto do PDF";
+        if (text.Trim().Length == 0)
+        {
+            ImportStatus.Text = $"{System.IO.Path.GetFileName(path)}: nenhum texto encontrado ({how}).";
+            RightTabs.SelectedIndex = 1;
+            return;
+        }
+        var cert = CertidaoParser.Parse(text);
+        _cert = cert;
+        _certFields.Clear();
+        foreach (var (k, label, v) in cert.Fields())
+            _certFields.Add(new CertFieldRow { Key = k, Label = label, Value = v, Use = v.Length > 0 });
+        _certConfs.Clear();
+        RegisterLot.IsChecked = true;
+
+        _loading = true;
+        if (cert.UtmZone is int z) CZone.Text = z.ToString(CultureInfo.InvariantCulture);
+        CHemi.SelectedIndex = cert.South ? 0 : 1;
+        string what;
+        if (cert.HasCoordinates)
+        {
+            CoordSource.Text = text;
+            Source.Text = text;
+            _loading = false;
+            Tabs.SelectedIndex = 1;
+            _coordMode = true;
+            ParseCoordText(quiet: true);
+            what = $"{cert.Coordinates.Vertices.Count} vértices com coordenadas";
+        }
+        else if (cert.FromSides)
+        {
+            Source.Text = text;
+            _loading = false;
+            Tabs.SelectedIndex = 0;
+            _coordMode = false;
+            _rows.Clear();
+            foreach (var c in cert.Courses)
+                _rows.Add(new CourseRow { Az = AngleText.FormatDms(c.AzimuthDeg, 2, AngleKind.Azimuth), Dist = Fmt.Raw(c.Distance, 3), Source = "medida da certidão: " + c.Source });
+            Recalc();
+            what = "medidas dos lados (sem ângulos)";
+        }
+        else
+        {
+            Source.Text = text;
+            _loading = false;
+            Tabs.SelectedIndex = 0;
+            _coordMode = false;
+            ParseText(quiet: true);
+            what = cert.HasCourses ? $"{cert.Courses.Count} trechos com azimute e distância" : "perímetro não encontrado";
+        }
+        UpdateConfRows();
+        var parts = new List<string> { what };
+        if (cert.Matricula.Length > 0) parts.Add("matrícula " + cert.Matricula);
+        if (cert.Proprietario.Length > 0) parts.Add(cert.Proprietario);
+        if (cert.Area is double a) parts.Add($"área {Fmt.N(a, 2)} m²");
+        ImportStatus.Text = $"{System.IO.Path.GetFileName(path)} – {how}, {read.Doc.Pages.Count} página(s). Lido: {string.Join("; ", parts)}. Confira na aba Documento e em Dados da certidão.";
+        var warns = read.Doc.Warnings.Concat(cert.Warnings).ToList();
+        CertHint.Text = warns.Count == 0
+            ? "Dados lidos da certidão. Confira e corrija; os campos marcados vão para os Dados do Imóvel e o lote é cadastrado com os confrontantes ao desenhar."
+            : "⚠ " + string.Join("  ", warns.Take(3));
+        RightTabs.SelectedIndex = 1;
+        UpdateHighlights();
+        Dispatcher.BeginInvoke(new Action(ScrollToFirstHighlight), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void ScrollToFirstHighlight()
+    {
+        if (DocView.FirstHighlight() is not Point pt) return;
+        DocScroll.ScrollToVerticalOffset(Math.Max(0, pt.Y - 60));
+        DocScroll.ScrollToHorizontalOffset(Math.Max(0, pt.X - 30));
+    }
+
+    private void DocScroll_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        DocView.FitWidth = Math.Max(100, DocScroll.ViewportWidth > 0 ? DocScroll.ViewportWidth - 10 : e.NewSize.Width - 30);
+        DocView.InvalidateMeasure();
+    }
+
+    private void DocZoomIn_Click(object sender, RoutedEventArgs e) { DocView.Zoom *= 1.25; }
+    private void DocZoomOut_Click(object sender, RoutedEventArgs e) { DocView.Zoom /= 1.25; }
+    private void DocZoomFit_Click(object sender, RoutedEventArgs e) { DocView.Zoom = 1; }
+
+    /// <summary>Uma linha por divisa do perímetro atual, com o confrontante lido da certidão (as correções do usuário ficam).</summary>
+    private void UpdateConfRows()
+    {
+        var labels = new List<string>();
+        if (CoordMode && _per is not null)
+            labels.AddRange(_per.Segments.Select(sg => $"{_per.Names[sg.From]} → {_per.Names[sg.To]}"));
+        else if (!CoordMode && _trav is not null)
+            labels.AddRange(_trav.Curves.Select((_, i) => $"Trecho {i + 1}"));
+        if (labels.Count == _certConfs.Count && labels.Select((l, i) => l == _certConfs[i].Trecho).All(x => x)) return;
+        var old = _certConfs.ToList();
+        _certConfs.Clear();
+        for (int i = 0; i < labels.Count; i++)
+        {
+            string conf = i < old.Count ? old[i].Confrontante : _cert is not null && i < _cert.Confrontantes.Count ? _cert.Confrontantes[i] : "";
+            bool testada = i < old.Count ? old[i].Testada : CertidaoParser.IsStreet(conf);
+            _certConfs.Add(new CertConfRow { Trecho = labels[i], Confrontante = conf, Testada = testada });
+        }
+    }
+
+    /// <summary>Destaca no documento os números que entraram no desenho (coordenadas, azimutes, distâncias, área e perímetro).</summary>
+    private void UpdateHighlights()
+    {
+        if (_read is null) return;
+        var angles = new List<double>();
+        var values = new List<double>();
+        if (CoordMode)
+        {
+            if (TryVertices(out var vs, out _))
+            {
+                if (Kind == PerimeterCoordKind.Geographic) angles.AddRange(vs.SelectMany(v => new[] { Math.Abs(v.A), Math.Abs(v.B) }));
+                else values.AddRange(vs.SelectMany(v => new[] { v.A, v.B }));
+            }
+            angles.AddRange(_stated.Select(c => c.AzimuthDeg));
+            values.AddRange(_stated.Select(c => c.Distance));
+        }
+        else if (TryCourses(out var cs, out _))
+        {
+            angles.AddRange(cs.Select(c => c.AzimuthDeg));
+            values.AddRange(cs.Select(c => c.Distance));
+        }
+        if (_cert?.Area is double a) values.Add(a);
+        if (_cert?.Perimetro is double p) values.Add(p);
+        DocView.SetHighlights(DocumentHighlight.Find(_read.Doc.Words, angles, values));
+    }
+
+    /// <summary>Área e perímetro do desenho × os da certidão (diferença grande = número lido errado ou perímetro incompleto).</summary>
+    private void AppendCertCheck()
+    {
+        if (_cert is null || (_cert.Area is null && _cert.Perimetro is null)) return;
+        double? area = CoordMode ? (_per is { Closed: true } p ? p.Area : null) : _trav?.Area;
+        double? perim = CoordMode ? _per?.Perimeter : _trav?.Perimeter;
+        var lines = new List<string>();
+        if (_cert.Area is double ca && area is double da && ca > 0)
+        {
+            double pct = Math.Abs(da - ca) / ca * 100;
+            lines.Add($"{(pct > 1 ? "⚠ " : "")}Certidão: área {Fmt.N(ca, 2)} m² – desenho {Fmt.N(da, 2)} m² (diferença {Fmt.N(pct, 1)}%)" +
+                      (pct > 1 ? ": confira os números lidos." : "."));
+        }
+        if (_cert.Perimetro is double cp && perim is double dp && cp > 0)
+        {
+            double pct = Math.Abs(dp - cp) / cp * 100;
+            lines.Add($"{(pct > 0.5 ? "⚠ " : "")}Certidão: perímetro {Fmt.N(cp, 2)} m – desenho {Fmt.N(dp, 2)} m (diferença {Fmt.N(pct, 1)}%).");
+        }
+        if (lines.Count > 0) Result.Text = (Result.Text + "\n" + string.Join("\n", lines)).Trim();
+    }
+
     // ================================================================== comum
 
     private void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!ReferenceEquals(e.OriginalSource, Tabs) || _loading) return;
+        if (Tabs.SelectedIndex == 2) { UpdateConfRows(); return; }   // dados da certidão: o modo do perímetro continua o mesmo
+        _coordMode = Tabs.SelectedIndex == 1;
         if (CoordMode && _coords.Count == 0) ParseCoordText(quiet: true);
         Recalc();
     }
@@ -521,6 +765,9 @@ public partial class PerimeterWindow : Window
     {
         if (_loading || Tabs is null) return;
         if (CoordMode) RecalcCoords(); else RecalcCourses();
+        AppendCertCheck();
+        UpdateConfRows();
+        UpdateHighlights();
         UpdatePositionOptions();
     }
 
@@ -605,6 +852,23 @@ public partial class PerimeterWindow : Window
             d.Summary = Result.Text;
         }
         if (d.Curves.Count == 0) { Fmt.Msg("Nada para desenhar.", icon: MessageBoxImage.Warning); return; }
+        // Polígono fechado? (o lote só pode ser cadastrado se fechar)
+        d.Closed = CoordMode ? _per?.Closed == true
+            : AdjustClosure || (TryCourses(out var cc, out _) && Traverse.Compute(cc, adjust: false).MisclosureLength < 0.001);
+        // Certidão: dados do imóvel, lote e confrontantes.
+        d.SourceFile = _certPath.Length > 0 ? System.IO.Path.GetFileName(_certPath) : "";
+        d.FillInfo = _cert is not null && FillInfo.IsChecked == true;
+        d.ReplaceInfo = ReplaceInfo.IsChecked == true;
+        foreach (var f in _certFields.Where(f => f.Use && f.Value.Trim().Length > 0)) d.Fields[f.Key] = f.Value.Trim();
+        d.RegisterLot = RegisterLot.IsChecked == true;
+        UpdateConfRows();
+        foreach (var c in _certConfs) d.Confrontantes.Add((c.Confrontante.Trim(), c.Testada));
+        if (d.RegisterLot && !d.Closed)
+        {
+            if (MessageBox.Show(this, "O polígono não fecha, então o lote não pode ser cadastrado.\n\nDesenhar só as linhas?", "GeoPoint",
+                    MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            d.RegisterLot = false;
+        }
         d.FirstGeodetic = FirstGeodetic();
         d.Placement = PosRef.IsChecked == true && PosRef.IsVisible ? PerimeterPlacement.ProjectReference
             : PosCoord.IsChecked == true && PosCoord.IsVisible ? PerimeterPlacement.Coordinates : PerimeterPlacement.Click;

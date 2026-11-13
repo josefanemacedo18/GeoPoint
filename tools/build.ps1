@@ -5,11 +5,13 @@ Set-Location (Join-Path $PSScriptRoot "..")
 $version = $props.Project.PropertyGroup.Version
 dotnet test tests/GeoPoint.Core.Tests/GeoPoint.Core.Tests.csproj -c Release
 dotnet build src/GeoPoint.Revit/GeoPoint.Revit.csproj -c Release
-$out = "src/GeoPoint.Revit/bin/Release/net10.0-windows"
+$out = "src/GeoPoint.Revit/bin/Release/net10.0-windows10.0.19041.0"
 $pkg = "artifacts/GeoPoint-$version"
 if (Test-Path $pkg) { Remove-Item $pkg -Recurse -Force }
 New-Item -ItemType Directory -Force -Path "$pkg/GeoPoint" | Out-Null
-Copy-Item "$out/GeoPoint.Revit.dll", "$out/GeoPoint.Core.dll" "$pkg/GeoPoint/"
+# GeoPoint + bibliotecas (PdfPig: texto de PDF; Microsoft.Windows.SDK.NET/WinRT.Runtime: OCR e páginas de PDF do Windows).
+Copy-Item "$out/*.dll" "$pkg/GeoPoint/"
+Copy-Item "src/GeoPoint.Core/ThirdParty/PdfPig/LICENSE_PdfPig.txt" "$pkg/GeoPoint/"
 Copy-Item "src/GeoPoint.Core/ThirdParty/Clipper2/LICENSE_Clipper2.txt" "$pkg/GeoPoint/"
 Copy-Item "docs/MANUAL.md" "$pkg/GeoPoint/MANUAL.md"
 Copy-Item "docs/MANUAL.md" "$pkg/MANUAL.md"

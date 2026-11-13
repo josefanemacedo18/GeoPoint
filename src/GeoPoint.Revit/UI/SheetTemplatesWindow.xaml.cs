@@ -21,7 +21,7 @@ public sealed class BlockRow : Notify
         SheetBlockKind.Assinaturas => "Assinaturas",
         SheetBlockKind.Convencoes => "Convenções",
         SheetBlockKind.Orientacao => "Orientação/Escala",
-        SheetBlockKind.Croqui => "Croqui",
+        SheetBlockKind.Croqui => "Imagem de localização",
         SheetBlockKind.Titulo => "Título e folha",
         SheetBlockKind.Escritorio => "Escritório (logomarca)",
         _ => "Observações",

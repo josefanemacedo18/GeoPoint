@@ -242,9 +242,13 @@ public class SheetV15PreviewTests
         p.Info.Municipio = "Porto Franco"; p.Info.UF = "MA"; p.Info.Endereco = "Rua E, nº SN"; p.Info.Bairro = "Jardim São Manoel"; p.Info.Cep = "65970-000";
         var ctx = TestProjects.Context(p);
         var spec = new SheetSpec { Kind = SheetKind.Atual, Title = "SITUAÇÃO ATUAL", LotIds = { lot.Id }, CoordTable = true };
-        var comp = SheetPreview.Compose(ctx, new[] { lot }, spec, SheetTemplate.Default());
+        var comp = SheetPreview.Compose(ctx, new[] { lot }, spec, SheetTemplate.Default(), crs: CrsDef.Utm());
         Assert.Contains(comp.Map, x => x is PText t && t.Text == "P-01" && t.Bold);
         Assert.Contains(comp.Sheet, x => x is PText t && t.Text.StartsWith("N "));
+        // Padrão das pranchas: geográficas SIRGAS 2000 (grade em graus, minutos e segundos).
+        var geo = SheetPreview.Compose(ctx, new[] { lot }, spec, SheetTemplate.Default());
+        Assert.DoesNotContain(geo.Sheet, x => x is PText t && t.Text.StartsWith("N 9"));
+        Assert.Contains(geo.Sheet, x => x is PText t && t.Text.Contains('°') && t.Text.Contains('S'));
         if (string.IsNullOrEmpty(outPath)) return;
         Directory.CreateDirectory(outPath);
         File.WriteAllText(Path.Combine(outPath, "v15-prancha-lote.svg"), PrimSvg(comp));
@@ -363,29 +367,3 @@ public class SheetV15PreviewTests
     }
 }
 
-public class CroquiFrameTests
-{
-    [Fact]
-    public void TileMath_RoundTrip_And_Frame()
-    {
-        var p = GeoPoint.Core.Imagery.TileMath.ToPixel(-47.3944, -6.3336, 18);
-        var (lon, lat) = GeoPoint.Core.Imagery.TileMath.FromPixel(p, 18);
-        Assert.Equal(-47.3944, lon, 7);
-        Assert.Equal(-6.3336, lat, 7);
-        Assert.Equal("0321", GeoPoint.Core.Imagery.TileMath.QuadKey(5, 6, 4));
-        // Lote de ~45 m: a janela mostra a vizinhança (≥ 120 m) na proporção do bloco.
-        var poly = new List<(double, double)> { (-47.39441, -6.33366), (-47.39445, -6.33347), (-47.39403, -6.33328) };
-        var f = GeoPoint.Core.Imagery.CroquiFrame.Fit(poly, 1.3, 480, 3, 19);
-        Assert.InRange(f.Zoom, 16, 19);
-        Assert.Equal(369, f.HeightPx);
-        Assert.NotEmpty(f.Tiles);
-        foreach (var (x, y) in poly)
-        {
-            var px = f.ImagePixel(x, y);
-            Assert.InRange(px.X, 0, f.WidthPx);
-            Assert.InRange(px.Y, 0, f.HeightPx);
-        }
-        Assert.Contains("{z}", GeoPoint.Core.Imagery.ImagerySettings.EsriUrl);
-        Assert.Equal("https://t/17/5/6", GeoPoint.Core.Imagery.TileMath.TileUrl("https://t/{z}/{x}/{y}", 5, 6, 17));
-    }
-}

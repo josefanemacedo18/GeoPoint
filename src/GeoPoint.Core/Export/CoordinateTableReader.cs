@@ -110,7 +110,11 @@ public static class CoordinateTableReader
     }
 
     /// <summary>Linha de planilha: nome e as coordenadas como texto (ainda sem interpretar).</summary>
-    public sealed record Row(string Name, string A, string B, string? C, int Line);
+    public sealed record Row(string Name, string A, string B, string? C, int Line)
+    {
+        /// <summary>Todas as células com número ou ângulo, na ordem (ex.: azimute, distância, E, N).</summary>
+        public IReadOnlyList<string> Values { get; init; } = Array.Empty<string>();
+    }
 
     /// <summary>Linhas com nome e duas (ou três) coordenadas; as demais (cabeçalho, títulos) ficam de fora.</summary>
     public static (List<Row> Rows, List<string> Warnings) ReadRows(string text) =>
@@ -138,7 +142,10 @@ public static class CoordinateTableReader
             }
             if (name.Length == 0) name = $"P-{auto:00}";
             auto++;
-            rows.Add(new Row(name, cells[coordIdx[0]], cells[coordIdx[1]], coordIdx.Count > 2 ? cells[coordIdx[2]] : null, i + 1));
+            rows.Add(new Row(name, cells[coordIdx[0]], cells[coordIdx[1]], coordIdx.Count > 2 ? cells[coordIdx[2]] : null, i + 1)
+            {
+                Values = coordIdx.Select(k => cells[k].Trim()).ToList(),
+            });
         }
         return (rows, warnings);
     }
@@ -152,8 +159,13 @@ public static class CoordinateTableReader
     private static char DetectSeparator(List<string> lines)
     {
         var cands = new[] { '\t', ';', ',', '|' };
+        // Vírgula decimal ("20,00 236.405,249"): a vírgula não separa colunas.
+        bool decimalCommas = lines.Take(10).Any(l => Regex.IsMatch(l, @"\d,\d+(?=\s|$)"));
         foreach (var c in cands)
+        {
+            if (c == ',' && decimalCommas) continue;
             if (lines.Take(10).Count(l => l.Contains(c)) >= Math.Min(lines.Count, 2)) return c;
+        }
         return ' ';
     }
 

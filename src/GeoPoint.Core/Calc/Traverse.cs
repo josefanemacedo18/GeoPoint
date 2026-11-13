@@ -111,7 +111,12 @@ public static class MemorialTextParser
 
     private sealed record Token(int Pos, bool IsAngle, double Value, string Text);
 
-    public static List<Course> Parse(string text)
+    /// <summary>Trecho encontrado no texto, com a posição (para achar o confrontante escrito antes dele).</summary>
+    public sealed record Found(Course Course, int Start, int End);
+
+    public static List<Course> Parse(string text) => ParseDetailed(text).Select(f => f.Course).ToList();
+
+    public static List<Found> ParseDetailed(string text)
     {
         var tokens = new List<Token>();
         foreach (Match m in AzRx.Matches(text))
@@ -124,14 +129,16 @@ public static class MemorialTextParser
             if (AngleText.TryParseNumber(m.Groups["v"].Value, out double d) && d > 0) tokens.Add(new Token(m.Index, false, d, m.Value));
         tokens.Sort((x, y) => x.Pos.CompareTo(y.Pos));
 
-        var res = new List<Course>();
+        var res = new List<Found>();
         Token? pa = null, pd = null;
         foreach (var t in tokens)
         {
             if (t.IsAngle) pa = t; else pd = t;
             if (pa is not null && pd is not null)
             {
-                res.Add(new Course { AzimuthDeg = pa.Value, Distance = pd.Value, Source = pa.Pos < pd.Pos ? pa.Text + " … " + pd.Text : pd.Text + " … " + pa.Text });
+                var c = new Course { AzimuthDeg = pa.Value, Distance = pd.Value, Source = pa.Pos < pd.Pos ? pa.Text + " … " + pd.Text : pd.Text + " … " + pa.Text };
+                int start = Math.Min(pa.Pos, pd.Pos), end = Math.Max(pa.Pos + pa.Text.Length, pd.Pos + pd.Text.Length);
+                res.Add(new Found(c, start, end));
                 pa = null; pd = null;
             }
         }

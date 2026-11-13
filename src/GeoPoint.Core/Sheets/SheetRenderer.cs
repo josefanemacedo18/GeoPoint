@@ -46,6 +46,8 @@ public sealed class SheetRenderInput
     public double LogoAspect { get; init; }
     /// <summary>Prévia: mostra "(logomarca do escritório)" no espaço vazio. Na prancha do Revit o espaço fica em branco.</summary>
     public bool Placeholders { get; init; }
+    /// <summary>Áreas (papel, mm) onde a grade não passa: caixas dos textos do desenho (chamadas de coordenada, rótulos, nomes).</summary>
+    public IReadOnlyList<PaperRect> GridHoles { get; init; } = Array.Empty<PaperRect>();
 }
 
 /// <summary>Monta os elementos gráficos da prancha (moldura, blocos, grade, tabela, norte, escala, convenções).</summary>
@@ -85,8 +87,11 @@ public static class SheetRenderer
         // ---- Grade de coordenadas (atrás do desenho), recortada pela tabela e pelo norte.
         if (t.Grid && i.CrsAt is not null)
         {
+            // A grade não corta a tabela, o norte nem os textos do desenho (folga de 1 mm na tabela, para pequenas diferenças
+            // entre a posição da vista e a da folha).
             var holes = new List<PaperRect> { north.Inset(-1) };
-            if (i.TableRect is PaperRect tr) holes.Add(tr);
+            if (i.TableRect is PaperRect tr) holes.Add(tr.Inset(-1));
+            holes.AddRange(i.GridHoles);
             foreach (var g in MapGrid.Build(map, i.CrsAt, i.Geographic, t.GridSpacingMm, i.WestAsO))
             {
                 foreach (var (a, b) in Clip(g.P0, g.P1, holes)) res.Add(new PLine(a, b, PLineStyle.Grade));
@@ -145,10 +150,13 @@ public static class SheetRenderer
                 case SheetBlockKind.Convencoes: Legend(res, body, i.Content.Legenda, st, i.Palette); break;
                 case SheetBlockKind.Orientacao: Orientation(res, body, i, st); break;
                 case SheetBlockKind.Croqui:
+                {
+                    // Espaço da imagem de localização: a imagem escolhida ou em branco (na prévia, um aviso cinza).
                     var ir = body.Inset(1.2);
                     if (i.Images.Contains("croqui")) res.Add(new PImage(ir, "croqui"));
-                    else res.Add(new PText(ir.Center, "(croqui de localização)", st.RotuloMm, H: PTextH.Center, V: PTextV.Middle, R: 120, G: 120, B: 120));
+                    else if (i.Placeholders) res.Add(new PText(ir.Center, "(espaço para a imagem de localização)", st.RotuloMm, H: PTextH.Center, V: PTextV.Middle, R: 150, G: 150, B: 150));
                     break;
+                }
                 case SheetBlockKind.Titulo: Title(res, r, i, st); break;
                 case SheetBlockKind.Escritorio:
                 {
@@ -176,6 +184,13 @@ public static class SheetRenderer
             }
         }
         return res;
+    }
+
+    /// <summary>Retângulo (papel) em volta de uma caixa de texto já no papel, com folga.</summary>
+    public static PaperRect HoleOf(IEnumerable<Vec2> corners, double pad = 0.4)
+    {
+        var bb = BBox.Of(corners);
+        return new PaperRect(bb.MinX - pad, bb.MinY - pad, bb.MaxX + pad, bb.MaxY + pad);
     }
 
     // ------------------------------------------------------------------ partes

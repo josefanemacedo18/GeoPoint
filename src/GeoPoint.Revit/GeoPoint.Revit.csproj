@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <OutputType>Library</OutputType>
@@ -10,6 +11,8 @@
     <RootNamespace>GeoPoint.Revit</RootNamespace>
     <AssemblyName>GeoPoint.Revit</AssemblyName>
     <GenerateDependencyFile>false</GenerateDependencyFile>
+    <!-- Copia para a saída as DLLs das bibliotecas usadas (PdfPig, projeção do Windows para OCR). -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
 

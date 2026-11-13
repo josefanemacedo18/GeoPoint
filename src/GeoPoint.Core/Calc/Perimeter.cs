@@ -116,7 +116,8 @@ public static class PerimeterText
 
         var memorial = FromMemorial(text, out var memKind);
         var tableWarnings = new List<string>();
-        var (table, tableKind) = memorial.Count >= 2 ? (new List<PerimeterVertex>(), PerimeterCoordKind.Utm) : FromTable(text, tableWarnings);
+        var tableStated = new List<Course>();
+        var (table, tableKind) = memorial.Count >= 2 ? (new List<PerimeterVertex>(), PerimeterCoordKind.Utm) : FromTable(text, tableWarnings, tableStated);
         if (memorial.Count >= 2 || (memorial.Count == 1 && table.Count < 2))
         {
             // Coordenadas no meio do texto (memorial, SIGEF). Com uma só, é a do ponto de partida.
@@ -130,6 +131,8 @@ public static class PerimeterText
             res.Kind = tableKind;
             res.Vertices.AddRange(table);
             res.Warnings.AddRange(tableWarnings);
+            // Azimutes e distâncias das colunas da tabela (quando o texto não os traz por extenso).
+            if (tableStated.Count > 0 && res.StatedCourses.Count == 0) res.StatedCourses.AddRange(tableStated);
         }
         Cleanup(res);
         return res;
@@ -209,11 +212,31 @@ public static class PerimeterText
 
     // ------------------------------------------------------------------ tabela
 
-    private static (List<PerimeterVertex>, PerimeterCoordKind) FromTable(string text, List<string> warnings)
+    private static (List<PerimeterVertex>, PerimeterCoordKind) FromTable(string text, List<string> warnings, List<Course>? stated = null)
     {
         var (rows, _) = CoordinateTableReader.ReadRows(text);
         var res = new List<PerimeterVertex>();
         if (rows.Count < 2) return (res, PerimeterCoordKind.Utm);
+        // Tabela de vértices com azimute e distância (ex.: Vértice | Azimute | Dist. | E | N): as coordenadas são as duas últimas
+        // colunas numéricas; azimute e distância de cada linha (até o próximo vértice) servem para a conferência.
+        static bool IsAngle(string v) => v.Contains('°') || v.Contains('º');
+        if (rows.Count(r => r.Values.Count >= 4 && r.Values.Any(IsAngle)) >= Math.Max(2, rows.Count / 2))
+        {
+            var kept = new List<CoordinateTableReader.Row>();
+            var courses = new List<Course>();
+            foreach (var r in rows)
+            {
+                var nums = r.Values.Where(v => !IsAngle(v)).ToList();
+                if (nums.Count < 2) continue;
+                kept.Add(r with { A = nums[^2], B = nums[^1], C = null });
+                int ai = r.Values.ToList().FindIndex(IsAngle);
+                if (ai >= 0 && ai + 1 < r.Values.Count && !IsAngle(r.Values[ai + 1])
+                    && AngleText.TryParseAngle(r.Values[ai], out double az) && CoordinateTableReader.Num(r.Values[ai + 1]) is double d && d > 0 && d < Math.Min(Math.Abs(CoordinateTableReader.Num(nums[^2]) ?? 0), Math.Abs(CoordinateTableReader.Num(nums[^1]) ?? 0)))
+                    courses.Add(new Course { AzimuthDeg = az, Distance = d, Source = $"{r.Name}: {r.Values[ai]} – {r.Values[ai + 1]}" });
+            }
+            rows = kept;
+            if (stated is not null && courses.Count >= 2) { stated.Clear(); stated.AddRange(courses); }
+        }
         // Geográficas: ° ou muitas casas decimais (-6,333656). Coordenadas locais pequenas (10,00) não contam como graus.
         static bool GeoLike(string s) => s.Contains('°') || s.Contains('º') || Regex.IsMatch(s.Trim(), @"^-?\d{1,3}[.,]\d{5,}$");
         bool geo = rows.All(r => GeoLike(r.A) && GeoLike(r.B));

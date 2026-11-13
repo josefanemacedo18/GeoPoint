@@ -24,10 +24,6 @@ public sealed class SheetBuildOptions
     public bool NorteParaCima { get; set; } = true;
     /// <summary>Imagem de localização escolhida pelo usuário (usada quando não há croqui automático).</summary>
     public string LocationImage { get; set; } = "";
-    /// <summary>Croqui automático (imagem de satélite com o lote): devolve o caminho da imagem ou null.</summary>
-    public Func<SheetSpec, IReadOnlyList<LotRecord>, string?>? Croqui { get; set; }
-    /// <summary>Croqui desenhado (sem imagem), usado quando não há imagem de satélite nem imagem escolhida.</summary>
-    public Func<SheetSpec, IReadOnlyList<LotRecord>, string?>? VectorCroqui { get; set; }
     public string NumberPrefix { get; set; } = "GP";
     public string Font { get; set; } = "Arial";
 }
@@ -104,7 +100,8 @@ public sealed class SheetBuilder
     }
 
     /// <summary>Sistema das coordenadas da prancha: o primeiro do memorial (o mesmo das opções), ou local sem georreferência.</summary>
-    private CrsDef TableCrs() => _ctx.Coords.HasGeoreference ? (_s.Settings.Memorial.CoordinateSystems.FirstOrDefault() ?? CrsDef.Utm()) : CrsDef.ProjectLocalDef();
+    /// <summary>Coordenadas da prancha: as escolhidas na janela de Pranchas (padrão: geográficas SIRGAS 2000).</summary>
+    private CrsDef TableCrs() => _ctx.Coords.HasGeoreference ? _s.Settings.SheetCrs() : CrsDef.ProjectLocalDef();
 
     /// <summary>Chamada da coordenada de referência do lote (vértice escolhido ou P-01).</summary>
     public static RefCallout? Callout(LotReport rep, ProjectContext ctx, ValueFormatter fmt, CrsDef def)
@@ -185,6 +182,13 @@ public sealed class SheetBuilder
         // Papel (mm) → modelo (m).
         var tr = crop.Transform;
         Vec2 ToModel(Vec2 q) => RvtUnits.ToVec(tr.OfPoint(new XYZ(cx + (q.X - map.Center.X) * k, cy + (q.Y - map.Center.Y) * k, 0)));
+        var trInv = tr.Inverse;
+        Vec2 ToPaper(Vec2 m)
+        {
+            var l = trInv.OfPoint(RvtUnits.ToXyz(m, 0));
+            return new Vec2((l.X - cx) / k + map.Center.X, (l.Y - cy) / k + map.Center.Y);
+        }
+        var textObstacles = new List<Obb>();
         double viewAngle = Annotator.ViewAngle(view);
         double mPerMm = scale / 1000.0;
         Obb Obst(PaperRect r) => Obb.Of(ToModel(r.Center), viewAngle, r.Width / 2 * mPerMm, r.Height / 2 * mPerMm);
@@ -202,33 +206,13 @@ public sealed class SheetBuilder
                 try { buildings.Add(GeoPoint.Core.Urban.BuildingAnalyzer.Analyze(ctx.Report(l), b)); } catch { }
         var content = SheetContent.Build(_ctx, _fmt, spec, lots, def, vias: _o.Vias && _s.Project.Vias.Count > 0, edificacoes: buildings.Count > 0);
         var images = new HashSet<string>();
-        string? croqui = null;
-        try { croqui = _o.Croqui?.Invoke(spec, lots); } catch (Exception ex) { Logger.Error("Croqui automático", ex); Warnings.Add($"{spec.Title}: croqui automático – {ex.Message}"); }
-        if (string.IsNullOrWhiteSpace(croqui) || !File.Exists(croqui)) croqui = File.Exists(_o.LocationImage) ? _o.LocationImage : null;
-        // Sem foto e sem imagem escolhida: croqui desenhado (lotes, vias, norte e escala) – nunca um bloco vazio.
-        if (croqui is null && _o.VectorCroqui is not null)
-        {
-            try { croqui = _o.VectorCroqui(spec, lots); }
-            catch (Exception ex) { Logger.Error("Croqui desenhado", ex); }
-        }
+        // Espaço da imagem de localização: a imagem escolhida na janela de Pranchas, ou em branco (você insere no Revit).
+        string? croqui = !string.IsNullOrWhiteSpace(_o.LocationImage) && File.Exists(_o.LocationImage) ? _o.LocationImage : null;
         if (croqui is not null) images.Add("croqui");
         // Logomarca do escritório (embutida no modelo): gravada na pasta de cache para o Revit inserir.
         string? logo = null;
         try { logo = SheetTemplateLibrary.LogoFile(tpl); } catch (Exception ex) { Logger.Error("Logomarca", ex); Warnings.Add("Logomarca do escritório: " + ex.Message); }
         if (logo is not null) images.Add("logo");
-        var northDir = NorthOnPaper(view);
-        bool geo = def.Kind == CrsKind.Geographic;
-        var prims = SheetRenderer.Render(new SheetRenderInput
-        {
-            Template = tpl, Content = content, Scale = scale, Folha = folha.ToString("00"), SheetNumber = sheet.SheetNumber, Date = DateTime.Today,
-            CrsAt = q => _ctx.Coords.ToCrs(ToModel(q), def) is { } c ? (geo ? (c.Lon, c.Lat) : (c.East, c.North)) : null,
-            Geographic = geo, WestAsO = _s.Settings.Format.WestAsO,
-            Table = fit.Table is null ? null : table, TableRect = fit.Table, North = northDir, FrameAndBlocks = !customTitleBlock,
-            Palette = Hatcher.Palette, Images = images, LogoAspect = logo is null ? 0 : tpl.LogoAspect(),
-        });
-
-        // ---- Conteúdo da vista. A grade vem primeiro (fica atrás das hachuras e do desenho).
-        DrawGridInView(view, prims.OfType<PLine>().Where(l => l.Style == PLineStyle.Grade), ToModel, tpl.GridColor);
         if (_o.Vias && _s.Project.Vias.Count > 0)
             foreach (var w in StreetDrawer.Draw(_doc, view, _ctx, lots, _s.Settings.Streets, _o.Font)) Warnings.Add($"{spec.Title}: {w}");
         if (spec.Hatch)
@@ -239,7 +223,9 @@ public sealed class SheetBuilder
         if (_o.Anotacoes)
         {
             var obstacles = new List<Obb> { Obst(northRect) };
-            obstacles.AddRange(BuildingDrawer.LabelBoxes(buildings, view, annoMm, _fmt));
+            var buildingBoxes = BuildingDrawer.LabelBoxes(buildings, view, annoMm, _fmt).ToList();
+            obstacles.AddRange(buildingBoxes);
+            textObstacles.AddRange(buildingBoxes);
             if (fit.Table is PaperRect tbr) obstacles.Add(Obst(tbr));
             obstacles.AddRange(SheetRenderer.OutsideMap(map).Select(Obst));
             var fails = new List<string>();
@@ -261,6 +247,25 @@ public sealed class SheetBuilder
             if (Annotator.LastOversized > 0)
                 Warnings.Add($"{spec.Title}: {Annotator.LastOversized} texto(s) ficaram maiores no Revit que o previsto (a fonte \"{_o.Font}\" pode ser mais larga que o Arial) – confira se encostam em outros.");
         }
+        // ---- Caixas dos textos do desenho (no papel): a grade não passa por elas.
+        var textHoles = new List<PaperRect>();
+        if (_o.Anotacoes)
+            foreach (var b in Annotator.LastTextBoxes.Concat(textObstacles))
+                textHoles.Add(SheetRenderer.HoleOf(SheetPreview.Corners(b).Select(ToPaper)));
+        var northDir = NorthOnPaper(view);
+        bool geo = def.Kind == CrsKind.Geographic;
+        var prims = SheetRenderer.Render(new SheetRenderInput
+        {
+            Template = tpl, Content = content, Scale = scale, Folha = folha.ToString("00"), SheetNumber = sheet.SheetNumber, Date = DateTime.Today,
+            CrsAt = q => _ctx.Coords.ToCrs(ToModel(q), def) is { } c ? (geo ? (c.Lon, c.Lat) : (c.East, c.North)) : null,
+            Geographic = geo, WestAsO = _s.Settings.Format.WestAsO,
+            Table = fit.Table is null ? null : table, TableRect = fit.Table, North = northDir, FrameAndBlocks = !customTitleBlock,
+            Palette = Hatcher.Palette, Images = images, LogoAspect = logo is null ? 0 : tpl.LogoAspect(),
+            GridHoles = textHoles,
+        });
+
+        // ---- Grade na vista, recortada pelos textos e mandada para trás das hachuras e do desenho.
+        DrawGridInView(view, prims.OfType<PLine>().Where(l => l.Style == PLineStyle.Grade), ToModel, tpl.GridColor);
         _doc.Regenerate();
 
         // ---- Viewport no mapa, alinhado com precisão (a grade e os valores das bordas dependem disso).
@@ -310,6 +315,7 @@ public sealed class SheetBuilder
         if (list.Count == 0) return;
         var style = RevitStyles.LineStyle(_doc, "GeoPoint - Grade de coordenadas", new Color(rgb[0], rgb[1], rgb[2]), 1);
         double z = ElementUtil.ViewPlaneZ(view);
+        var ids = new List<ElementId>();
         foreach (var l in list)
         {
             try
@@ -318,9 +324,13 @@ public sealed class SheetBuilder
                 if (a.DistanceTo(b) < 0.01) continue;
                 var dc = _doc.Create.NewDetailCurve(view, Autodesk.Revit.DB.Line.CreateBound(RvtUnits.ToXyz(a, z), RvtUnits.ToXyz(b, z)));
                 if (style is not null) dc.LineStyle = style;
+                ids.Add(dc.Id);
             }
             catch (Exception ex) { Logger.Error("Grade de coordenadas", ex); }
         }
+        // A grade é desenhada depois do desenho (para ser recortada pelos textos) e vai para trás de tudo.
+        try { if (ids.Count > 0) DetailElementOrderUtils.SendToBack(_doc, view, ids); }
+        catch (Exception ex) { Logger.Error("Grade para trás", ex); }
     }
 
     // ------------------------------------------------------------------ elementos da folha

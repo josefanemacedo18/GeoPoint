@@ -228,7 +228,7 @@ public sealed class SheetTemplate
             new() { Kind = SheetBlockKind.Assinaturas, Title = "QUADRO DE ASSINATURAS", X = xM + qW + g, Y = yMid, W = cM - qW - g, H = y1 - yMid },
             new() { Kind = SheetBlockKind.Convencoes, Title = "CONVENÇÕES TOPOGRÁFICAS", X = xM, Y = y0, W = convW, H = hTop },
             new() { Kind = SheetBlockKind.Orientacao, Title = "ORIENTAÇÃO", X = xM + convW + g, Y = y0, W = cM - convW - g, H = hTop },
-            new() { Kind = SheetBlockKind.Croqui, Title = "CROQUI DE LOCALIZAÇÃO", X = xR, Y = y0 + titleH + logoH + 2 * g, W = cR, H = y1 - y0 - titleH - logoH - 2 * g },
+            new() { Kind = SheetBlockKind.Croqui, Title = "", X = xR, Y = y0 + titleH + logoH + 2 * g, W = cR, H = y1 - y0 - titleH - logoH - 2 * g },
             new() { Kind = SheetBlockKind.Escritorio, Title = "", X = xR, Y = y0 + titleH + g, W = cR, H = logoH },
             new() { Kind = SheetBlockKind.Titulo, Title = "", X = xR, Y = y0, W = cR, H = titleH },
             new() { Kind = SheetBlockKind.Observacoes, Title = "OBSERVAÇÕES", Visible = false },
@@ -259,7 +259,7 @@ public sealed class SheetTemplate
         };
         double titleH = 15 * pf, logoH = 16 * pf;
         double yc = y0 + titleH + logoH + 2 * g;
-        list.Add(new SheetBlock { Kind = SheetBlockKind.Croqui, Title = "CROQUI DE LOCALIZAÇÃO", X = x0, Y = yc, W = colW, H = y - yc });
+        list.Add(new SheetBlock { Kind = SheetBlockKind.Croqui, Title = "", X = x0, Y = yc, W = colW, H = y - yc });
         // Espaço da logomarca do escritório: entre o croqui e o título.
         list.Add(new SheetBlock { Kind = SheetBlockKind.Escritorio, Title = "", X = x0, Y = y0 + titleH + g, W = colW, H = logoH });
         list.Add(new SheetBlock { Kind = SheetBlockKind.Titulo, Title = "", X = x0, Y = y0, W = colW, H = titleH });
@@ -431,6 +431,9 @@ public static class SheetTemplateLibrary
                 d.Visible = false;
                 t.Blocks.Add(d);
             }
+        // Espaço da imagem de localização sem título (versões até 1.5.5 tinham "CROQUI DE LOCALIZAÇÃO").
+        foreach (var b in t.Blocks.Where(b => b.Kind == SheetBlockKind.Croqui && b.Title.Trim().Equals("CROQUI DE LOCALIZAÇÃO", StringComparison.OrdinalIgnoreCase)))
+            b.Title = "";
         if (t.GridSpacingMm < 10) t.GridSpacingMm = 40;
         if (t.Gap < 0) t.Gap = 0;
         return t;

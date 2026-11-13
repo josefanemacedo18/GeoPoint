@@ -71,11 +71,11 @@ public partial class PranchasWindow : Window
     private bool _loading = true;
     private readonly SheetSettings _st;
 
-    private readonly Func<SheetSpec, SheetTemplate, int, SheetComposition?>? _preview;
+    private readonly Func<SheetSpec, SheetTemplate, int, GeoPoint.Core.Settings.SheetCoordSystem, SheetComposition?>? _preview;
 
     public PranchasWindow(ParcelProject project, SheetSettings st, IEnumerable<LotRow> rows, OperationRecord? preselect, PranchasState state,
         Func<SheetSpec, List<IdText>> refOptions, Func<SheetSpec, (bool exists, bool edited)> existing,
-        Func<SheetSpec, SheetTemplate, int, SheetComposition?>? preview = null)
+        Func<SheetSpec, SheetTemplate, int, GeoPoint.Core.Settings.SheetCoordSystem, SheetComposition?>? preview = null)
     {
         InitializeComponent();
         _preview = preview;
@@ -107,7 +107,7 @@ public partial class PranchasWindow : Window
         Norte.IsChecked = st.NorteParaCima;
         _st = st;
         LoadTemplates(st.Template, st.Orientation == 1 ? SheetOrientation.Paisagem : SheetOrientation.Retrato);
-        CroquiAuto.IsChecked = st.CroquiAuto;
+        Coords.SelectedIndex = (int)st.SistemaCoordenadas;
         Prefix.Text = st.NumberPrefix;
         Image.Text = project.Info.ImagemLocalizacao;
         _loading = false;
@@ -136,7 +136,7 @@ public partial class PranchasWindow : Window
         if (SelectedTemplate is { } t) { st.Template = t.Name; st.Orientation = t.Orientation == SheetOrientation.Paisagem ? 1 : 0; }
         st.AutoScale = Scale.SelectedIndex <= 0;
         if (!st.AutoScale && SelectedTemplate is { } t2) st.Scale = t2.ScaleList[Math.Min(Scale.SelectedIndex - 1, t2.ScaleList.Count - 1)];
-        st.CroquiAuto = CroquiAuto.IsChecked == true;
+        st.SistemaCoordenadas = (GeoPoint.Core.Settings.SheetCoordSystem)Math.Max(0, Coords.SelectedIndex);
         st.NumberPrefix = Prefix.Text.Trim();
         info.ImagemLocalizacao = Image.Text.Trim();
     }
@@ -212,7 +212,7 @@ public partial class PranchasWindow : Window
         try
         {
             int scale = Scale.SelectedIndex > 0 ? tpl.ScaleList[Math.Min(Scale.SelectedIndex - 1, tpl.ScaleList.Count - 1)] : 0;
-            var comp = _preview(row.Spec, tpl, scale);
+            var comp = _preview(row.Spec, tpl, scale, (GeoPoint.Core.Settings.SheetCoordSystem)Math.Max(0, Coords.SelectedIndex));
             if (comp is null) return;
             SheetPreview.Show(tpl, comp.All.ToList());
             PreviewInfo.Text = $"{row.Title} – escala 1:{comp.Fit.Scale}." + (comp.Warnings.Count > 0 ? "  ⚠ " + string.Join(" ", comp.Warnings) : "");

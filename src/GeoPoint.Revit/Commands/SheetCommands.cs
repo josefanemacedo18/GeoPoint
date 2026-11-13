@@ -82,12 +82,15 @@ public sealed class CmdPranchas : CommandBase
         {
             var rows = PickerRows.Build(s, false, l => l.Status == LotStatus.Ativo || s.Project.PhaseOperations.Any(o => o.ParentIds.Contains(l.Id) || o.ChildIds.Contains(l.Id)));
             var pctx = s.NewContext();
-            SheetComposition? Preview(SheetSpec sp, SheetTemplate tpl, int scale)
+            SheetComposition? Preview(SheetSpec sp, SheetTemplate tpl, int scale, GeoPoint.Core.Settings.SheetCoordSystem coords)
             {
                 var ls = sp.LotIds.Select(s.Project.FindLot).Where(l => l is not null).Select(l => l!).ToList();
                 if (ls.Count == 0) return null;
                 double mm = tpl.Styles.DesenhoMm > 0 ? tpl.Styles.DesenhoMm : s.Settings.Annotation.TextSizeMm;
-                return SheetPreview.Compose(pctx, ls, sp, tpl, mm, scale, Hatcher.Palette, r => Annotator.LotLabel(r, pctx, new ValueFormatter(s.Settings.Format), Annotator.Options.From(s.Settings.Annotation)));
+                var st0 = s.Settings.Clone();
+                st0.Sheets.SistemaCoordenadas = coords;
+                return SheetPreview.Compose(pctx, ls, sp, tpl, mm, scale, Hatcher.Palette, r => Annotator.LotLabel(r, pctx, new ValueFormatter(s.Settings.Format), Annotator.Options.From(s.Settings.Annotation)),
+                    crs: st0.SheetCrs());
             }
             w = new PranchasWindow(s.Project, s.Settings.Sheets, rows, op, state, RefOptions, Existing, Preview);
             if (Ui.ShowDialog(w, s.MainWindow) != true || w.Action == PranchasAction.Cancel) return false;
@@ -130,7 +133,7 @@ public sealed class CmdPranchas : CommandBase
         var pend = new List<string>();
         var pendLots = new HashSet<string>();
         var fmtC = new ValueFormatter(s.Settings.Format);
-        var defC = s.Settings.Memorial.CoordinateSystems.FirstOrDefault() ?? GeoPoint.Core.Geodesy.CrsDef.Utm();
+        var defC = s.Settings.SheetCrs();
         foreach (var sp in specs)
         {
             var ls = sp.LotIds.Select(s.Project.FindLot).Where(l => l is not null).Select(l => l!).ToList();
@@ -168,8 +171,6 @@ public sealed class CmdPranchas : CommandBase
         {
             Template = template,
             Scale = st.AutoScale ? 0 : st.Scale,
-            Croqui = st.CroquiAuto && CroquiService.EnsureTerms(s) ? CroquiService.ForSheets(s, template) : null,
-            VectorCroqui = st.CroquiAuto ? CroquiService.VectorForSheets(s, template) : null,
             Anotacoes = st.Anotacoes, Vias = st.Vias, NorteParaCima = st.NorteParaCima,
             LocationImage = s.Project.Info.ImagemLocalizacao, NumberPrefix = st.NumberPrefix, Font = s.Settings.Annotation.Font,
         });

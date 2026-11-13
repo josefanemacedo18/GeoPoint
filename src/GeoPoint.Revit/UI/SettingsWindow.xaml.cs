@@ -88,15 +88,6 @@ public partial class SettingsWindow : Window
         StreetWalk.Text = Fmt.Raw(_s.Streets.Calcada, 2);
         StreetText.Text = Fmt.Raw(_s.Streets.NomeMm, 2);
         TitleBlock.Text = _s.Sheets.TitleBlock;
-        var im = _s.Imagery;
-        ImgProvider.SelectedIndex = (int)im.Provider;
-        ImgGoogleKey.Password = im.GoogleKey;
-        ImgUrl.Text = im.CustomUrl;
-        ImgAttr.Text = im.CustomAttribution;
-        ImgContext.Text = Fmt.Raw(im.Context, 1);
-        ImgDpi.Text = im.Dpi.ToString();
-        ImgTerms.IsChecked = im.AcceptedTerms;
-        ImgLicense.Text = im.LicenseNote;
 
         _profiles = new ObservableCollection<RuleProfile>(_s.RuleProfiles.Select(x => x.Clone()));
         Profiles.ItemsSource = _profiles;
@@ -311,13 +302,6 @@ public partial class SettingsWindow : Window
         return true;
     }
 
-    private void ImgProvider_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
-    {
-        if (ImgLicense is null) return;
-        var tmp = new GeoPoint.Core.Imagery.ImagerySettings { Provider = (GeoPoint.Core.Imagery.ImageryProvider)Math.Max(0, ImgProvider.SelectedIndex) };
-        ImgLicense.Text = tmp.LicenseNote;
-    }
-
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
         if (!CommitProfile()) return;
@@ -405,18 +389,6 @@ public partial class SettingsWindow : Window
         a.DotMm = dmm;
         _s.Streets.Largura = swid; _s.Streets.Calcada = swalk; _s.Streets.NomeMm = stx;
         _s.Sheets.TitleBlock = TitleBlock.Text.Trim();
-        {
-            var im = _s.Imagery;
-            var prov = (GeoPoint.Core.Imagery.ImageryProvider)Math.Max(0, ImgProvider.SelectedIndex);
-            if (prov != im.Provider) im.AcceptedTerms = false;   // outro fornecedor: confirmar a licença de novo
-            im.Provider = prov;
-            im.GoogleKey = ImgGoogleKey.Password.Trim();
-            im.CustomUrl = ImgUrl.Text.Trim();
-            im.CustomAttribution = ImgAttr.Text.Trim();
-            if (Fmt.TryNum(ImgContext.Text, out double ctxv)) im.Context = Math.Clamp(ctxv, 1.2, 30);
-            if (int.TryParse(ImgDpi.Text.Trim(), out int dpi)) im.Dpi = Math.Clamp(dpi, 96, 400);
-            im.AcceptedTerms = ImgTerms.IsChecked == true && (prov == im.Provider);
-        }
         a.TextSizeMm = tmm; a.OffsetMm = omm; a.Font = string.IsNullOrWhiteSpace(Font.Text) ? "Arial" : Font.Text.Trim();
         _s.Kml.FillOpacity = op; _s.Kml.LineWidth = lw;
 

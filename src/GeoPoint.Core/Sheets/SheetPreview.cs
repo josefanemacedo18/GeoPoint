@@ -32,7 +32,8 @@ public static class SheetPreview
     /// <paramref name="annoTextMm"/> = altura dos textos do desenho no papel.
     /// </summary>
     public static SheetComposition Compose(ProjectContext ctx, IReadOnlyList<LotRecord> lots, SheetSpec spec, SheetTemplate tpl,
-        double annoTextMm = 2.0, int fixedScale = 0, IReadOnlyList<(byte R, byte G, byte B)>? palette = null, Func<LotReport, string>? labelOf = null)
+        double annoTextMm = 2.0, int fixedScale = 0, IReadOnlyList<(byte R, byte G, byte B)>? palette = null, Func<LotReport, string>? labelOf = null,
+        CrsDef? crs = null)
     {
         palette ??= new[] { ((byte)220, (byte)60, (byte)50), ((byte)40, (byte)90, (byte)210), ((byte)30, (byte)150, (byte)80), ((byte)225, (byte)140, (byte)20) };
         var fmt = new ValueFormatter(ctx.Settings.Format);
@@ -40,7 +41,8 @@ public static class SheetPreview
         localSt.Naming.Numbering = VertexNumbering.Lote;
         var local = new ProjectContext(ctx.Project, localSt);
         var actx = spec.Detailed ? local : ctx;
-        var def = ctx.Coords.HasGeoreference ? (ctx.Settings.Memorial.CoordinateSystems.FirstOrDefault() ?? CrsDef.Utm()) : CrsDef.ProjectLocalDef();
+        // Coordenadas da prancha: as escolhidas (padrão das Configurações: geográficas SIRGAS 2000).
+        var def = ctx.Coords.HasGeoreference ? (crs ?? ctx.Settings.SheetCrs()) : CrsDef.ProjectLocalDef();
         var reps = lots.Select(actx.Report).ToList();
         var map = tpl.MapRect();
         // O desenho fica com o norte do GeoPoint para cima: gira as coordenadas pela convergência/rotação do projeto.
@@ -87,6 +89,8 @@ public static class SheetPreview
             Geographic = geo, WestAsO = ctx.Settings.Format.WestAsO,
             Table = fit.Table is null ? null : table, TableRect = fit.Table, Palette = palette,
             Images = tpl.HasLogo ? new HashSet<string> { "logo" } : new HashSet<string>(), LogoAspect = tpl.LogoAspect(), Placeholders = true,
+            // A grade não passa por cima dos textos do desenho (chamadas de coordenada, rótulos, nomes).
+            GridHoles = plan.Texts.Select(t => SheetRenderer.HoleOf(Corners(t.Box).Select(ToPaper))).ToList(),
         };
         var mapPrims = new List<SheetPrim>();
         for (int i = 0; i < reps.Count; i++)
@@ -128,6 +132,13 @@ public static class SheetPreview
         if (!fit.Fits) comp.Warnings.Add($"O desenho não coube folgado; escala 1:{fit.Scale}.");
         if (plan.Conflicts > 0) comp.Warnings.Add($"{plan.Conflicts} texto(s) sem espaço livre.");
         return comp;
+    }
+
+    /// <summary>Cantos de uma caixa orientada.</summary>
+    public static IEnumerable<Vec2> Corners(Obb b)
+    {
+        var u = b.U * b.Hw; var v = b.V * b.Hh;
+        yield return b.C + u + v; yield return b.C - u + v; yield return b.C - u - v; yield return b.C + u - v;
     }
 
     private static RefCallout RefFor(LotReport r, ProjectContext ctx, ValueFormatter fmt, CrsDef def)

@@ -111,11 +111,16 @@
                         <ComboBox Grid.Row="1" Grid.Column="1" x:Name="Scale"/>
                         <Label Grid.Row="2" Content="Numeração:"/>
                         <TextBox Grid.Row="2" Grid.Column="1" x:Name="Prefix" ToolTip="Prefixo do número da prancha (ex.: GP → GP-01, GP-02...)."/>
-                        <CheckBox Grid.Row="3" Grid.ColumnSpan="3" x:Name="CroquiAuto" Margin="4,6,4,2"
-                                  Content="Croqui de localização automático (imagem de satélite com o lote)"
-                                  ToolTip="O GeoPoint baixa a imagem de satélite da região, no zoom mais detalhado que existir ali, e desenha o lote por cima. Sem internet ou sem imagem na região (e sem arquivo escolhido abaixo), o croqui sai desenhado: lotes, ruas, norte e escala. Fornecedor em Configurações."/>
-                        <Label Grid.Row="4" Content="Croqui (arquivo):"/>
-                        <TextBox Grid.Row="4" Grid.Column="1" x:Name="Image" ToolTip="Imagem (PNG/JPG) usada quando o croqui automático estiver desligado ou não puder ser baixado."/>
+                        <Label Grid.Row="3" Content="Coordenadas:"/>
+                        <ComboBox Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" x:Name="Coords" SelectionChanged="Template_Changed"
+                                  ToolTip="Sistema das coordenadas da prancha: grade, tabela de coordenadas, chamada do ponto de referência e carimbo (Orientação).">
+                            <ComboBoxItem Content="Geográficas (latitude/longitude) – SIRGAS 2000"/>
+                            <ComboBoxItem Content="UTM (E, N) – SIRGAS 2000"/>
+                            <ComboBoxItem Content="O primeiro sistema do memorial (Configurações)"/>
+                        </ComboBox>
+                        <Label Grid.Row="4" Content="Imagem de localização:"/>
+                        <TextBox Grid.Row="4" Grid.Column="1" x:Name="Image"
+                                 ToolTip="Opcional: imagem (PNG/JPG) colocada no espaço de localização da prancha, ajustada ao espaço. Vazio = o espaço fica em branco para você inserir a imagem no Revit."/>
                         <Button Grid.Row="4" Grid.Column="2" Content="Escolher…" Click="Image_Click"/>
                     </Grid>
                 </GroupBox>

@@ -113,6 +113,7 @@ public static class Annotator
     {
         LastConflicts = 0;
         LastOversized = 0;
+        LastTextBoxes = new List<Obb>();
         foreach (var l in lots) Clear(doc, l, view);
         // O que outros lotes já anotaram nesta vista não é repetido.
         var existing = new HashSet<string>();
@@ -131,6 +132,7 @@ public static class Annotator
         }
         var plan = AnnotationPlanner.Plan(reports, fmt, PlanOptions(doc, view, ctx, fmt, o, lots.Count, ownerOf, obstacles, perLotNames, refCallout), existing);
         LastConflicts = plan.Conflicts;
+        LastTextBoxes = plan.Texts.Select(t => t.Box).ToList();
         if (plan.Conflicts > 0) Logger.Info($"Anotação: {plan.Conflicts} texto(s) sem espaço livre na vista {view.Name} (posição de menor conflito).");
 
         var normal = RevitStyles.TextType(doc, o.TextMm, o.Font, o.Opaque);
@@ -215,6 +217,9 @@ public static class Annotator
 
     /// <summary>Textos sem posição livre na última anotação (aviso de legibilidade).</summary>
     public static int LastConflicts { get; private set; }
+
+    /// <summary>Caixas (desenho, m) dos textos da última anotação: a grade da prancha não passa por elas.</summary>
+    public static List<Obb> LastTextBoxes { get; private set; } = new();
 
     /// <summary>Textos que no Revit ficaram bem maiores que o previsto na última anotação (podem encostar em outros).</summary>
     public static int LastOversized { get; private set; }

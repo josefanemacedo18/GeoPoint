@@ -23,6 +23,22 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 
 ---
 
+## Novidades da versão 1.6
+
+- **Certidão em PDF ou imagem no Desenhar Perímetro**: botão *Importar certidão ou memorial*. O GeoPoint lê o texto (PDF digital: o
+  texto do próprio PDF, exato; PDF escaneado, foto ou imagem: reconhecimento de texto – OCR – do próprio Windows, sem enviar o documento
+  para fora do computador) e encontra o **perímetro** (coordenadas, azimutes e distâncias, tabela de vértices ou só as medidas de frente,
+  fundos e laterais), o **confrontante de cada divisa** e os **dados do imóvel** (matrícula, proprietário atual, CPF/CNPJ, lote, quadra,
+  endereço, bairro, CEP, município/UF, comarca, cartório, área e perímetro). Tudo aparece para conferir: as páginas do documento ao lado,
+  com **os números usados no desenho destacados em amarelo**, e a área e o perímetro do desenho comparados com os da certidão. Ao
+  desenhar, os **Dados do Imóvel** são preenchidos e o **lote é cadastrado** já com os confrontantes.
+- **Pranchas – coordenadas**: na janela de Pranchas você escolhe as coordenadas da prancha (grade, tabela, chamadas e carimbo):
+  **Geográficas (latitude/longitude) – SIRGAS 2000** (padrão), UTM – SIRGAS 2000 ou o primeiro sistema do memorial.
+- **Grade limpa**: as linhas da grade de coordenadas não passam mais por cima da tabela, do norte, das chamadas de coordenada e dos
+  textos do desenho.
+- **Imagem de localização manual**: o GeoPoint não baixa mais imagem de satélite. O espaço continua na prancha, **sem título**, para você
+  colocar a imagem (escolhida na janela de Pranchas, ajustada ao espaço, ou inserida no Revit). A chave do Google guardada antes é apagada.
+
 ## Ajustes da versão 1.5.5
 
 - **Croqui de satélite legível**: o GeoPoint usa o zoom mais detalhado que **existe** na região (onde a Esri não tem o zoom 18/19,
@@ -215,7 +231,8 @@ se quiser, **Ligar os pontos com linhas** (polígono fechado na ordem da lista) 
 Cada ponto aparece como cruz laranja com o nome; desenhe as divisas com o snap de interseção. *Verificar Projeto* e a planilha
 mostram a distância de cada ponto ao vértice mais próximo.
 
-**Desenhar Perímetro** – desenha o contorno de um lote em duas formas (abas):
+**Desenhar Perímetro** – desenha o contorno de um lote por azimutes e distâncias ou por coordenadas – digitados, colados ou lidos de
+uma **certidão/memorial em PDF ou imagem** (*Importar certidão ou memorial*, ver abaixo):
 
 *Azimutes e distâncias*
 - A janela abre com um **modelo de texto pronto** (*"Inicia-se no vértice P-01; deste, segue com azimute de 90°00'00" e distância de
@@ -248,7 +265,29 @@ mostram a distância de cada ponto ao vértice mais próximo.
 - **Clicar onde fica o primeiro vértice** – e, se o projeto ainda não tem referência, *Usar o primeiro vértice como ponto de
   referência do projeto* (o topo da vista é o norte): o projeto fica georreferenciado por essas coordenadas;
 - **Começar no ponto de referência do projeto** (aba de azimutes).
-As linhas criadas ficam selecionadas, prontas para *Reconhecer Lotes*. Tudo é desfeito com um *Desfazer*.
+As linhas criadas ficam selecionadas, prontas para *Reconhecer Lotes* (ou o lote já sai cadastrado, ver abaixo). Tudo é desfeito com um
+*Desfazer*.
+
+*Importar certidão ou memorial (PDF ou imagem)*
+- **PDF digital** (gerado pelo cartório ou pelo sistema): o texto é lido do próprio PDF – os números saem exatos. **PDF escaneado, foto
+  do celular ou imagem** (JPG, PNG, TIF): o texto é reconhecido pelo **OCR do Windows**, no próprio computador (nada é enviado pela
+  internet). Precisa do idioma *Português (Brasil)* instalado no Windows (Configurações › Hora e idioma › Idioma); sem ele, o GeoPoint avisa.
+- O GeoPoint encontra o perímetro e põe na aba certa: **coordenadas** (memorial, SIGEF ou tabela de vértices com azimute, distância, E e
+  N – como a tabela das pranchas do GeoPoint), **azimutes/rumos e distâncias**, ou **só as medidas dos lados** ("12,00 m de frente para a
+  Rua X, 30,00 m pelo lado direito…"): neste caso o desenho supõe as laterais perpendiculares à frente e avisa para conferir os ângulos.
+  O **fuso UTM** e o **datum** escritos na certidão também são usados.
+- Erros comuns de OCR são corrigidos nos números (O no lugar de 0, l no lugar de 1, espaços dentro do número e do ângulo, grau lido
+  como "o").
+- **Aba Documento** (ao lado da prévia): as páginas, com os números que entraram no desenho **destacados em amarelo**; zoom (− / + /
+  Largura) e *Abrir o arquivo*. Arraste a divisória para alargar o painel.
+- **Aba Dados da certidão**: matrícula, proprietário **atual** (o último adquirente dos registros), CPF/CNPJ, lote, quadra, endereço,
+  bairro, CEP, município, UF, comarca, cartório, área e perímetro – corrija o que precisar e desmarque o que não quiser usar; e o
+  **confrontante de cada divisa** (pelo proprietário quando a certidão diz "de propriedade de…"; ruas marcadas como testada).
+- **Conferência**: além de conferir as coordenadas com os azimutes e distâncias do texto, o resultado mostra a **área e o perímetro do
+  desenho × os da certidão** – diferença acima de 1% indica número lido errado.
+- Ao **Desenhar**: *Preencher os Dados do Imóvel* (só os campos vazios, ou todos com *Substituir*) e *Cadastrar o lote ao desenhar* – o
+  lote já sai pronto (lote, quadra, matrícula, área e perímetro do título e o confrontante de cada divisa), sem *Reconhecer Lotes*.
+- O documento **não é guardado** no projeto (tem CPF): só os dados que você confirmou.
 
 ### Painel Operações
 
@@ -340,7 +379,10 @@ As edificações aparecem no **memorial** (seção *ÁREA EDIFICADA* com as dist
 - **modelo de prancha** escolhido na janela (botão *Modelos…* abre a biblioteca, ver abaixo);
 - **mapa**: a vista é recortada exatamente na área do mapa do modelo, na **escala que melhor cabe** (a menor da lista do modelo em que o
   desenho cabe com folga para os textos) ou numa escala fixa; **grade de coordenadas** (linhas de fundo atrás do desenho) com os valores
-  nas quatro bordas (`E 235.140`, `N 9.299.300` ou graus/minutos/segundos), no sistema escolhido nas Configurações; **norte** no canto;
+  nas quatro bordas (graus/minutos/segundos ou `E 235.140`, `N 9.299.300`); **norte** no canto. A grade passa por fora da tabela, do norte
+  e dos textos;
+- **coordenadas da prancha** escolhidas na janela: **Geográficas (latitude/longitude) – SIRGAS 2000** (padrão), UTM – SIRGAS 2000 ou o
+  primeiro sistema do memorial – na grade, na tabela, nas chamadas e no carimbo;
 - **tabela de coordenadas** (prancha de um lote: vértice, azimute, distância e as duas coordenadas, com o sistema geodésico e o EPSG) ou
   **quadro de áreas** (prancha com vários lotes) **dentro do mapa, num canto livre** – o desenho se desloca para não encostar nela;
 - **coordenada do ponto de referência de cada lote** no mapa (todas as pranchas). Nas pranchas de um lote você escolhe o vértice na
@@ -351,14 +393,11 @@ As edificações aparecem no **memorial** (seção *ÁREA EDIFICADA* com as dist
   (procedimento, **transcrição** – ex.: "UNIFICAÇÃO DOS LOTES DAS MATRÍCULAS Nº 7607 E Nº 7033, COM CONSTITUIÇÃO DE LOTE URBANO RESULTANTE
   DO REMEMBRAMENTO" –, município/UF, endereço e CEP), *Quadro de áreas e perímetros*, *Quadro de assinaturas* (responsável técnico com
   CAU/CREA e RRT/ART, e proprietário), *Convenções topográficas* (só o que aparece no desenho), *Orientação* (sistema geodésico,
-  projeção, fuso, meridiano central, EPSG, **escala** e **escala gráfica**), *Croqui de localização*, o espaço da **logomarca do
+  projeção, fuso, meridiano central, EPSG, **escala** e **escala gráfica**), o espaço da **imagem de localização**, o espaço da **logomarca do
   escritório** e o **título** com a **FOLHA**;
 - **folhas numeradas por projeto** (FOLHA 01, 02, 03…; uma prancha substituída mantém o número);
-- **croqui de localização automático**: o GeoPoint baixa a imagem de satélite da região, no zoom mais detalhado que existir ali, e
-  desenha o lote por cima (fornecedor em *Configurações › Croqui*). A foto nunca é ampliada mais de 2×: com pouco detalhe na região,
-  o croqui mostra mais vizinhança e um anel laranja marca o lote. Na primeira vez ele mostra a licença do fornecedor e pede a sua
-  confirmação. Sem imagem (sem internet, região sem foto ou projeto sem referência) usa a imagem escolhida em *Croqui (arquivo)* e,
-  sem ela, o **croqui desenhado** (lotes, ruas, norte e escala);
+- **imagem de localização**: espaço sem título no carimbo. Escolha a imagem em *Imagem de localização* (ajustada ao espaço) ou deixe em
+  branco e insira a imagem no Revit;
 - **prévia** da prancha selecionada (mesmo encaixe, carimbo e anotações), com avisos de legibilidade;
 - **pranchas já geradas**: a tabela mostra se você **editou** a prancha e você escolhe *Substituir*, *Manter a atual* ou *Nova versão ao lado*;
 - **conferência antes de emitir** e avisos de legibilidade (textos sem espaço, tabela reduzida, desenho apertado);
@@ -372,7 +411,7 @@ As pranchas ficam **editáveis** no Revit.
   folga do desenho e **lista de escalas** permitidas;
 - **estilos de texto** por tipo (título, cabeçalhos, rótulos, valores, tabelas, grade e textos do desenho), em mm no papel. O tamanho
   *Desenho* vale para os textos do mapa das pranchas; com 0 vale o das Configurações de anotação (o mesmo das vistas);
-- **escritório**: **logomarca** e nome (opcional). O espaço da logomarca (bloco *Escritório (logomarca)*) fica entre o croqui e o título e
+- **escritório**: **logomarca** e nome (opcional). O espaço da logomarca (bloco *Escritório (logomarca)*) fica entre a imagem de localização e o título e
   vem ligado no padrão. A imagem é **guardada dentro do modelo** (vai junto ao exportar); *Remover* tira a imagem. Sem imagem o espaço
   fica em branco na prancha (na prévia aparece "(logomarca do escritório)");
 - **blocos do carimbo**: ligue/desligue, renomeie o cabeçalho e ajuste posição e tamanho (mm); *Reorganizar blocos* refaz a disposição
@@ -396,22 +435,8 @@ vista e conferência dos pontos importados.
 ### Painel GeoPoint
 
 **Configurações** – tolerâncias, numeração dos vértices, casas decimais, modelo e frases do memorial, responsável técnico,
-sistemas de coordenadas (o **primeiro** é o usado nas pranchas, na grade e nas chamadas de coordenada), anotações, vias, KML,
-**Croqui (satélite)** e perfis urbanísticos.
-
-**Croqui (satélite)**:
-| Fornecedor | Chave | Observação de licença |
-|---|---|---|
-| **Esri World Imagery** (padrão) | não | uso sujeito aos termos da Esri; para uso comercial pode ser exigida conta/licença ArcGIS. A atribuição é impressa no croqui. |
-| **Google Maps Static API** | sim (com faturamento ativo) | termos do Google Maps Platform; o logotipo/atribuição do Google fica na imagem. |
-| **Servidor personalizado** (XYZ `{z}/{x}/{y}` ou `{q}`) | depende | ex.: imagens da prefeitura; confira se a licença permite imprimir. |
-| **Nenhum** | – | usa a imagem escolhida por você (sem ela, o croqui desenhado). |
-| **Desenho do projeto** | não | sem imagem: lotes, ruas com nome, norte e escala gráfica. Não depende de internet nem de licença. |
-Também: vizinhança (quantas vezes o tamanho do imóvel) e resolução (dpi). Onde o fornecedor não tem foto no zoom pedido (a Esri
-responde "sem dados"), o GeoPoint desce para o zoom em que há foto. As imagens baixadas ficam em cache em
-`%LocalAppData%\GeoPoint`. A chave do Google fica no **Gerenciador de Credenciais do Windows** (*Painel de Controle › Gerenciador de
-Credenciais › Credenciais do Windows*, item `GeoPoint/GoogleMapsStaticKey`): não fica em texto no arquivo de configurações nem vai no
-arquivo de diagnóstico.
+sistemas de coordenadas do memorial, anotações, vias, KML e perfis urbanísticos. (As coordenadas das pranchas são escolhidas na janela
+de Pranchas.)
 
 **Ajuda** – fluxo, **manual**, **Restaurar uma cópia de segurança** (antes de cada operação que altera o projeto – reconhecer,
 gerenciar, fases, desmembramento, remembramento, vias, construção existente, hachuras, memorial, pranchas… – o GeoPoint guarda uma
@@ -486,7 +511,8 @@ Atalhos de teclado*; pesquise "GeoPoint" ou filtre por *Ferramentas externas*). 
   ao mesmo tempo, sincronize antes.
 - **Textos encavalados ou pequenos demais** – aumente a escala da vista (ex.: de 1:200 para 1:250) ou reduza o texto nas
   Configurações; a prévia do *Anotar Lotes* e das *Pranchas* mostra o resultado antes de gerar.
-- **Croqui sem imagem** – sem internet ou fornecedor indisponível: o GeoPoint avisa e usa a imagem escolhida em *Croqui (arquivo)*.
+- **Certidão lida com erro** – confira os números destacados na aba *Documento*; foto torta ou escura piora o OCR (fotografe de frente,
+  com boa luz). Corrija na tabela antes de desenhar.
 - **Errei uma operação** – use *Desfazer* do Revit ou *Ajuda › Restaurar uma cópia de segurança*.
 - **Registros de erro** – `%AppData%\GeoPoint\logs` (ou *Ajuda › Gerar arquivo de diagnóstico*).
 
@@ -521,7 +547,9 @@ ou do INCRA/SIGEF.
 | **Ponto de referência do lote** | Vértice cuja coordenada aparece com chamada no mapa (P-01 por padrão; escolha outro nas Pranchas). |
 | **Modelo de prancha** | Papel, margens, blocos do carimbo, grade, norte, estilos de texto e logomarca; fica na biblioteca de modelos. |
 | **Prancha geral / prancha do lote** | Geral: vários lotes, sem números de vértice nem coordenadas. Do lote: numeração própria, azimutes e tabela de coordenadas. |
-| **Croqui** | Imagem de localização (satélite) com o lote desenhado por cima, no carimbo. |
+| **Imagem de localização** | Espaço do carimbo para a imagem de localização (inserida por você). |
+| **Certidão (inteiro teor)** | Documento do cartório com a descrição do imóvel; o *Desenhar Perímetro* lê o perímetro, os confrontantes e os dados dela. |
+| **OCR** | Reconhecimento de texto em imagem (PDF escaneado ou foto), feito pelo próprio Windows. |
 | **Recuos (área edificável)** | Onde se pode construir no lote, descontando o recuo de cada divisa. |
 | **Construção existente (área edificada)** | Edificações que já existem no lote: área de projeção, área construída, taxa de ocupação e distância até cada divisa. |
 | **Conferência** | Verificação feita antes de emitir memorial e pranchas (dados faltando, área diferente da matrícula, divisas sem confrontante). |

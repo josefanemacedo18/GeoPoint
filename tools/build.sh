@@ -5,10 +5,12 @@ cd "$(dirname "$0")/.."
 VERSION=$(grep -oP '(?<=<Version>)[^<]+' Directory.Build.props)
 dotnet test tests/GeoPoint.Core.Tests/GeoPoint.Core.Tests.csproj -c Release
 dotnet build src/GeoPoint.Revit/GeoPoint.Revit.csproj -c Release
-OUT=src/GeoPoint.Revit/bin/Release/net10.0-windows
+OUT=src/GeoPoint.Revit/bin/Release/net10.0-windows10.0.19041.0
 PKG=artifacts/GeoPoint-$VERSION
 rm -rf "$PKG" && mkdir -p "$PKG/GeoPoint"
-cp "$OUT/GeoPoint.Revit.dll" "$OUT/GeoPoint.Core.dll" "$PKG/GeoPoint/"
+# GeoPoint + bibliotecas (PdfPig: texto de PDF; Microsoft.Windows.SDK.NET/WinRT.Runtime: OCR e páginas de PDF do Windows).
+cp "$OUT"/*.dll "$PKG/GeoPoint/"
+cp src/GeoPoint.Core/ThirdParty/PdfPig/LICENSE_PdfPig.txt "$PKG/GeoPoint/"
 cp src/GeoPoint.Core/ThirdParty/Clipper2/LICENSE_Clipper2.txt "$PKG/GeoPoint/"
 cp docs/MANUAL.md "$PKG/GeoPoint/MANUAL.md"
 cp docs/MANUAL.md "$PKG/MANUAL.md"
