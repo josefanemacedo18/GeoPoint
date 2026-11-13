@@ -189,6 +189,7 @@ public class SheetV15PreviewTests
                         PLineStyle.Papel => (0.1, "#bbb", ""),
                         PLineStyle.Tracejada => (0.15, "#c00000", "stroke-dasharray='4,3'"),
                         PLineStyle.Vermelha => (0.18, "#c00000", ""),
+                        PLineStyle.Divisao => (0.4, "#aa0000", ""),
                         PLineStyle.MeioFio => (0.25, "#666", ""),
                         PLineStyle.Limite => (0.35, "black", ""),
                         _ => (0.15, "#333", ""),

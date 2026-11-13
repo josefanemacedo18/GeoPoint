@@ -23,6 +23,16 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 
 ---
 
+## Ajustes da versão 1.5.2
+
+- **Rótulo do lote sempre dentro do lote**: o nome, o proprietário e os demais dados são quebrados em linhas pela largura do lote e o
+  texto é reduzido se preciso (até 60%); valor e unidade nunca se separam ("ÁREA = 320,00 m²"). Na mesma prancha todos os rótulos
+  ficam com o mesmo tamanho. Só em lotes muito pequenos ficam apenas nome e área.
+- **Divisória na mudança de confrontante**: linha contínua e forte (estilo *GeoPoint - Divisão de confrontante*) no ponto em que o
+  confrontante muda, atravessando a faixa da distância e do nome, separando um trecho do outro. O nome do ponto fica dentro do lote.
+- **Prancha geral com os pontos dos vértices**: só o ponto (sem P-01 e sem coordenadas).
+- **Remembramento**: o memorial é só do lote unido – sem histórico dos lotes que foram unidos e sem matrícula.
+
 ## Ajustes da versão 1.5.1 (revisão dos projetos de teste)
 
 - **Confrontante pelo proprietário**: quando o confrontante é um lote do projeto, aparece só o nome do proprietário (sem número de

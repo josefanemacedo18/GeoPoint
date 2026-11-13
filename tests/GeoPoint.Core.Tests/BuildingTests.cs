@@ -1,3 +1,4 @@
+using GeoPoint.Core.Calc;
 using GeoPoint.Core.Geometry;
 using GeoPoint.Core.Memorial;
 using GeoPoint.Core.Model;
@@ -146,5 +147,66 @@ public class ConfrontanteOwnerTests
         // Estilo "lote e quadra" volta ao nome do lote.
         var ctx2 = TestProjects.Context(p, st => st.Naming.ConfrontanteNome = GeoPoint.Core.Settings.ConfrontanteNome.Lote);
         Assert.Contains(ctx2.Report(a).Segments, s => s.Confrontante.StartsWith("Lote 02"));
+    }
+}
+
+
+public class ReviewRulesTests
+{
+    [Fact]
+    public void LotLabel_StaysInsideNarrowLot()
+    {
+        // Lote estreito (8 × 40 m) a 1:300 com rótulo longo: o rótulo é quebrado/reduzido e fica dentro do lote.
+        var lot = TestProjects.Rect(0, 0, 8, 40, "04");
+        lot.IsRemanescente = true;
+        var ctx = TestProjects.Context(TestProjects.Project(lot));
+        var rep = ctx.Report(lot);
+        double k = 0.3;   // 1:300 → 0,3 m por mm
+        var o = new AnnotationPlanOptions
+        {
+            TextM = 2 * k, OffsetM = 1.2 * k, DotRadiusM = 0.6 * k, PadM = 0.4 * k,
+            LabelOf = r => "LOTE 04 (REMANESCENTE) – QUADRA A\nLUCAS ARAUJO MARINHO BRASIL\nMATRÍCULA: 7607\nÁREA = 320,00 m²\nPERÍMETRO = 96,00 m",
+        };
+        var plan = AnnotationPlanner.Plan(new[] { rep }, new GeoPoint.Core.Memorial.ValueFormatter(ctx.Settings.Format), o);
+        var label = plan.Texts.Single(t => t.Kind == AnnoTextKind.LotLabel);
+        foreach (var c in new[] { label.Box.C + label.Box.U * label.Box.Hw + label.Box.V * label.Box.Hh, label.Box.C - label.Box.U * label.Box.Hw - label.Box.V * label.Box.Hh })
+            Assert.True(rep.Region.Contains(c));
+        Assert.Contains("MATRÍCULA: 7607", label.Text);   // não corta informação quando dá para quebrar/reduzir
+    }
+
+    [Fact]
+    public void ConfrontanteChange_DividerAndRemembramentoMemorialWithoutMatricula()
+    {
+        var a = TestProjects.Rect(0, 0, 12, 30, "10"); var b = TestProjects.Rect(12, 0, 12, 30, "11");
+        a.Matricula = "1001"; b.Matricula = "1002";
+        a.EdgeInfos.Add(new EdgeInfo { MX = 6, MY = 30, Confrontante = "Pedro Alves" });
+        b.EdgeInfos.Add(new EdgeInfo { MX = 18, MY = 30, Confrontante = "Luzia Martins" });
+        var p = TestProjects.Project(a, b);
+        var ctx0 = TestProjects.Context(p);
+        var u = GeoPoint.Core.Operations.ParcelOperations.Union(new[] { a, b });
+        var r = new LotRecord { Nome = "13", Quadra = "B", Outer = u.Outer, Holes = u.Holes, FaseId = p.Fase.Id, Matricula = "9999" };
+        r.EdgeInfos = GeoPoint.Core.Operations.ConfrontanteInheritance.Inherit(new List<LotRecord> { a, b }, r, Array.Empty<LotRecord>(), ctx0);
+        GeoPoint.Core.Operations.CollinearMerge.Apply(r, ctx0);
+        a.Status = b.Status = LotStatus.Arquivado;
+        var op = new OperationRecord { Type = OperationType.Remembramento, ParentIds = { a.Id, b.Id }, ChildIds = { r.Id } };
+        p.Lots.Add(r); p.Operations.Add(op);
+        var ctx = TestProjects.Context(p);
+        // Divisória contínua no ponto de mudança, atravessando a faixa do nome.
+        var plan = AnnotationPlanner.Plan(new[] { ctx.Report(r) }, new GeoPoint.Core.Memorial.ValueFormatter(ctx.Settings.Format),
+            new AnnotationPlanOptions { TextM = 1.0, OffsetM = 0.75, DotRadiusM = 0.3 });
+        var tick = Assert.Single(plan.Lines, l => l.Kind == AnnoLineKind.ConfrontanteTick);
+        Assert.Equal(12, tick.A.X, 6);
+        Assert.True(tick.B.Y > 30 + 3);
+        // O nome do ponto da mudança fica dentro do lote.
+        var p12 = plan.Texts.Single(t => t.Kind == AnnoTextKind.Vertex && Math.Abs(t.At.X - 12) < 3 && t.At.Y > 20);
+        Assert.True(ctx.Report(r).Region.Contains(p12.At));
+        // Memorial do lote unido: só o lote, sem matrícula e sem histórico.
+        var gen = new GeoPoint.Core.Memorial.MemorialGenerator(ctx, new GeoPoint.Core.Memorial.MemorialPhrases());
+        var text = ReportAndDocumentTests.DocText(gen.Generate(new GeoPoint.Core.Memorial.MemorialRequest
+        { Kind = GeoPoint.Core.Memorial.MemorialKind.Lotes, Lots = new() { r } }), out _);
+        Assert.Contains("REMEMBRAMENTO", text);
+        Assert.DoesNotContain("9999", text);
+        Assert.DoesNotContain("1001", text);
+        Assert.DoesNotContain("Lote 10", text);
     }
 }

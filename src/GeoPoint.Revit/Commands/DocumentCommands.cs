@@ -126,6 +126,13 @@ public sealed class CmdMemorial : CommandBase
             if (w.SplitGeneral)
                 jobs.Add((new MemorialRequest { Kind = MemorialKind.Desmembramento, Lots = w.Lots, Operation = op, Date = w.MemorialDate }, "Memorial descritivo - Desmembramento (geral)", false));
         }
+        else if (w.Kind == MemorialKind.Remembramento && w.Operation is { } rop)
+        {
+            // Remembramento: só o memorial do lote unido (sem histórico nem matrícula).
+            foreach (var c in rop.ChildIds.Select(s.Project.FindLot).Where(l => l is not null).Select(l => l!))
+                jobs.Add((new MemorialRequest { Kind = MemorialKind.Lotes, Lots = new() { c }, Operation = rop, Date = w.MemorialDate },
+                    $"Memorial descritivo - {c.DisplayName} (remembramento)", true));
+        }
         else
         {
             string name = w.Kind switch

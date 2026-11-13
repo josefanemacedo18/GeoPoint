@@ -18,6 +18,9 @@ public static class Annotator
     public const string LineConfrontante = "GeoPoint - Extensão do confrontante";
     public const string LineCotaConfrontante = "GeoPoint - Cota do confrontante";
     public const string LineChamada = "GeoPoint - Linha de chamada";
+    /// <summary>Divisória no ponto em que o confrontante muda (linha contínua e forte).</summary>
+    public const string LineDivisao = "GeoPoint - Divisão de confrontante";
+    public static readonly Color DivisaoColor = new(170, 0, 0);
 
     public sealed class Options
     {
@@ -151,8 +154,7 @@ public static class Annotator
         GraphicsStyle? tickStyle = null, dimStyle = null, leaderStyle = null, refStyle = null;
         if (plan.Lines.Count > 0)
         {
-            var dash = RevitStyles.DashPattern(doc, "GeoPoint tracejado", 1.5, 1.0);
-            tickStyle = RevitStyles.LineStyle(doc, LineConfrontante, Red, 1, dash);
+            tickStyle = RevitStyles.LineStyle(doc, LineDivisao, DivisaoColor, 4);
             dimStyle = RevitStyles.LineStyle(doc, LineCotaConfrontante, Red, 1);
             leaderStyle = RevitStyles.LineStyle(doc, LineChamada, new Color(90, 90, 90), 1);
             refStyle = RevitStyles.LineStyle(doc, "GeoPoint - Chamada da coordenada", new Color(0, 0, 0), 1);

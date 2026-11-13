@@ -294,7 +294,14 @@ public static class AnnotationPlanner
                 cx.Placed.Add(Obb.Of(v.Internal, o.ViewAngle, o.DotRadiusM * 1.3, o.DotRadiusM * 1.3));
             }
 
-        // 2) Nome e área no interior (ponto com mais folga).
+        // 2) Nome e área no interior (ponto com mais folga). Todos os rótulos com o mesmo tamanho: o do lote que pede o menor.
+        double labelMaxF = 1.0;
+        if (o.Area)
+            foreach (var rep in reports)
+            {
+                string lbl = o.LabelOf is not null ? o.LabelOf(rep).Trim() : rep.Lot.DisplayName;
+                if (FitLabel(lbl, rep, cx, o, 1.0) is { } pre) labelMaxF = Math.Min(labelMaxF, pre.F);
+            }
         if (o.Area)
             foreach (var rep in reports)
             {
@@ -306,27 +313,11 @@ public static class AnnotationPlanner
                     string owner = o.OwnerOf?.Invoke(rep.Lot)?.Trim() ?? "";
                     if (owner.Length > 0) label += "\nProp.: " + (owner.Length > 42 ? owner[..41] + "…" : owner);
                 }
-                // Rótulo que não cabe no lote: quebra o nome ("Lote 03" / "Quadra A"), quebra linhas longas e reduz até 70%.
-                var variants = LabelVariants(label);
-                (string Text, double F, int Bold, Vec2 At, double Hw, double Lh)? chosen = null, fallback = null;
-                foreach (double f in new[] { 1.0, 0.9, 0.8, 0.7 })
-                {
-                    foreach (var (text, bold) in variants)
-                    {
-                        var ls = text.Split('\n');
-                        double h = o.TextM * 1.1 * f;
-                        double hw0 = ls.Select((l, i) => TextWidth(l, h, i < bold)).Max() / 2 + o.PadM;
-                        double lh0 = ls.Length * h * o.LineFactor / 2 + o.PadM;
-                        var at0 = BestInterior(rep.Region, hw0, lh0, cx, o.ViewAngle);
-                        var b0 = Obb.Of(at0, o.ViewAngle, hw0, lh0);
-                        if (Corners(b0).All(rep.Region.Contains) && cx.Free(b0)) { chosen = (text, f, bold, at0, hw0, lh0); break; }
-                        fallback = (text, f, bold, at0, hw0, lh0);   // o mais compacto, se nada couber
-                    }
-                    if (chosen is not null) break;
-                }
-                chosen ??= fallback;
+                // O rótulo nunca passa dos limites do lote: quebra as linhas pela largura do lote e reduz o texto (até 60%);
+                // se ainda não couber, fica só nome e área.
+                var chosen = FitLabel(label, rep, cx, o, labelMaxF);
                 if (chosen is null) continue;
-                var (ct, cf, cb, cat, chw, clh) = chosen!.Value;
+                var (ct, cf, cb, cat, chw, clh) = chosen.Value;
                 var box = Obb.Of(cat, o.ViewAngle, chw, clh);
                 cx.Placed.Add(box);
                 plan.Texts.Add(new AnnoText
@@ -375,13 +366,16 @@ public static class AnnotationPlanner
                     var tIn = rep.Segments[(i - 1 + n) % n].Curve.TangentAt(1);
                     var tOut = rep.Segments[i].Curve.TangentAt(0);
                     var bis = tOut - tIn;
-                    if (bis.LengthSquared < 1e-12) bis = rep.Clockwise ? tOut.PerpLeft : tOut.PerpRight;
+                    // Ponto no meio de uma linha reta (mudança de confrontante): o nome vai para dentro do lote,
+                    // longe da divisória e das distâncias.
+                    bool straight = tIn.Normalized().Dot(tOut.Normalized()) > Math.Cos(Math.PI / 90);
+                    if (bis.LengthSquared < 1e-12 || straight) bis = rep.Clockwise ? tOut.PerpLeft : tOut.PerpRight;
                     bis = bis.Normalized();
                     bool inside = rep.Region.Contains(v.Internal + bis * o.TextM);
                     // Numeração por lote: o nome fica dentro do próprio lote; numeração única: fora dos lotes.
-                    if (o.PerLotVertexNames ? !inside : cx.InsideAny(v.Internal + bis * o.TextM)) bis = -bis;
+                    if (straight ? !inside : o.PerLotVertexNames ? !inside : cx.InsideAny(v.Internal + bis * o.TextM)) bis = -bis;
                     double hw = TextWidth(v.Name, o.TextM) / 2 + o.PadM;
-                    var (box, ok) = PlaceVertex(cx, v.Internal, bis, hw, hh, o.DotRadiusM + gap, o.ViewAngle, o.PerLotVertexNames ? rep.Region : null);
+                    var (box, ok) = PlaceVertex(cx, v.Internal, bis, hw, hh, o.DotRadiusM + gap, o.ViewAngle, o.PerLotVertexNames || straight ? rep.Region : null);
                     if (!ok) plan.Conflicts++;
                     cx.Placed.Add(box);
                     plan.Texts.Add(new AnnoText { Owner = rep.Lot.Id, Key = vk, Kind = AnnoTextKind.Vertex, At = box.C, Text = v.Name, Rotation = o.ViewAngle, HalfW = hw, HalfH = hh });
@@ -472,37 +466,79 @@ public static class AnnotationPlanner
         yield return b.C + b.U * b.Hw - b.V * b.Hh;
     }
 
-    /// <summary>Formas do rótulo: como veio; nome quebrado em " – "; e com as linhas longas quebradas ao meio.</summary>
-    private static List<(string Text, int Bold)> LabelVariants(string label)
+    /// <summary>
+    /// Encaixa o rótulo do lote dentro do próprio lote. Tenta, nesta ordem: como veio; quebrando as linhas na largura do lote;
+    /// com o texto menor (90% … 60%); e por fim só nome e área. Fica com a primeira forma que cabe inteira no lote sem
+    /// encostar em outros textos; senão, a primeira que cabe no lote; senão, a mais compacta.
+    /// </summary>
+    private static (string Text, double F, int Bold, Vec2 At, double Hw, double Lh)? FitLabel(string label, LotReport rep, Ctx cx, AnnotationPlanOptions o, double maxF = 1.0)
     {
-        var res = new List<(string, int)> { (label, 1) };
-        var ls = label.Split('\n').ToList();
-        int bold = 1;
-        if (ls[0].Contains(" – "))
+        var src = label.Split('\n').ToList();
+        var lines = new List<(string Text, bool Bold)>();
+        // Nome em negrito; "Lote 04 (Remanescente) – Quadra A" pode virar duas linhas.
+        if (src.Count > 0)
         {
-            var parts = ls[0].Split(" – ", 2);
-            ls[0] = parts[1];
-            ls.Insert(0, parts[0]);
-            bold = 2;
-            res.Add((string.Join("\n", ls), bold));
+            var parts = src[0].Split(" – ");
+            foreach (var part in parts) lines.Add((part, true));
         }
-        // Linhas longas (ex.: nome do proprietário) quebradas no espaço mais perto do meio.
-        var wrapped = new List<string>();
-        int boldW = bold;
-        for (int i = 0; i < ls.Count; i++)
+        foreach (var l in src.Skip(1)) lines.Add((l, false));
+        var full = new List<(string, bool)> { (src[0], true) };
+        full.AddRange(src.Skip(1).Select(l => (l, false)));
+        // Só nome e área (último recurso).
+        var minimal = lines.Where(x => x.Bold || x.Text.StartsWith("ÁREA", StringComparison.OrdinalIgnoreCase) || x.Text.Contains("m²")).ToList();
+
+        // Largura útil do lote na horizontal da vista.
+        var u = Vec2.FromAngle(o.ViewAngle);
+        var poly = rep.Region.Outer.ToPolygon(0.05);
+        double regionW = poly.Max(p => p.Dot(u)) - poly.Min(p => p.Dot(u));
+
+        (string, double, int, Vec2, double, double)? free = null, inside = null, any = null;
+        bool Try(List<(string Text, bool Bold)> ls, double f, double maxW)
         {
-            var l = ls[i];
-            int mid = l.Length / 2, best = -1;
-            if (l.Length > 22)
-                for (int d = 0; d < mid; d++)
-                {
-                    if (mid + d < l.Length && l[mid + d] == ' ') { best = mid + d; break; }
-                    if (mid - d > 0 && l[mid - d] == ' ') { best = mid - d; break; }
-                }
-            if (best > 0) { wrapped.Add(l[..best]); wrapped.Add(l[(best + 1)..]); if (i < bold) boldW++; }
-            else wrapped.Add(l);
+            double h = o.TextM * 1.1 * f;
+            var wrapped = new List<(string Text, bool Bold)>();
+            foreach (var (t, b) in ls) foreach (var w in WrapWords(t, h, b, maxW)) wrapped.Add((w, b));
+            double hw = wrapped.Max(x => TextWidth(x.Text, h, x.Bold)) / 2 + o.PadM;
+            double lh = wrapped.Count * h * o.LineFactor / 2 + o.PadM;
+            var at = BestInterior(rep.Region, hw, lh, cx, o.ViewAngle);
+            var box = Obb.Of(at, o.ViewAngle, hw, lh);
+            int bold = wrapped.TakeWhile(x => x.Bold).Count();
+            var cand = (string.Join("\n", wrapped.Select(x => x.Text)), f, Math.Max(1, bold), at, hw, lh);
+            any ??= cand;
+            bool isInside = Corners(box).All(rep.Region.Contains) && !cx.Segs.Any(sg => box.Intersects(sg.A, sg.B));
+            if (!isInside) return false;
+            inside ??= cand;
+            if (cx.Free(box)) { free = cand; return true; }
+            return false;
         }
-        if (wrapped.Count > ls.Count) res.Add((string.Join("\n", wrapped), boldW));
+        double w0 = Math.Max(regionW - 2 * o.PadM, o.TextM);
+        var fracs = new[] { double.PositiveInfinity, 0.86, 0.72 };
+        var factors = new[] { 1.0, 0.9, 0.8, 0.7, 0.6 }.Where(f => f <= maxF + 1e-9).DefaultIfEmpty(0.6).ToArray();
+        foreach (double f in factors)
+        {
+            if (Try(full, f, double.PositiveInfinity)) return free;
+            foreach (double frac in fracs) if (Try(lines, f, frac * w0)) return free;
+        }
+        if (inside is not null) return inside;   // cabe no lote (encostando em outro texto) antes de cortar informação
+        foreach (double f in factors)
+            foreach (double frac in fracs) if (Try(minimal, f, frac * w0)) return free;
+        return inside ?? any;
+    }
+
+    /// <summary>Quebra o texto em palavras para caber na largura (uma palavra maior que a largura fica sozinha).</summary>
+    private static List<string> WrapWords(string text, double h, bool bold, double maxW)
+    {
+        // "ÁREA = 320,00 m²", "MATRÍCULA: 7607": valor e unidade nunca ficam separados.
+        if (double.IsInfinity(maxW) || TextWidth(text, h, bold) <= maxW || text.Contains('=') || text.Contains(':')) return new List<string> { text };
+        var res = new List<string>();
+        var cur = "";
+        foreach (var w in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            string cand = cur.Length == 0 ? w : cur + " " + w;
+            if (cur.Length > 0 && TextWidth(cand, h, bold) > maxW) { res.Add(cur); cur = w; }
+            else cur = cand;
+        }
+        if (cur.Length > 0) res.Add(cur);
         return res;
     }
 
@@ -653,14 +689,19 @@ public static class AnnotationPlanner
                     if (rs.Count == 0 || !SameConfrontante(rs[^1][^1], sg)) rs.Add(new List<SegmentReport>());
                     rs[^1].Add(sg);
                 }
-                // Mudança de confrontante na mesma linha: marca tracejada no ponto.
+                // Mudança de confrontante na mesma linha: divisória bem visível no ponto, atravessando a faixa
+                // da distância e do nome (separa um trecho do outro).
                 for (int k = 1; k < rs.Count; k++)
                 {
                     var pt = rs[k][0].Curve.Start;
                     var nrm = Normal(rs[k][0], rep);
                     string tk = "t" + VertexKey(pt);
-                    if (used.Add(tk))
-                        plan.Lines.Add(new AnnoLine { Owner = rep.Lot.Id, Key = tk, Kind = AnnoLineKind.ConfrontanteTick, A = pt + nrm * (o.DotRadiusM * 1.5), B = pt + nrm * (block + o.TextM * 0.6) });
+                    if (!used.Add(tk)) continue;
+                    var a0 = pt + nrm * (o.DotRadiusM * 1.2);
+                    var b0 = pt + nrm * (block + 2 * hh + gap * 0.5);
+                    plan.Lines.Add(new AnnoLine { Owner = rep.Lot.Id, Key = tk, Kind = AnnoLineKind.ConfrontanteTick, A = a0, B = b0 });
+                    // Os textos (nomes dos confrontantes e dos vértices) não passam por cima da divisória.
+                    cx.Placed.Add(Obb.Of((a0 + b0) * 0.5, Math.Atan2(nrm.Y, nrm.X), a0.DistanceTo(b0) / 2, o.TextM * 0.12));
                 }
                 foreach (var r in rs)
                 {

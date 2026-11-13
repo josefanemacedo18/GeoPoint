@@ -91,7 +91,7 @@ public sealed class SheetContent
         }
 
         // Convenções: só o que aparece no desenho, com as mesmas cores e hachuras.
-        c.SetLegend(spec, lots, spec.Hatch, vertices: spec.Detailed, callouts: spec.Detailed, ticks: HasConfrontanteChange(reps),
+        c.SetLegend(spec, lots, spec.Hatch, vertices: true, callouts: spec.Detailed, ticks: HasConfrontanteChange(reps),
             edificacoes: edificacoes, vias: vias);
 
         c.Orientacao.AddRange(SheetTexts.OrientationLines(ctx.Coords, tableCrs));

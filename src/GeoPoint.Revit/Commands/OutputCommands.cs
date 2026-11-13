@@ -115,7 +115,7 @@ public sealed class CmdAnotar : CommandBase
             foreach (var ln in plan.Lines)
                 items.Add(new PreviewItem
                 {
-                    Line = new List<Vec2> { ln.A, ln.B }, StrokeWidth = 0.8, Dashed = ln.Kind == AnnoLineKind.ConfrontanteTick,
+                    Line = new List<Vec2> { ln.A, ln.B }, StrokeWidth = ln.Kind == AnnoLineKind.ConfrontanteTick ? 2 : 0.8,
                     Stroke = ln.Kind is AnnoLineKind.Leader or AnnoLineKind.RefLeader ? System.Windows.Media.Color.FromRgb(70, 70, 70) : System.Windows.Media.Color.FromRgb(192, 0, 0),
                 });
             foreach (var d in plan.Dots) items.Add(new PreviewItem { LabelAt = d.At, DotRadiusM = d.Radius });

@@ -70,7 +70,8 @@ public static class SheetPreview
         var o = new AnnotationPlanOptions
         {
             TextM = textM, OffsetM = 1.2 / k, DotRadiusM = 0.6 / k, PadM = 0.4 / k, LineFactor = 1.5, Obstacles = obstacles, ViewAngle = ang,
-            Vertices = spec.Detailed, EdgeAngle = spec.Detailed, Dots = spec.Detailed, Edges = true, Confrontantes = true, Area = true,
+            // Prancha geral: só os pontos dos vértices (sem nome e sem coordenadas).
+            Vertices = spec.Detailed, EdgeAngle = spec.Detailed, Dots = true, Edges = true, Confrontantes = true, Area = true,
             LabelOf = labelOf ?? (r => DefaultLabel(r, ctx, fmt)),
             PerLotVertexNames = lots.Count > 1,
             // Prancha geral (vários lotes) é visão do conjunto: sem coordenadas de referência.
@@ -101,7 +102,7 @@ public static class SheetPreview
         foreach (var l in plan.Lines)
             mapPrims.Add(new PLine(ToPaper(l.A), ToPaper(l.B), l.Kind switch
             {
-                AnnoLineKind.ConfrontanteTick => PLineStyle.Tracejada,
+                AnnoLineKind.ConfrontanteTick => PLineStyle.Divisao,
                 AnnoLineKind.ConfrontanteDimension => PLineStyle.Vermelha,
                 _ => PLineStyle.Fina,
             }));

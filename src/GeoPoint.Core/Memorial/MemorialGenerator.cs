@@ -29,6 +29,9 @@ public sealed class MemorialRequest
 /// <summary>Gera o memorial descritivo (.docx) a partir dos lotes e do modelo.</summary>
 public sealed class MemorialGenerator
 {
+    /// <summary>Memorial do lote unido por remembramento: não cita matrícula (nem histórico).</summary>
+    private bool _noMatricula;
+
     private readonly ProjectContext _ctx;
     private readonly MemorialPhrases _ph;
     private readonly ValueFormatter _fmt;
@@ -94,6 +97,7 @@ public sealed class MemorialGenerator
     public byte[] Generate(MemorialRequest req, byte[]? template = null)
     {
         _warnings.Clear();
+        _noMatricula = false;
         if (req.Lots.Count == 0) throw new InvalidOperationException("Nenhum lote selecionado para o memorial.");
         var info = _ctx.Project.Info;
         var tech = _ctx.Settings.Technician;
@@ -204,6 +208,7 @@ public sealed class MemorialGenerator
                     // Lote resultante de operação: o memorial trata só deste lote (sem origem nem os demais lotes);
                     // o subtítulo traz o procedimento.
                     var origin = req.Operation is { } ro && ro.ChildIds.Contains(main.Id) ? ro : _ctx.Project.OperationOf(main);
+                    _noMatricula = origin?.Type == OperationType.Remembramento;   // lote unido: sem matrícula no memorial
                     if (origin is not null)
                         subtitle = origin.Type switch
                         {
@@ -245,7 +250,7 @@ public sealed class MemorialGenerator
         values["BAIRRO"] = info.Bairro;
         values["MATRICULA"] = req.Kind == MemorialKind.Remembramento
             ? string.Join(", ", OperationParents(req).Select(o => o.Matricula).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct())
-            : _ctx.Project.EffectiveMatricula(main);
+            : _noMatricula ? "" : _ctx.Project.EffectiveMatricula(main);
         values["CARTORIO"] = info.Cartorio;
         values["INSCRICAO"] = info.InscricaoMunicipal;
         values["CCIR"] = info.Ccir;
@@ -374,7 +379,7 @@ public sealed class MemorialGenerator
         if (includeTitle) res.Add(SubHeading(lot.DisplayName.ToUpperInvariant()));
 
         var facts = new List<string> { $"Área: {AreaText(r)}", $"Perímetro: {_fmt.Distance(r.Perimeter(_ms.DistanceType))}" };
-        if (_ctx.Project.EffectiveMatricula(lot) is { Length: > 0 } mat) facts.Add($"Matrícula: {mat}");
+        if (!_noMatricula && _ctx.Project.EffectiveMatricula(lot) is { Length: > 0 } mat) facts.Add($"Matrícula: {mat}");
         if (!string.IsNullOrWhiteSpace(lot.Proprietario) && lot.Proprietario != _ctx.Project.Info.Proprietario) facts.Add($"Proprietário: {lot.Proprietario}");
         if (r.Testada > 0) facts.Add($"Testada: {_fmt.Distance(r.Testada)}");
         if (r.AreaDeducoes > 0) facts.Add($"Área líquida (descontadas {string.Join(", ", r.Deducoes.Select(d => d.Lot.DisplayName))}): {_fmt.Area(r.AreaLiquida)}");

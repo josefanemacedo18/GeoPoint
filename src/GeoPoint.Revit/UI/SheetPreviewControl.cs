@@ -92,6 +92,7 @@ public sealed class SheetPreviewControl : FrameworkElement
                         PLineStyle.Bloco => (0.3, Colors.Black),
                         PLineStyle.Limite => (0.35, Colors.Black),
                         PLineStyle.Vermelha => (0.25, Color.FromRgb(192, 0, 0)),
+                        PLineStyle.Divisao => (0.4, Color.FromRgb(170, 0, 0)),
                         PLineStyle.Papel => (0.1, Colors.Silver),
                         PLineStyle.Tracejada or PLineStyle.MeioFio => (0.15, Colors.DimGray),
                         _ => (0.15, Colors.Black),

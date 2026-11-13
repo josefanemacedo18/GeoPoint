@@ -239,7 +239,7 @@ public sealed class SheetBuilder
             ao.Confrontantes = true;
             ao.Area = true;
             if (spec.Detailed) { ao.Vertices = true; ao.EdgeAngle = true; ao.Dots = true; }
-            else { ao.Vertices = false; ao.EdgeAngle = false; ao.Dots = false; }
+            else { ao.Vertices = false; ao.EdgeAngle = false; ao.Dots = true; }   // geral: só os pontos dos vértices
             var callCtx = ctx;
             // Prancha geral (vários lotes): visão do conjunto, sem coordenadas de referência.
             Func<LotReport, RefCallout?>? refc = spec.Detailed ? r => Callout(r, callCtx, _fmt, def) : null;
@@ -326,6 +326,7 @@ public sealed class SheetBuilder
             PLineStyle.Vermelha => RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (vermelha)", Annotator.Red, 2),
             PLineStyle.MeioFio => RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (meio-fio)", new Color(100, 100, 100), 2),
             PLineStyle.Limite => RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (limite)", new Color(0, 0, 0), 4),
+            PLineStyle.Divisao => RevitStyles.LineStyle(_doc, Annotator.LineDivisao, Annotator.DivisaoColor, 4),
             PLineStyle.Grade => RevitStyles.LineStyle(_doc, "GeoPoint - Grade de coordenadas", new Color(175, 175, 175), 1),
             _ => RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (linhas)", new Color(0, 0, 0), 1),
         };

@@ -4,7 +4,7 @@ using GeoPoint.Core.Geometry;
 namespace GeoPoint.Core.Sheets;
 
 /// <summary>Estilos de linha. <see cref="Grade"/> fica ATRÁS do desenho (no Revit vai para a vista, antes das hachuras).</summary>
-public enum PLineStyle { Moldura, Bloco, Fina, Grade, Tracejada, Vermelha, MeioFio, Limite, Papel }
+public enum PLineStyle { Moldura, Bloco, Fina, Grade, Tracejada, Vermelha, MeioFio, Limite, Papel, Divisao }
 public enum PTextH { Left, Center, Right }
 public enum PTextV { Top, Middle, Bottom }
 
@@ -333,7 +333,8 @@ public static class SheetRenderer
                     break;
                 case LegendKind.MudancaConfrontante:
                     res.Add(new PLine(new Vec2(sym.X0, cy), new Vec2(sym.X1, cy), PLineStyle.Limite));
-                    res.Add(new PLine(new Vec2(sym.Center.X, cy - sh / 2), new Vec2(sym.Center.X, cy + sh / 2), PLineStyle.Vermelha));
+                    res.Add(new PCircle(new Vec2(sym.Center.X, cy), Math.Min(0.6, sh / 3), true));
+                    res.Add(new PLine(new Vec2(sym.Center.X, cy), new Vec2(sym.Center.X, cy + sh * 0.9), PLineStyle.Divisao));
                     break;
                 case LegendKind.MeioFio:
                     res.Add(new PLine(new Vec2(sym.X0, cy), new Vec2(sym.X1, cy), PLineStyle.MeioFio));
