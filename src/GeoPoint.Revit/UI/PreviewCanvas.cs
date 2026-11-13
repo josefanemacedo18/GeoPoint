@@ -20,6 +20,13 @@ public sealed class PreviewItem
     public bool Dashed { get; init; }
     public string? Label { get; init; }
     public Vec2? LabelAt { get; init; }
+    /// <summary>Ângulo do texto no desenho (rad) e altura em metros do desenho (0 = texto fixo de tela, com fundo).</summary>
+    public double LabelAngle { get; init; }
+    public double LabelSizeM { get; init; }
+    public Color LabelColor { get; init; } = Colors.Black;
+    public bool LabelBoldFirst { get; init; }
+    /// <summary>Ponto preenchido (raio em metros do desenho).</summary>
+    public double DotRadiusM { get; init; }
 
     public static PreviewItem FromRegion(Region r, Color fill, string? label = null, bool hatch = true, Color? stroke = null, double width = 1.2) => new()
     {
@@ -56,7 +63,7 @@ public sealed class PreviewCanvas : FrameworkElement
     {
         double w = ActualWidth, h = ActualHeight;
         dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(250, 251, 253)), new Pen(new SolidColorBrush(Color.FromRgb(200, 207, 216)), 1), new Rect(0, 0, w, h));
-        var pts = _items.SelectMany(i => i.Rings.SelectMany(r => r).Concat(i.Line ?? new List<Vec2>())).Select(p => p.Rotate(_rotation)).ToList();
+        var pts = _items.SelectMany(i => i.Rings.SelectMany(r => r).Concat(i.Line ?? new List<Vec2>()).Concat(i.LabelSizeM > 0 && i.LabelAt is { } la ? new[] { la } : Array.Empty<Vec2>())).Select(p => p.Rotate(_rotation)).ToList();
         if (pts.Count == 0 || w < 20 || h < 20)
         {
             var ft = Text("Sem prévia", 12, Brushes.Gray);
@@ -99,7 +106,28 @@ public sealed class PreviewCanvas : FrameworkElement
                 for (int i = 0; i < line.Count - 1; i++) dc.DrawLine(pen, Map(line[i]), Map(line[i + 1]));
             }
         }
-        foreach (var it in _items.Where(i => i.Label is not null && i.LabelAt is not null))
+        foreach (var it in _items.Where(i => i.DotRadiusM > 0 && i.LabelAt is not null))
+            dc.DrawEllipse(Brushes.Black, null, Map(it.LabelAt!.Value), Math.Max(1.2, it.DotRadiusM * s), Math.Max(1.2, it.DotRadiusM * s));
+        // Textos em escala do desenho (anotações): girados como no Revit.
+        foreach (var it in _items.Where(i => i.Label is not null && i.LabelAt is not null && i.LabelSizeM > 0))
+        {
+            double px = it.LabelSizeM * s / 0.716;
+            if (px < 2.5) continue;
+            var lines = it.Label!.Split('\n');
+            var p = Map(it.LabelAt!.Value);
+            double ang = -(it.LabelAngle + _rotation) * 180 / Math.PI;
+            double lh = it.LabelSizeM * 1.5 * s;
+            dc.PushTransform(new RotateTransform(ang, p.X, p.Y));
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var tf = new Typeface(new FontFamily("Arial"), FontStyles.Normal, it.LabelBoldFirst && i == 0 ? FontWeights.Bold : FontWeights.Normal, FontStretches.Normal);
+                var ft = new FormattedText(lines[i], CultureInfo.CurrentCulture, FlowDirection.LeftToRight, tf, px, new SolidColorBrush(it.LabelColor), VisualTreeHelper.GetDpi(this).PixelsPerDip);
+                double y = p.Y - lines.Length * lh / 2 + i * lh + (lh - ft.Height) / 2;
+                dc.DrawText(ft, new Point(p.X - ft.Width / 2, y));
+            }
+            dc.Pop();
+        }
+        foreach (var it in _items.Where(i => i.Label is not null && i.LabelAt is not null && i.LabelSizeM <= 0))
         {
             var ft = Text(it.Label!, 11, Brushes.Black);
             var p = Map(it.LabelAt!.Value);

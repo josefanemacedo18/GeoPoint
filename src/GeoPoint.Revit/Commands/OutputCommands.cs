@@ -80,6 +80,54 @@ public sealed class CmdAnotar : CommandBase
         }
         var w = new LotPickerWindow("Anotar lotes na vista atual", $"Vista: {view.Name} (escala 1:{view.Scale}). Anotações anteriores do GeoPoint nesta vista são substituídas. O tamanho dos textos e os afastamentos são calculados para esta escala." + scaleNote,
             rowsA, opts, "Anotar");
+        // Prévia: o mesmo planejamento de textos que vai para a vista (escala e orientação da vista).
+        var pctx = s.NewContext();
+        var pfmt = new ValueFormatter(s.Settings.Format);
+        double vAng = Annotator.ViewAngle(view);
+        double vScale = Math.Max(1, view.Scale);
+        var pdef = pctx.Coords.HasGeoreference ? (s.Settings.Memorial.CoordinateSystems.FirstOrDefault() ?? GeoPoint.Core.Geodesy.CrsDef.Utm()) : GeoPoint.Core.Geodesy.CrsDef.ProjectLocalDef();
+        w.EnablePreview((lots, B, N) =>
+        {
+            var items = new List<PreviewItem>();
+            var reps = new List<LotReport>();
+            foreach (var l in lots) { try { reps.Add(pctx.Report(l)); } catch { } }
+            if (reps.Count == 0) return (items, -vAng, "Marque os lotes.");
+            var lo = Annotator.Options.From(s.Settings.Annotation);
+            lo.LabelOwner = B("lowner"); lo.LabelMatricula = B("lmat"); lo.LabelPerimeter = B("lper");
+            double textMm = Math.Clamp(N("size"), 0.5, 20);
+            var po = new AnnotationPlanOptions
+            {
+                Edges = B("edges"), EdgeAngle = B("angle"), Vertices = B("vert"), Dots = B("dots"), Confrontantes = B("conf"), Area = B("area"), Outside = B("out"),
+                TextM = textMm / 1000 * vScale, OffsetM = N("offset") / 1000 * vScale, DotRadiusM = N("dot") / 2000 * vScale,
+                PadM = RevitStyles.TextPadMm / 1000 * vScale, LineFactor = RevitStyles.LineFactor, ViewAngle = vAng,
+                LabelOf = r => Annotator.LotLabel(r, pctx, pfmt, lo),
+                PerLotVertexNames = pctx.Settings.Naming.Numbering == VertexNumbering.Lote && reps.Count > 1,
+                RefCallout = B("refc") ? r => SheetBuilder.Callout(r, pctx, pfmt, pdef) : null,
+            };
+            var plan = AnnotationPlanner.Plan(reps, pfmt, po);
+            int i = 0;
+            foreach (var r in reps)
+            {
+                var col = PreviewCanvas.Palette[i++ % PreviewCanvas.Palette.Length];
+                items.Add(PreviewItem.FromRegion(r.Region, col, null, true, System.Windows.Media.Color.FromRgb(30, 30, 30), 1.4));
+            }
+            foreach (var ln in plan.Lines)
+                items.Add(new PreviewItem
+                {
+                    Line = new List<Vec2> { ln.A, ln.B }, StrokeWidth = 0.8, Dashed = ln.Kind == AnnoLineKind.ConfrontanteTick,
+                    Stroke = ln.Kind is AnnoLineKind.Leader or AnnoLineKind.RefLeader ? System.Windows.Media.Color.FromRgb(70, 70, 70) : System.Windows.Media.Color.FromRgb(192, 0, 0),
+                });
+            foreach (var d in plan.Dots) items.Add(new PreviewItem { LabelAt = d.At, DotRadiusM = d.Radius });
+            foreach (var t in plan.Texts)
+                items.Add(new PreviewItem
+                {
+                    Label = t.Text, LabelAt = t.At, LabelAngle = t.Rotation, LabelSizeM = t.Kind == AnnoTextKind.LotLabel ? po.TextM * 1.1 : po.TextM,
+                    LabelBoldFirst = t.BoldFirstLine,
+                    LabelColor = t.Kind is AnnoTextKind.Confrontante or AnnoTextKind.Measure ? System.Windows.Media.Color.FromRgb(192, 0, 0) : System.Windows.Media.Colors.Black,
+                });
+            string info = $"Escala 1:{view.Scale}, textos de {Fmt.N(textMm, 1)} mm no papel." + (plan.Conflicts > 0 ? $"  ⚠ {plan.Conflicts} texto(s) sem espaço livre: aumente a escala da vista ou reduza o texto." : "  Sem sobreposições.");
+            return (items, -vAng, info);
+        });
         if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
         a.Edges = w.Option("edges"); a.EdgeAzimuth = w.Option("angle"); a.TextOutside = w.Option("out"); a.Vertices = w.Option("vert");
         a.VertexDots = w.Option("dots"); a.Confrontantes = w.Option("conf"); a.AreaLabel = w.Option("area"); a.OpaqueText = w.Option("opaque");

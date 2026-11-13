@@ -205,7 +205,7 @@ public sealed class CmdCaminhamento : CommandBase
 
     protected override Result Run(GpSession s)
     {
-        var w = new TraverseWindow(s.Project.Reference.IsSet);
+        var w = new TraverseWindow(s.Project.Reference.IsSet, new GeoPoint.Core.Memorial.ValueFormatter(s.Settings.Format));
         if (Ui.ShowDialog(w, s.MainWindow) != true || w.ResultData is null) return Result.Cancelled;
         var res = w.ResultData;
         var ctx = s.NewContext();

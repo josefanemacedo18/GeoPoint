@@ -71,10 +71,14 @@ public partial class PranchasWindow : Window
     private bool _loading = true;
     private readonly SheetSettings _st;
 
+    private readonly Func<SheetSpec, SheetTemplate, int, SheetComposition?>? _preview;
+
     public PranchasWindow(ParcelProject project, SheetSettings st, IEnumerable<LotRow> rows, OperationRecord? preselect, PranchasState state,
-        Func<SheetSpec, List<IdText>> refOptions, Func<SheetSpec, (bool exists, bool edited)> existing)
+        Func<SheetSpec, List<IdText>> refOptions, Func<SheetSpec, (bool exists, bool edited)> existing,
+        Func<SheetSpec, SheetTemplate, int, SheetComposition?>? preview = null)
     {
         InitializeComponent();
+        _preview = preview;
         _project = project;
         _state = state;
         _refOptions = refOptions;
@@ -162,6 +166,8 @@ public partial class PranchasWindow : Window
             return new SheetRow(sp, refs, rk, exists, edited, rep);
         }).ToList();
         SheetsGrid.ItemsSource = _sheetRows;
+        if (_sheetRows.Count > 0 && SheetsGrid.SelectedItem is null) SheetsGrid.SelectedIndex = 0;
+        ShowPreview();
         int edits = _sheetRows.Count(r => r.Edited);
         Summary.Text = Specs.Count == 0
             ? "Nenhuma prancha: marque as situações e os lotes."
@@ -192,7 +198,27 @@ public partial class PranchasWindow : Window
         Scale.SelectedIndex = idx >= 0 ? idx + 1 : 0;
     }
 
-    private void Template_Changed(object sender, SelectionChangedEventArgs e) { if (!_loading) FillScales(); }
+    private void Template_Changed(object sender, SelectionChangedEventArgs e) { if (!_loading) { FillScales(); ShowPreview(); } }
+
+    private void SheetsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e) => ShowPreview();
+
+    /// <summary>Prévia da prancha selecionada (mesmo encaixe, carimbo e anotações que o Revit vai gerar).</summary>
+    private void ShowPreview()
+    {
+        if (_preview is null || SheetPreview is null) return;
+        var row = SheetsGrid.SelectedItem as SheetRow ?? _sheetRows.FirstOrDefault();
+        var tpl = SelectedTemplate;
+        if (row is null || tpl is null) { SheetPreview.Show(tpl ?? SheetTemplate.Default(), new List<SheetPrim>()); return; }
+        try
+        {
+            int scale = Scale.SelectedIndex > 0 ? tpl.ScaleList[Math.Min(Scale.SelectedIndex - 1, tpl.ScaleList.Count - 1)] : 0;
+            var comp = _preview(row.Spec, tpl, scale);
+            if (comp is null) return;
+            SheetPreview.Show(tpl, comp.All.ToList());
+            PreviewInfo.Text = $"{row.Title} – escala 1:{comp.Fit.Scale}." + (comp.Warnings.Count > 0 ? "  ⚠ " + string.Join(" ", comp.Warnings) : "");
+        }
+        catch (Exception ex) { PreviewInfo.Text = "Prévia indisponível: " + ex.Message; }
+    }
 
     private void Templates_Click(object sender, RoutedEventArgs e)
     {

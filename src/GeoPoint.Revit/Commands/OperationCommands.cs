@@ -64,12 +64,31 @@ public sealed class CmdDesmembramento : CommandBase
         if (!s.Project.ActiveLots.Any()) { Ui.Info("Nenhum lote ativo", "Use 'Reconhecer Lotes' primeiro."); return Result.Cancelled; }
         if (!NorthGuard.Ensure(s)) return Result.Cancelled;
         var state = new DesmembramentoState { ParentId = LotServices.LotsFromSelection(s).FirstOrDefault() };
+        return Flow(s, state);
+    }
+
+    /// <summary>Janela do desmembramento e registro (também chamada ao concluir o desenho com a ferramenta Linha).</summary>
+    internal static Result Flow(GpSession s, DesmembramentoState state)
+    {
         DesmembramentoWindow w;
         while (true)
         {
             var ctx = s.NewContext();
             w = new DesmembramentoWindow(s.Project, ctx, state);
             if (Ui.ShowDialog(w, s.MainWindow) != true || w.Action == DesmAction.Cancel) return Result.Cancelled;
+            if (w.Action == DesmAction.DrawLines)
+            {
+                // Desenho ao vivo: a prévia acompanha cada linha; ao concluir, esta janela volta com as divisas.
+                if (w.ParentLot is not { } parentLot) continue;
+                var view = s.ActiveView;
+                if (!ElementUtil.IsPlanLike(view) || view is ViewSheet)
+                {
+                    Ui.Warn("Vista inadequada", "Abra a planta onde o lote está desenhado para desenhar as divisas.");
+                    continue;
+                }
+                LiveSplitSession.Start(s, parentLot, state, Flow);
+                return Result.Succeeded;
+            }
             if (w.Action != DesmAction.PickLines) break;
             // Seleção das divisas desenhadas pelo usuário.
             try

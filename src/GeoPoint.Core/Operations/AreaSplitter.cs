@@ -186,6 +186,83 @@ public static class AreaSplitter
         return len;
     }
 
+    /// <summary>
+    /// Corte "em leque": todas as divisas passam pelo ponto <paramref name="pivot"/> (um vértice ou um ponto do contorno)
+    /// e giram em torno dele até a parte varrida atingir cada área acumulada de <paramref name="cumulative"/>.
+    /// A varredura começa pela divisa que sai do ponto (no sentido do contorno) e gira para dentro do lote.
+    /// </summary>
+    public static SplitResult SplitFromPoint(Region region, Vec2 pivot, IReadOnlyList<double> cumulative, bool reverse = false)
+    {
+        var res = new SplitResult();
+        double total = region.Area;
+        // Tangentes do contorno no ponto (contorno anti-horário: interior à esquerda).
+        Vec2? tIn = null, tOut = null;
+        foreach (var e in region.Outer.Edges)
+        {
+            if (e.Start.DistanceTo(pivot) < 1e-6) tOut = e.TangentAt(0).Normalized();
+            if (e.End.DistanceTo(pivot) < 1e-6) tIn = e.TangentAt(1).Normalized();
+        }
+        if (tIn is null || tOut is null)
+        {
+            var edge = region.Outer.Edges.OrderBy(e => e.DistanceTo(pivot)).First();
+            if (edge.DistanceTo(pivot) > 0.01) throw new ArgumentException("O ponto do corte em leque precisa estar no contorno do lote.");
+            edge.ClosestPoint(pivot, out double t);
+            tIn = tOut = edge.TangentAt(t).Normalized();
+        }
+        // Sentido da varredura: de tOut girando (anti-horário) até -tIn; "reverse" começa do outro lado.
+        var d0 = reverse ? -tIn.Value : tOut.Value;
+        double sweep = AngleCcw(tOut.Value, -tIn.Value);
+        if (sweep < 1e-6) sweep = 2 * Math.PI;
+        double sign = reverse ? -1 : 1;
+        // Área do lado já varrido da reta que passa pelo ponto com direção d(φ).
+        double Swept(double phi)
+        {
+            var d = Vec2.FromAngle(Math.Atan2(d0.Y, d0.X) + sign * phi);
+            var n = reverse ? d.PerpLeft : d.PerpRight;     // aponta para o lado varrido
+            double sPos = n.Dot(pivot);
+            return total - AreaBelow(region, n, sPos);
+        }
+        double prev = 0;
+        foreach (double target in cumulative)
+        {
+            if (target <= prev + 1e-6 || target >= total - 1e-6) { res.Warnings.Add("Áreas acumuladas fora do lote foram ignoradas."); continue; }
+            double lo = 0, hi = sweep;
+            for (int it = 0; it < 200 && hi - lo > 1e-12; it++)
+            {
+                double mid = (lo + hi) / 2;
+                if (Swept(mid) < target) lo = mid; else hi = mid;
+            }
+            double phi = (lo + hi) / 2;
+            var d = Vec2.FromAngle(Math.Atan2(d0.Y, d0.X) + sign * phi);
+            // A divisa vai do ponto até o primeiro encontro com o contorno, para dentro do lote.
+            var n = d.PerpRight;
+            double sLine = n.Dot(pivot);
+            var hits = new List<double>();
+            foreach (var ring in region.AllRings())
+                foreach (var e in ring.Edges)
+                {
+                    foreach (var t in CrossParams(e, n, sLine)) { double u = d.Dot(e.PointAt(t) - pivot); if (u > 1e-6) hits.Add(u); }
+                    if (Math.Abs(n.Dot(e.End) - sLine) < 1e-9) { double u = d.Dot(e.End - pivot); if (u > 1e-6) hits.Add(u); }
+                }
+            hits.Sort();
+            double? reach = null;
+            foreach (var u in hits) if (region.Contains(pivot + d * (u / 2))) { reach = u; break; }
+            if (reach is null) { res.Warnings.Add("Não foi possível traçar uma das divisas pelo ponto."); continue; }
+            var seg = new LineCurve(pivot, pivot + d * reach.Value);
+            res.Cuts.Add(seg);
+            res.Positions.Add(phi);
+            prev = target;
+        }
+        return res;
+    }
+
+    /// <summary>Ângulo anti-horário (0..2π) de a até b.</summary>
+    private static double AngleCcw(Vec2 a, Vec2 b)
+    {
+        double ang = Math.Atan2(a.Cross(b), a.Dot(b));
+        return ang < 0 ? ang + 2 * Math.PI : ang;
+    }
+
     public static SplitResult Split(SplitRequest req)
     {
         var res = new SplitResult();

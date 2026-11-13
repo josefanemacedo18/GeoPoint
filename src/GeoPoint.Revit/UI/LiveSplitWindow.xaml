@@ -1,0 +1,34 @@
+<Window x:Class="GeoPoint.Revit.UI.LiveSplitWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:GeoPoint.Revit.UI"
+        Title="GeoPoint – Desmembramento: desenhe as divisas" Width="520" Height="640" MinWidth="420" MinHeight="460"
+        FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip" ShowInTaskbar="False" WindowStartupLocation="Manual">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GeoPoint.Revit;component/UI/Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <DockPanel Margin="12">
+        <TextBlock DockPanel.Dock="Top" x:Name="Header" Style="{StaticResource H1}" Text="Desenhe as novas divisas"/>
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" TextWrapping="Wrap"
+                   Text="A ferramenta Linha do Revit está ativa. Desenhe as divisas sobre o lote (podem passar um pouco além do contorno); a prévia abaixo se atualiza a cada linha. Quando terminar, clique em Concluir (e pressione Esc no Revit se a ferramenta ainda estiver ativa)."/>
+        <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <WrapPanel>
+                <Button Content="Linha de modelo" Click="Model_Click" Margin="0,0,6,6" ToolTip="Ativa de novo a ferramenta Linha de modelo."/>
+                <Button Content="Linha de detalhe" Click="Detail_Click" Margin="0,0,6,6" ToolTip="Ativa a ferramenta Linha de detalhe (só nesta vista)."/>
+                <Button Content="Desfazer a última linha" Click="Undo_Click" Margin="0,0,6,6"/>
+            </WrapPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="FinishButton" Content="Concluir" Style="{StaticResource Primary}" Click="Finish_Click"/>
+                <Button Content="Cancelar" Click="Cancel_Click"/>
+            </StackPanel>
+        </StackPanel>
+        <TextBlock DockPanel.Dock="Bottom" x:Name="Summary" TextWrapping="Wrap" Margin="0,6,0,0"/>
+        <Border BorderBrush="#DDD" BorderThickness="1">
+            <ui:PreviewCanvas x:Name="Preview"/>
+        </Border>
+    </DockPanel>
+</Window>

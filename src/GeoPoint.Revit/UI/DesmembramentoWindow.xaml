@@ -87,6 +87,11 @@
                                     <RadioButton x:Name="DirAz" GroupName="d" Content="Azimute verdadeiro:" Checked="Any_Checked"/>
                                     <TextBox x:Name="AzText" Width="120" Text="0°00'00&quot;" TextChanged="Any_Text"/>
                                 </StackPanel>
+                                <StackPanel Orientation="Horizontal" ToolTip="Todas as divisas saem do mesmo ponto do contorno e giram em torno dele até cada parte ter a área pedida (partes iguais, mesma área ou área de cada lote).">
+                                    <RadioButton x:Name="DirPoint" GroupName="d" Content="Em leque, pelo ponto:" Checked="Any_Checked"/>
+                                    <ComboBox x:Name="PivotBox" Width="150" DisplayMemberPath="Text" SelectionChanged="Any_Changed"/>
+                                    <CheckBox x:Name="PivotReverse" Content="girar ao contrário" Margin="8,0,0,0" VerticalAlignment="Center" Click="Any_Checked"/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0" ToolTip="Quando a nova divisa termina muito perto de um vértice existente, ela é levada até o vértice (evita trechos de poucos centímetros). A área de cada parte mostrada na tabela já considera o ajuste. 0 = não encaixar.">
                                     <Label Content="Encaixar no vértice existente a menos de (m):"/>
                                     <TextBox x:Name="SnapTol" Width="60" Text="0,30" TextChanged="Any_Text"/>
@@ -97,7 +102,11 @@
 
                     <StackPanel x:Name="LinesPanel" Visibility="Collapsed">
                         <TextBlock Style="{StaticResource Hint}" Text="Desenhe as novas divisas no Revit com linhas de modelo ou de detalhe, do jeito que quiser (podem passar um pouco além do lote). Depois clique abaixo e selecione-as. As áreas são calculadas exatamente pelas linhas."/>
-                        <Button Content="Selecionar linhas no Revit…" Margin="0,4,0,4" HorizontalAlignment="Left" Click="PickLines_Click"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
+                            <Button Content="Desenhar com a ferramenta Linha…" Style="{StaticResource Primary}" Click="DrawLines_Click"
+                                    ToolTip="Abre a ferramenta Linha do Revit e uma prévia que se atualiza a cada linha desenhada. Ao concluir, volta para esta janela com as divisas."/>
+                            <Button Content="Selecionar linhas já desenhadas…" Click="PickLines_Click"/>
+                        </StackPanel>
                         <TextBlock x:Name="LinesInfo" Foreground="{StaticResource Muted}"/>
                     </StackPanel>
 
@@ -120,7 +129,7 @@
                                 <Label Content="  Numeração inicial:"/>
                                 <TextBox x:Name="StartNumber" Width="60" Text="01" TextChanged="Any_Text"/>
                             </StackPanel>
-                            <CheckBox x:Name="Sheets" IsChecked="True" Content="Gerar pranchas A4 (situação atual e proposta) ao registrar"/>
+                            <CheckBox x:Name="Sheets" IsChecked="True" Content="Gerar pranchas (situação atual e proposta) ao registrar"/>
                             <StackPanel Orientation="Horizontal">
                                 <Label Content="Observações:"/>
                                 <TextBox x:Name="Notes" Width="290"/>

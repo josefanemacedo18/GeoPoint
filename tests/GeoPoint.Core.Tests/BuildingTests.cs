@@ -68,3 +68,25 @@ public class BuildingTests
         Assert.Single(p.Buildings);
     }
 }
+
+public class PivotSplitTests
+{
+    [Fact]
+    public void SplitFromPoint_FanCutsHitTargetAreas()
+    {
+        // Lote 20 × 30 (600 m²), três partes de 200 m² com divisas passando pelo vértice (0,0).
+        var lot = TestProjects.Rect(0, 0, 20, 30, "01");
+        var region = lot.ToRegion();
+        var res = AreaSplitter.SplitFromPoint(region, new Vec2(0, 0), new[] { 200.0, 400.0 });
+        Assert.Equal(2, res.Cuts.Count);
+        Assert.All(res.Cuts, c => Assert.True(c.Start.DistanceTo(new Vec2(0, 0)) < 1e-6));
+        var pieces = SubdivisionPlanner.FromCuts(lot, res.Cuts.Select(c => ((Curve2)c, (string?)null)).ToList());
+        Assert.Equal(3, pieces.Count);
+        Assert.All(pieces, p => Assert.Equal(200, p.Area, 4));
+        // Ponto no meio de uma divisa (fundos): duas partes iguais.
+        var res2 = AreaSplitter.SplitFromPoint(region, new Vec2(10, 30), new[] { 300.0 });
+        var p2 = SubdivisionPlanner.FromCuts(lot, res2.Cuts.Select(c => ((Curve2)c, (string?)null)).ToList());
+        Assert.Equal(2, p2.Count);
+        Assert.All(p2, p => Assert.Equal(300, p.Area, 4));
+    }
+}

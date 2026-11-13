@@ -80,7 +80,15 @@ public sealed class CmdPranchas : CommandBase
         while (true)
         {
             var rows = PickerRows.Build(s, false, l => l.Status == LotStatus.Ativo || s.Project.PhaseOperations.Any(o => o.ParentIds.Contains(l.Id) || o.ChildIds.Contains(l.Id)));
-            w = new PranchasWindow(s.Project, s.Settings.Sheets, rows, op, state, RefOptions, Existing);
+            var pctx = s.NewContext();
+            SheetComposition? Preview(SheetSpec sp, SheetTemplate tpl, int scale)
+            {
+                var ls = sp.LotIds.Select(s.Project.FindLot).Where(l => l is not null).Select(l => l!).ToList();
+                if (ls.Count == 0) return null;
+                double mm = tpl.Styles.DesenhoMm > 0 ? tpl.Styles.DesenhoMm : s.Settings.Annotation.TextSizeMm;
+                return SheetPreview.Compose(pctx, ls, sp, tpl, mm, scale, Hatcher.Palette, r => Annotator.LotLabel(r, pctx, new ValueFormatter(s.Settings.Format), Annotator.Options.From(s.Settings.Annotation)));
+            }
+            w = new PranchasWindow(s.Project, s.Settings.Sheets, rows, op, state, RefOptions, Existing, Preview);
             if (Ui.ShowDialog(w, s.MainWindow) != true || w.Action == PranchasAction.Cancel) return false;
             w.Apply(s.Settings.Sheets, s.Project.Info);
             if (w.Action == PranchasAction.Generate) break;

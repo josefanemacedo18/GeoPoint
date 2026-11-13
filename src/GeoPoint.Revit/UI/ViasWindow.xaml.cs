@@ -82,11 +82,13 @@ public partial class ViasWindow : Window
     private readonly ObservableCollection<ViaRow> _vias;
     private readonly ObservableCollection<CrossRow> _cross;
     private readonly List<FrontRow> _fronts = new();
+    private readonly ProjectContext _ctx;
 
     public ViasWindow(ParcelProject project, ProjectContext ctx, StreetSettings st)
     {
         _project = project;
         _st = st;
+        _ctx = ctx;
         _vias = new ObservableCollection<ViaRow>(project.Vias.Select(v => new ViaRow(v)));
         _cross = new ObservableCollection<CrossRow>(project.Cruzamentos.Select(c => new CrossRow(c)));
         var fmt = new ValueFormatter(ctx.Settings.Format);
@@ -102,6 +104,35 @@ public partial class ViasWindow : Window
         AllEdges.IsChecked = !_fronts.Any(f => f.Relevant);
         RefreshFronts();
         foreach (var v in _vias) v.PropertyChanged += (_, _) => RefreshViaOptions();
+        Loaded += (_, _) => ShowPreview();
+    }
+
+    private void Preview_Click(object sender, RoutedEventArgs e) => ShowPreview();
+
+    /// <summary>Desenho esquemático com as edições atuais (ainda não gravadas: Cancelar descarta).</summary>
+    private void ShowPreview()
+    {
+        var items = new List<PreviewItem>();
+        try
+        {
+            if (!Commit(quiet: true)) return;
+            _ctx.Invalidate();
+            var lots = _project.ActiveLots.ToList();
+            var regions = lots.Select(l => { try { return l.ToRegion(); } catch { return null; } }).Where(r => r is not null).Select(r => r!).ToList();
+            foreach (var r in regions) items.Add(PreviewItem.FromRegion(r, System.Windows.Media.Color.FromRgb(230, 150, 30), null, true, System.Windows.Media.Color.FromRgb(30, 30, 30), 1.2));
+            var fronts = GeoPoint.Revit.Infrastructure.StreetDrawer.Frontages(_ctx, lots);
+            var vias = _project.Vias.Where(v => fronts.Any(f => f.ViaId == v.Id) || v.MeioFio.Count > 0).ToList();
+            if (vias.Count == 0) { PreviewInfo.Text = "Associe as testadas às vias (aba Testadas) para ver o desenho."; Preview.SetItems(items, _ctx.Coords.Rotation); return; }
+            var crossings = _project.Cruzamentos.Where(c => c.ViaIds.Count(id => vias.Any(v => v.Id == id)) >= 2).ToList();
+            var d = GeoPoint.Core.Urban.StreetSchematic.Build(vias, crossings, fronts, regions);
+            foreach (var c in d.Curbs) items.Add(new PreviewItem { Line = c, Stroke = System.Windows.Media.Color.FromRgb(60, 60, 60), StrokeWidth = 1.6 });
+            foreach (var a in d.Alignments) items.Add(new PreviewItem { Line = a, Stroke = System.Windows.Media.Color.FromRgb(140, 140, 140), StrokeWidth = 1, Dashed = true });
+            double h = _st.NomeMm / 1000.0 * 500;   // nome da rua numa escala de referência de 1:500
+            foreach (var l in d.Labels) items.Add(new PreviewItem { Label = l.Text.ToUpperInvariant(), LabelAt = l.Position, LabelAngle = l.AngleRad, LabelSizeM = h, LabelBoldFirst = true });
+            PreviewInfo.Text = $"{vias.Count} via(s), {crossings.Count} cruzamento(s)." + (d.Warnings.Count > 0 ? "  ⚠ " + string.Join(" ", d.Warnings.Take(3)) : "");
+        }
+        catch (Exception ex) { PreviewInfo.Text = "Prévia indisponível: " + ex.Message; }
+        Preview.SetItems(items, _ctx.Coords.Rotation);
     }
 
     public List<IdText> ViaOptions { get; private set; } = new();
@@ -177,22 +208,22 @@ public partial class ViasWindow : Window
     }
 
     /// <summary>Valida e grava as edições no projeto (em memória).</summary>
-    private bool Commit()
+    private bool Commit(bool quiet = false)
     {
         ViasGrid.CommitEdit(); ViasGrid.CommitEdit();
         CrossGrid.CommitEdit(); CrossGrid.CommitEdit();
         FrontGrid.CommitEdit(); FrontGrid.CommitEdit();
         foreach (var v in _vias)
         {
-            if (string.IsNullOrWhiteSpace(v.Nome)) { Fmt.Msg("Informe o nome de todas as vias."); return false; }
-            if (v.Largura <= 0 || v.Largura > 200 || v.Calcada < 0 || v.Calcada > 50 || v.Prolongamento < 0) { Fmt.Msg($"Medidas inválidas na via \"{v.Nome}\"."); return false; }
+            if (string.IsNullOrWhiteSpace(v.Nome)) { if (!quiet) Fmt.Msg("Informe o nome de todas as vias."); else PreviewInfo.Text = "Informe o nome de todas as vias."; return false; }
+            if (v.Largura <= 0 || v.Largura > 200 || v.Calcada < 0 || v.Calcada > 50 || v.Prolongamento < 0) { if (!quiet) Fmt.Msg($"Medidas inválidas na via \"{v.Nome}\"."); else PreviewInfo.Text = $"Medidas inválidas na via \"{v.Nome}\"."; return false; }
         }
         var crossings = new List<CruzamentoRecord>();
         foreach (var c in _cross)
         {
             var ids = new[] { (c.V1, c.A1), (c.V2, c.A2), (c.V3, c.A3), (c.V4, c.A4) }.Where(x => !string.IsNullOrEmpty(x.Item1)).ToList();
             if (ids.Count < 2) continue;
-            if (ids.Select(x => x.Item1).Distinct().Count() != ids.Count) { Fmt.Msg("Um cruzamento tem a mesma via repetida."); return false; }
+            if (ids.Select(x => x.Item1).Distinct().Count() != ids.Count) { if (!quiet) Fmt.Msg("Um cruzamento tem a mesma via repetida."); else PreviewInfo.Text = "Um cruzamento tem a mesma via repetida."; return false; }
             c.Record.ViaIds = ids.Select(x => x.Item1).ToList();
             c.Record.Atravessam = ids.Where(x => x.Item2).Select(x => x.Item1).ToList();
             c.Record.RaioEsquina = Math.Clamp(c.Raio, 0, 30);

@@ -14,7 +14,7 @@ using GeoPoint.Core.Operations;
 namespace GeoPoint.Revit.UI;
 
 public enum DesmModo { Automatico = 0, Linhas = 1, Lotes = 2 }
-public enum DesmAction { Cancel, PickLines, Register }
+public enum DesmAction { Cancel, PickLines, DrawLines, Register }
 
 /// <summary>Edição de uma parte resultante (preservada entre recálculos).</summary>
 public sealed class PieceEdit
@@ -43,6 +43,9 @@ public sealed class DesmembramentoState
     public int Direcao { get; set; }
     public int ParIndex { get; set; } = -1;
     public string Az { get; set; } = "0°00'00\"";
+    /// <summary>Corte em leque: índice do vértice e sentido.</summary>
+    public int PivotIndex { get; set; }
+    public bool PivotReverse { get; set; }
     public List<(Curve2 Curve, string Uid)> LineCuts { get; set; } = new();
     public HashSet<string> ChildLotIds { get; set; } = new();
     public Dictionary<int, PieceEdit> Edits { get; } = new();
@@ -71,7 +74,11 @@ public sealed class PieceRow : Notify
     public bool Remanescente { get => _e.Remanescente; set { _e.Remanescente = value; OnChanged(); } }
 }
 
-public sealed record IdText(string Id, string Text);
+public sealed record IdText(string Id, string Text)
+{
+    /// <summary>Dado extra (ex.: ponto do vértice).</summary>
+    public object? Tag { get; init; }
+}
 
 public partial class DesmembramentoWindow : Window
 {
@@ -98,7 +105,8 @@ public partial class DesmembramentoWindow : Window
         FromStart.IsChecked = state.FromStart; FromEnd.IsChecked = !state.FromStart;
         (state.Criterio switch { 1 => CArea, 2 => CAreas, 3 => CFront, 4 => CFronts, _ => CEqual }).IsChecked = true;
         Parts.Text = state.Parts; Target.Text = state.Target; Areas.Text = state.Areas; Width1.Text = state.Width; Fronts.Text = state.Fronts; MinRem.Text = state.MinRem; SnapTol.Text = state.Snap;
-        (state.Direcao switch { 1 => DirPar, 2 => DirAz, _ => DirPerp }).IsChecked = true;
+        (state.Direcao switch { 1 => DirPar, 2 => DirAz, 3 => DirPoint, _ => DirPerp }).IsChecked = true;
+        PivotReverse.IsChecked = state.PivotReverse;
         AzText.Text = state.Az;
         StartNumber.Text = state.StartNumber;
         Sheets.IsChecked = state.Sheets;
@@ -139,6 +147,9 @@ public partial class DesmembramentoWindow : Window
             FrontBox.SelectedIndex = keepIndexes && _st.FrontIndex >= 0 && _st.FrontIndex < edges.Count ? _st.FrontIndex
                 : Math.Max(0, edges.FindIndex(x => x.Testada) is int i && i >= 0 ? i : edges.IndexOf(edges.OrderByDescending(x => x.Curve.Length).First()));
             ParBox.SelectedIndex = keepIndexes && _st.ParIndex >= 0 && _st.ParIndex < edges.Count ? _st.ParIndex : (edges.Count > 1 ? 1 : 0);
+            var verts = rep.Vertices.Select(v => new IdText(AnnotationPlanner.VertexKey(v.Internal), v.Name) { Tag = v.Internal }).ToList();
+            PivotBox.ItemsSource = verts;
+            PivotBox.SelectedIndex = keepIndexes && _st.PivotIndex >= 0 && _st.PivotIndex < verts.Count ? _st.PivotIndex : 0;
             if (string.IsNullOrWhiteSpace(Quadra.Text)) Quadra.Text = _st.Quadra ?? parent.Quadra;
             var region = parent.ToRegion();
             _childRows = ProjectContext.SortLots(_project.ActiveLots.Where(l => l.Id != parent.Id)).Where(l =>
@@ -162,6 +173,13 @@ public partial class DesmembramentoWindow : Window
     {
         if (sender is CheckBox cb && cb.DataContext is PieceRow row && row.Remanescente)
             foreach (var r in Rows.Where(r => r != row)) r.Remanescente = false;
+    }
+
+    private void DrawLines_Click(object sender, RoutedEventArgs e)
+    {
+        SaveState();
+        Action = DesmAction.DrawLines;
+        DialogResult = true;
     }
 
     private void PickLines_Click(object sender, RoutedEventArgs e)
@@ -221,6 +239,32 @@ public partial class DesmembramentoWindow : Window
         return true;
     }
 
+    /// <summary>Áreas acumuladas do corte em leque pelo critério escolhido (testadas não se aplicam).</summary>
+    private bool TryTargets(double total, out List<double> cum, out string error)
+    {
+        cum = new List<double>(); error = "";
+        if (CFront.IsChecked == true || CFronts.IsChecked == true) { error = "No corte em leque use partes iguais, mesma área ou a área de cada lote."; return false; }
+        if (CArea.IsChecked == true)
+        {
+            if (!Fmt.TryNum(Target.Text, out double a) || a <= 0) { error = "Área inválida."; return false; }
+            Fmt.TryNum(MinRem.Text, out double minRem);
+            for (double acc = a; acc < total - Math.Max(1e-6, minRem); acc += a) cum.Add(acc);
+        }
+        else if (CAreas.IsChecked == true)
+        {
+            if (ParseList(Areas.Text) is not { } la) { error = "Áreas inválidas (ex.: 300; 250; 250)."; return false; }
+            double acc = 0;
+            foreach (var v in la) { acc += v; if (acc < total - 1e-6) cum.Add(acc); }
+        }
+        else
+        {
+            if (!int.TryParse(Parts.Text.Trim(), out int parts) || parts < 2 || parts > 100) { error = "Número de partes inválido (2 a 100)."; return false; }
+            for (int k = 1; k < parts; k++) cum.Add(total * k / parts);
+        }
+        if (cum.Count == 0) { error = "Os valores não dividem o lote."; return false; }
+        return true;
+    }
+
     private void Recalc()
     {
         if (Summary is null) return;
@@ -240,6 +284,19 @@ public partial class DesmembramentoWindow : Window
         {
             switch (Modo)
             {
+                case DesmModo.Automatico when DirPoint.IsChecked == true:
+                {
+                    // Corte em leque: divisas passando pelo ponto escolhido.
+                    if (PivotBox.SelectedItem is not IdText { Tag: Vec2 pivot }) { msg = "Escolha o ponto do leque."; break; }
+                    var region = parent.ToRegion();
+                    if (!TryTargets(region.Area, out var targets, out var err2)) { msg = err2; break; }
+                    var res = AreaSplitter.SplitFromPoint(region, pivot, targets, PivotReverse.IsChecked == true);
+                    AutoResult = res;
+                    pieces = SubdivisionPlanner.OrderReading(SubdivisionPlanner.FromCuts(parent, res.Cuts.Select(c => ((Curve2)c, (string?)null)).ToList()));
+                    foreach (var c in res.Cuts) items.Add(new PreviewItem { Line = new List<Vec2> { c.Start, c.End }, Stroke = Color.FromRgb(220, 40, 30), StrokeWidth = 2, Dashed = true });
+                    if (res.Warnings.Count > 0) msg = string.Join(" ", res.Warnings);
+                    break;
+                }
                 case DesmModo.Automatico:
                 {
                     if (!TryAuto(parent, out var req, out var along, out var err)) { msg = err; break; }
@@ -335,7 +392,9 @@ public partial class DesmembramentoWindow : Window
         _st.FromStart = FromStart.IsChecked == true;
         _st.Criterio = CArea.IsChecked == true ? 1 : CAreas.IsChecked == true ? 2 : CFront.IsChecked == true ? 3 : CFronts.IsChecked == true ? 4 : 0;
         _st.Parts = Parts.Text; _st.Target = Target.Text; _st.Areas = Areas.Text; _st.Width = Width1.Text; _st.Fronts = Fronts.Text; _st.MinRem = MinRem.Text; _st.Snap = SnapTol.Text;
-        _st.Direcao = DirPar.IsChecked == true ? 1 : DirAz.IsChecked == true ? 2 : 0;
+        _st.Direcao = DirPar.IsChecked == true ? 1 : DirAz.IsChecked == true ? 2 : DirPoint.IsChecked == true ? 3 : 0;
+        _st.PivotIndex = PivotBox.SelectedIndex;
+        _st.PivotReverse = PivotReverse.IsChecked == true;
         _st.Az = AzText.Text;
         _st.ChildLotIds = _childRows.Where(r => r.Selected).Select(r => r.Lot.Id).ToHashSet();
         _st.Quadra = Quadra.Text.Trim();

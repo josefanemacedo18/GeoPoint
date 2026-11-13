@@ -153,6 +153,113 @@ public class SheetV15PreviewTests
         return sb.ToString();
     }
 
+    /// <summary>SVG de uma composição do núcleo (mesmos elementos que a janela de pranchas mostra).</summary>
+    public static string PrimSvg(SheetComposition comp, double px = 4)
+    {
+        var (W, H) = comp.Input.Template.PaperSize();
+        string X(double x) => F(x * px);
+        string Y(double y) => F((H - y) * px);
+        var sb = new StringBuilder($"<svg xmlns='http://www.w3.org/2000/svg' width='{F(W * px)}' height='{F(H * px)}'><rect width='100%' height='100%' fill='white'/>");
+        int hid = 0;
+        string gridCol = $"rgb({comp.Input.Template.GridColor[0]},{comp.Input.Template.GridColor[1]},{comp.Input.Template.GridColor[2]})";
+        foreach (var p in comp.All)
+        {
+            switch (p)
+            {
+                case PFill f:
+                {
+                    var pts = string.Join(" ", f.Pts.Select(q => $"{X(q.X)},{Y(q.Y)}"));
+                    string fill = $"rgb({f.R},{f.G},{f.B})";
+                    if (f.Hatch)
+                    {
+                        hid++;
+                        sb.Append($"<defs><pattern id='h{hid}' width='6' height='6' patternUnits='userSpaceOnUse' patternTransform='rotate(45)'><rect width='6' height='6' fill='rgba({f.R},{f.G},{f.B},0.12)'/><line x1='0' y1='0' x2='0' y2='6' stroke='{fill}' stroke-width='1'/>{(f.Cross ? $"<line x1='0' y1='0' x2='6' y2='0' stroke='{fill}' stroke-width='1'/>" : "")}</pattern></defs>");
+                        fill = $"url(#h{hid})";
+                    }
+                    sb.Append($"<polygon points='{pts}' fill='{fill}' stroke='none'/>");
+                    break;
+                }
+                case PLine l:
+                {
+                    var (w, col, dash) = l.Style switch
+                    {
+                        PLineStyle.Moldura => (0.5, "black", ""),
+                        PLineStyle.Bloco => (0.3, "black", ""),
+                        PLineStyle.Grade => (0.13, gridCol, ""),
+                        PLineStyle.Papel => (0.1, "#bbb", ""),
+                        PLineStyle.Tracejada => (0.15, "#c00000", "stroke-dasharray='4,3'"),
+                        PLineStyle.Vermelha => (0.18, "#c00000", ""),
+                        PLineStyle.MeioFio => (0.25, "#666", ""),
+                        PLineStyle.Limite => (0.35, "black", ""),
+                        _ => (0.15, "#333", ""),
+                    };
+                    sb.Append($"<line x1='{X(l.A.X)}' y1='{Y(l.A.Y)}' x2='{X(l.B.X)}' y2='{Y(l.B.Y)}' stroke='{col}' stroke-width='{F(w * px)}' {dash}/>");
+                    break;
+                }
+                case PCircle c:
+                    sb.Append($"<circle cx='{X(c.C.X)}' cy='{Y(c.C.Y)}' r='{F(c.Radius * px)}' fill='{(c.Filled ? "black" : "none")}'/>");
+                    break;
+                case PImage im:
+                    sb.Append($"<rect x='{X(im.Rect.X0)}' y='{Y(im.Rect.Y1)}' width='{F(im.Rect.Width * px)}' height='{F(im.Rect.Height * px)}' fill='#5a7a4a'/>");
+                    break;
+                case PText t:
+                {
+                    var lines = t.Text.Split('\n');
+                    double lh = t.SizeMm * 1.55;
+                    double total = lines.Length * lh;
+                    double topOff = t.V switch { PTextV.Top => 0, PTextV.Middle => total / 2, _ => total };
+                    string anchor = t.H switch { PTextH.Center => "middle", PTextH.Right => "end", _ => "start" };
+                    double deg = -t.Rotation * 180 / Math.PI;
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        double baseLocal = topOff - (i * lh + t.SizeMm * 1.15);
+                        sb.Append($"<text x='{X(t.At.X)}' y='{Y(t.At.Y)}' font-family='Arial' font-size='{F(t.SizeMm / 0.716 * px)}' fill='rgb({t.R},{t.G},{t.B})' text-anchor='{anchor}' {(t.Bold ? "font-weight='bold'" : "")} transform='rotate({F(deg)} {X(t.At.X)} {Y(t.At.Y)}) translate(0 {F(-baseLocal * px)})'>{System.Security.SecurityElement.Escape(lines[i])}</text>");
+                    }
+                    break;
+                }
+            }
+        }
+        sb.Append("</svg>");
+        return sb.ToString();
+    }
+
+    [Fact]
+    public void CoreComposition_WritesPreviews()
+    {
+        var outPath = Environment.GetEnvironmentVariable("GEOPOINT_OUT");
+        var v1 = new Vec2(0, 0); var v2 = new Vec2(-29.25, 14.99); var v3 = new Vec2(17.21, 41.62);
+        var lot = TestProjects.Poly("01", v1, v2, v3);
+        lot.EdgeInfos.Add(new EdgeInfo { MX = (v1.X + v2.X) / 2, MY = (v1.Y + v2.Y) / 2, Confrontante = "Rua E" });
+        lot.EdgeInfos.Add(new EdgeInfo { MX = (v2.X + v3.X) / 2, MY = (v2.Y + v3.Y) / 2, Confrontante = "Jacy Rodrigues Aguiar" });
+        lot.EdgeInfos.Add(new EdgeInfo { MX = (v3.X + v1.X) / 2, MY = (v3.Y + v1.Y) / 2, Confrontante = "Maria José" });
+        var p = TestProjects.Project(lot);
+        p.Info.Proprietario = "Lucas Araujo Marinho Brasil"; p.Info.Documento = "027.108.961-09"; p.Info.Matricula = "7607";
+        p.Info.Municipio = "Porto Franco"; p.Info.UF = "MA"; p.Info.Endereco = "Rua E, nº SN"; p.Info.Bairro = "Jardim São Manoel"; p.Info.Cep = "65970-000";
+        var ctx = TestProjects.Context(p);
+        var spec = new SheetSpec { Kind = SheetKind.Atual, Title = "SITUAÇÃO ATUAL", LotIds = { lot.Id }, CoordTable = true };
+        var comp = SheetPreview.Compose(ctx, new[] { lot }, spec, SheetTemplate.Default());
+        Assert.Contains(comp.Map, x => x is PText t && t.Text == "P-01" && t.Bold);
+        Assert.Contains(comp.Sheet, x => x is PText t && t.Text.StartsWith("N "));
+        if (string.IsNullOrEmpty(outPath)) return;
+        Directory.CreateDirectory(outPath);
+        File.WriteAllText(Path.Combine(outPath, "v15-prancha-lote.svg"), PrimSvg(comp));
+        var a1 = TestProjects.Rect(0, 0, 12, 30, "01"); var a2 = TestProjects.Rect(12, 0, 12, 30, "02"); var a3 = TestProjects.Rect(24, 0, 12, 30, "03");
+        a3.IsRemanescente = true;
+        foreach (var l in new[] { a1, a2, a3 }) l.EdgeInfos.Add(new EdgeInfo { MX = l.Outer[0].X1 + 6, MY = 0, Confrontante = "Rua Projetada 1", Testada = true });
+        a1.EdgeInfos.Add(new EdgeInfo { MX = 0, MY = 15, Confrontante = "Coité" });
+        a3.EdgeInfos.Add(new EdgeInfo { MX = 36, MY = 15, Confrontante = "Bemeval" });
+        var p2 = TestProjects.Project(a1, a2, a3);
+        p2.Info.Proprietario = "Maria da Silva"; p2.Info.Matricula = "1234"; p2.Info.Municipio = "Porto Franco"; p2.Info.UF = "MA";
+        var op = new OperationRecord { Type = OperationType.Desmembramento, ChildIds = { a1.Id, a2.Id, a3.Id } };
+        p2.Operations.Add(op);
+        var ctx2 = TestProjects.Context(p2);
+        var colors = new Dictionary<string, int> { [a1.Id] = 0, [a2.Id] = 1, [a3.Id] = 2 };
+        var geral = new SheetSpec { Kind = SheetKind.Proposta, Title = "SITUAÇÃO PROPOSTA", Subtitle = "DESMEMBRAMENTO DO LOTE 01", LotIds = { a1.Id, a2.Id, a3.Id }, QuadroIds = { a1.Id, a2.Id, a3.Id }, OperationId = op.Id, Hatch = true, Colors = colors };
+        File.WriteAllText(Path.Combine(outPath, "v15-prancha-geral.svg"), PrimSvg(SheetPreview.Compose(ctx2, new[] { a1, a2, a3 }, geral, SheetTemplate.Default())));
+        var ind = new SheetSpec { Kind = SheetKind.IndividualProposta, Title = "SITUAÇÃO PROPOSTA – LOTE 02", Subtitle = "DESMEMBRAMENTO DO LOTE 01", LotIds = { a2.Id }, OperationId = op.Id, Hatch = true, Colors = colors, CoordTable = true };
+        File.WriteAllText(Path.Combine(outPath, "v15-prancha-individual-paisagem.svg"), PrimSvg(SheetPreview.Compose(ctx2, new[] { a2 }, ind, SheetTemplate.Default(SheetOrientation.Paisagem))));
+    }
+
     [Fact]
     public void Compose_TriangleLot_FitsWithoutOverlaps()
     {

@@ -33,6 +33,46 @@ public partial class LotPickerWindow : Window
 
     public List<LotRecord> SelectedLots { get; private set; } = new();
 
+    private Func<IReadOnlyList<LotRecord>, Func<string, bool>, Func<string, double>, (List<PreviewItem> Items, double Rotation, string Info)>? _preview;
+    private System.Windows.Threading.DispatcherTimer? _previewTimer;
+
+    /// <summary>Liga a prévia (à direita): recebe os lotes marcados e os valores atuais das opções.</summary>
+    public void EnablePreview(Func<IReadOnlyList<LotRecord>, Func<string, bool>, Func<string, double>, (List<PreviewItem> Items, double Rotation, string Info)> provider)
+    {
+        _preview = provider;
+        Preview.ShowNorth = false;
+        PreviewPanel.Visibility = Visibility.Visible;
+        Width += 430;
+        MinWidth += 300;
+        _previewTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _previewTimer.Tick += (_, _) => { _previewTimer.Stop(); UpdatePreview(); };
+        foreach (var c in _optionControls.Values)
+        {
+            if (c is CheckBox cb) cb.Click += (_, _) => SchedulePreview();
+            else if (c is TextBox tb) tb.TextChanged += (_, _) => SchedulePreview();
+        }
+        Loaded += (_, _) => UpdatePreview();
+    }
+
+    private void SchedulePreview() { if (_previewTimer is null) return; _previewTimer.Stop(); _previewTimer.Start(); }
+
+    /// <summary>Valor atual de uma opção (antes de confirmar).</summary>
+    private bool CurrentBool(string key) => _optionControls.TryGetValue(key, out var c) && c is CheckBox cb ? cb.IsChecked == true : Option(key);
+    private double CurrentNumber(string key) => _optionControls.TryGetValue(key, out var c) && c is TextBox tb && Fmt.TryNum(tb.Text, out double v) ? v : Number(key);
+
+    private void UpdatePreview()
+    {
+        if (_preview is null) return;
+        try
+        {
+            var lots = _all.Where(r => r.Selected).Select(r => r.Lot).ToList();
+            var (items, rot, info) = _preview(lots, CurrentBool, CurrentNumber);
+            Preview.SetItems(items, rot);
+            PreviewInfo.Text = info;
+        }
+        catch (Exception ex) { PreviewInfo.Text = "Prévia indisponível: " + ex.Message; }
+    }
+
     public bool Option(string key) => _options.FirstOrDefault(o => o.Key == key)?.Bool ?? false;
     public double Number(string key) => _options.FirstOrDefault(o => o.Key == key)?.Number ?? 0;
 
@@ -68,7 +108,11 @@ public partial class LotPickerWindow : Window
         UpdateCount();
     }
 
-    private void UpdateCount() => Count.Text = $"{_all.Count(r => r.Selected)} selecionado(s)";
+    private void UpdateCount()
+    {
+        Count.Text = $"{_all.Count(r => r.Selected)} selecionado(s)";
+        SchedulePreview();
+    }
 
     private void All_Click(object sender, RoutedEventArgs e)
     {
