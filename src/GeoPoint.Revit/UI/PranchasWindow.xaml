@@ -104,7 +104,7 @@
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
                         <Label Content="Modelo:"/>
-                        <ComboBox Grid.Column="1" x:Name="Template" DisplayMemberPath="Name" SelectionChanged="Template_Changed"
+                        <ComboBox Grid.Column="1" x:Name="TemplateBox" DisplayMemberPath="Name" SelectionChanged="Template_Changed"
                                   ToolTip="Modelo de prancha da biblioteca (papel, blocos do carimbo, grade, estilos de texto)."/>
                         <Button Grid.Column="2" Content="Modelos…" Click="Templates_Click" ToolTip="Biblioteca de modelos de prancha: criar, duplicar, editar, importar e exportar."/>
                         <Label Grid.Row="1" Content="Escala:"/>

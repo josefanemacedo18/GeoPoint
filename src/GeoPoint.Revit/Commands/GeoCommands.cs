@@ -321,8 +321,12 @@ public sealed class CmdImportarKml : CommandBase
             catch (Exception ex) { Ui.Warn("Coordenadas", ex.Message); return Result.Cancelled; }
             pts = parsed.Points;
             if (pts.Count == 0) { Ui.Info("Sem coordenadas", "Nenhuma linha com nome e duas coordenadas foi encontrada." + (parsed.Warnings.Count > 0 ? "\n\n" + string.Join("\n", parsed.Warnings.Take(8)) : "")); return Result.Cancelled; }
+            // Avisa como as coordenadas foram lidas (datum e, para UTM sem referência no projeto, o fuso).
+            var info = new List<string> { parsed.DatumText };
             if (parsed.Kind == "UTM" && zone is null)
-                Ui.Info("Fuso UTM", $"As coordenadas foram lidas como UTM SIRGAS 2000 fuso {zn}{(south ? "S" : "N")}. Se o fuso for outro, defina a referência do projeto (ou o fuso em Configurações) e importe de novo.");
+                info.Add($"Coordenadas lidas como UTM fuso {zn}{(south ? "S" : "N")}. Se o fuso for outro, defina a referência do projeto (ou o fuso em Configurações) e importe de novo.");
+            if (!parsed.DatumFromFile || parsed.Datum is DatumId.Sad69 or DatumId.CorregoAlegre || zone is null)
+                Ui.Info("Coordenadas importadas", string.Join("\n\n", info));
             if (parsed.Warnings.Count > 0) Logger.Info("Importar coordenadas: " + string.Join(" | ", parsed.Warnings));
         }
 

@@ -13,6 +13,7 @@ Copy-Item "$out/GeoPoint.Revit.dll", "$out/GeoPoint.Core.dll" "$pkg/GeoPoint/"
 Copy-Item "src/GeoPoint.Core/ThirdParty/Clipper2/LICENSE_Clipper2.txt" "$pkg/GeoPoint/"
 Copy-Item "docs/MANUAL.md" "$pkg/GeoPoint/MANUAL.md"
 Copy-Item "docs/MANUAL.md" "$pkg/MANUAL.md"
+Copy-Item "docs/ROTEIRO-DE-TESTE.md" "$pkg/ROTEIRO-DE-TESTE.md"
 Copy-Item "src/GeoPoint.Revit/GeoPoint.addin", "tools/Instalar.bat", "tools/Desinstalar.bat", "tools/install.ps1", "tools/uninstall.ps1" "$pkg/"
 New-Item -ItemType Directory -Force -Path "dist" | Out-Null
 Compress-Archive -Path $pkg -DestinationPath "dist/GeoPoint-$version.zip" -Force

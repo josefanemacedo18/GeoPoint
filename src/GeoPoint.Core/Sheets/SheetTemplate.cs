@@ -93,9 +93,43 @@ public sealed class SheetTemplate
     public List<int> Scales { get; set; } = new();
     /// <summary>Folga em volta do desenho para as anotações (mm no papel).</summary>
     public double DrawingMarginMm { get; set; } = 14;
-    /// <summary>Logotipo (PNG/JPG) no bloco Escritório/Título; vazio = sem logotipo.</summary>
+    /// <summary>Logomarca embutida no modelo (base64). O modelo leva a imagem junto quando é exportado ou copiado para outro computador.</summary>
+    public string LogoData { get; set; } = "";
+    /// <summary>Extensão da logomarca embutida ("png", "jpg", "gif" ou "bmp").</summary>
+    public string LogoExt { get; set; } = "";
+    /// <summary>Arquivo da logomarca (versões até 1.5.2). Só é usado quando não há logomarca embutida.</summary>
     public string LogoPath { get; set; } = "";
     public string OfficeName { get; set; } = "";
+
+    /// <summary>Tamanho máximo da logomarca embutida.</summary>
+    public const int MaxLogoBytes = 3 * 1024 * 1024;
+
+    /// <summary>Bytes da logomarca (embutida ou, nos modelos antigos, lida do arquivo); null = sem logomarca.</summary>
+    public byte[]? LogoBytes()
+    {
+        if (!string.IsNullOrWhiteSpace(LogoData))
+        {
+            try { return Convert.FromBase64String(LogoData); } catch { return null; }
+        }
+        try { return !string.IsNullOrWhiteSpace(LogoPath) && File.Exists(LogoPath) ? File.ReadAllBytes(LogoPath) : null; } catch { return null; }
+    }
+
+    [JsonIgnore] public bool HasLogo => LogoBytes() is { Length: > 0 } b && ImageHeader.Size(b) is not null;
+
+    /// <summary>Largura/altura da logomarca (0 = sem logomarca ou formato desconhecido).</summary>
+    public double LogoAspect() => ImageHeader.Size(LogoBytes()) is { W: > 0, H: > 0 } z ? (double)z.W / z.H : 0;
+
+    /// <summary>Embute a logomarca no modelo (null ou vazio = remove). Aceita PNG, JPG, GIF e BMP até 3 MB.</summary>
+    public void SetLogo(byte[]? bytes)
+    {
+        LogoPath = "";
+        if (bytes is null || bytes.Length == 0) { LogoData = ""; LogoExt = ""; return; }
+        if (bytes.Length > MaxLogoBytes) throw new InvalidOperationException("A logomarca tem mais de 3 MB. Reduza a imagem (uma largura de 1000 px é suficiente para a prancha).");
+        string ext = ImageHeader.Extension(bytes) ?? throw new InvalidOperationException("Formato de imagem não reconhecido. Use PNG, JPG, GIF ou BMP.");
+        if (ImageHeader.Size(bytes) is null) throw new InvalidOperationException("Não foi possível ler o tamanho da imagem.");
+        LogoData = Convert.ToBase64String(bytes);
+        LogoExt = ext;
+    }
 
     [JsonIgnore] public IReadOnlyList<int> ScaleList => Scales.Count > 0 ? Scales.OrderBy(x => x).ToList() : SheetLayout.StandardScales;
 
@@ -182,6 +216,8 @@ public sealed class SheetTemplate
         double xL = x0, xM = xL + cL + g, xR = xM + cM + g;
         double hTop = (y1 - y0 - g) * 0.5, yMid = y0 + hTop + g;
         double titleH = 15 * pf;
+        // Espaço da logomarca do escritório: entre o croqui e o título.
+        double logoH = 14 * pf;
         double qW = cM * 0.4;
         double convW = cM * 0.5;
         return new List<SheetBlock>
@@ -192,9 +228,9 @@ public sealed class SheetTemplate
             new() { Kind = SheetBlockKind.Assinaturas, Title = "QUADRO DE ASSINATURAS", X = xM + qW + g, Y = yMid, W = cM - qW - g, H = y1 - yMid },
             new() { Kind = SheetBlockKind.Convencoes, Title = "CONVENÇÕES TOPOGRÁFICAS", X = xM, Y = y0, W = convW, H = hTop },
             new() { Kind = SheetBlockKind.Orientacao, Title = "ORIENTAÇÃO", X = xM + convW + g, Y = y0, W = cM - convW - g, H = hTop },
-            new() { Kind = SheetBlockKind.Croqui, Title = "CROQUI DE LOCALIZAÇÃO", X = xR, Y = y0 + titleH + g, W = cR, H = y1 - y0 - titleH - g },
+            new() { Kind = SheetBlockKind.Croqui, Title = "CROQUI DE LOCALIZAÇÃO", X = xR, Y = y0 + titleH + logoH + 2 * g, W = cR, H = y1 - y0 - titleH - logoH - 2 * g },
+            new() { Kind = SheetBlockKind.Escritorio, Title = "", X = xR, Y = y0 + titleH + g, W = cR, H = logoH },
             new() { Kind = SheetBlockKind.Titulo, Title = "", X = xR, Y = y0, W = cR, H = titleH },
-            new() { Kind = SheetBlockKind.Escritorio, Title = "ESCRITÓRIO", Visible = false },
             new() { Kind = SheetBlockKind.Observacoes, Title = "OBSERVAÇÕES", Visible = false },
         };
     }
@@ -221,10 +257,12 @@ public sealed class SheetTemplate
             Take(SheetBlockKind.Convencoes, "CONVENÇÕES TOPOGRÁFICAS", 30 * pf, x0, half, false),
             Take(SheetBlockKind.Orientacao, "ORIENTAÇÃO", 30 * pf, x0 + half + g, half),
         };
-        double titleH = 15 * pf;
-        list.Add(new SheetBlock { Kind = SheetBlockKind.Croqui, Title = "CROQUI DE LOCALIZAÇÃO", X = x0, Y = y0 + titleH + g, W = colW, H = y - (y0 + titleH + g) });
+        double titleH = 15 * pf, logoH = 16 * pf;
+        double yc = y0 + titleH + logoH + 2 * g;
+        list.Add(new SheetBlock { Kind = SheetBlockKind.Croqui, Title = "CROQUI DE LOCALIZAÇÃO", X = x0, Y = yc, W = colW, H = y - yc });
+        // Espaço da logomarca do escritório: entre o croqui e o título.
+        list.Add(new SheetBlock { Kind = SheetBlockKind.Escritorio, Title = "", X = x0, Y = y0 + titleH + g, W = colW, H = logoH });
         list.Add(new SheetBlock { Kind = SheetBlockKind.Titulo, Title = "", X = x0, Y = y0, W = colW, H = titleH });
-        list.Add(new SheetBlock { Kind = SheetBlockKind.Escritorio, Title = "ESCRITÓRIO", Visible = false });
         list.Add(new SheetBlock { Kind = SheetBlockKind.Observacoes, Title = "OBSERVAÇÕES", Visible = false });
         return list;
     }
@@ -318,6 +356,8 @@ public static class SheetTemplateLibrary
                 {
                     var oldHistory = old.History;
                     old.History = new();
+                    // O histórico guarda o layout; a logomarca não entra (é sempre a atual) para o arquivo não crescer.
+                    old.LogoData = ""; old.LogoExt = "";
                     t.History = oldHistory.Concat(t.History).GroupBy(h => h.Version).Select(g => g.First()).OrderBy(h => h.Version).ToList();
                     t.History.Add(new SheetTemplateVersion { Version = old.Version, Date = old.Modified, Note = note, Json = JsonSerializer.Serialize(old, JsonOptions.Compact) });
                     t.Version = Math.Max(t.Version, old.Version + 1);
@@ -344,6 +384,7 @@ public static class SheetTemplateLibrary
         old.Name = current.Name;
         old.History = current.History.ToList();
         old.Version = current.Version;
+        old.LogoData = current.LogoData; old.LogoExt = current.LogoExt; old.LogoPath = current.LogoPath;
         return Normalize(old);
     }
 
@@ -351,6 +392,26 @@ public static class SheetTemplateLibrary
     {
         var t = JsonSerializer.Deserialize<SheetTemplate>(File.ReadAllText(path), JsonOptions.Default) ?? throw new InvalidOperationException("Arquivo de modelo inválido.");
         return Normalize(t);
+    }
+
+    /// <summary>
+    /// Arquivo da logomarca para o Revit inserir (a imagem embutida é gravada uma vez numa pasta de cache, com nome pelo conteúdo,
+    /// para todas as pranchas usarem o mesmo tipo de imagem). null = modelo sem logomarca.
+    /// </summary>
+    public static string? LogoFile(SheetTemplate t, string? folder = null)
+    {
+        if (string.IsNullOrWhiteSpace(t.LogoData))
+            return !string.IsNullOrWhiteSpace(t.LogoPath) && File.Exists(t.LogoPath) ? t.LogoPath : null;
+        var bytes = t.LogoBytes();
+        string? ext = ImageHeader.Extension(bytes);
+        if (bytes is null || ext is null) return null;
+        folder ??= Path.Combine(SettingsStore.DefaultFolder, "logomarcas");
+        Directory.CreateDirectory(folder);
+        string hash;
+        using (var sha = System.Security.Cryptography.SHA1.Create()) hash = Convert.ToHexString(sha.ComputeHash(bytes))[..16].ToLowerInvariant();
+        string path = Path.Combine(folder, $"logo-{hash}.{ext}");
+        if (!File.Exists(path)) File.WriteAllBytes(path, bytes);
+        return path;
     }
 
     public static void Export(SheetTemplate t, string path) => File.WriteAllText(path, JsonSerializer.Serialize(t, JsonOptions.Default));

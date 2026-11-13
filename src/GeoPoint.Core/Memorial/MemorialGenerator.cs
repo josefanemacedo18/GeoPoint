@@ -327,33 +327,6 @@ public sealed class MemorialGenerator
         return addr;
     }
 
-    /// <summary>Texto de origem do lote resultante (desmembramento ou remembramento).</summary>
-    private string OriginText(OperationRecord op, LotRecord lot)
-    {
-        string AreaOf(LotRecord l) { try { return _fmt.Area(_ctx.Report(l).Area(_ms.AreaType)); } catch { return "–"; } }
-        string Matr(LotRecord l)
-        {
-            var m = _ctx.Project.EffectiveMatricula(l);
-            return m.Length > 0 ? $", matrícula nº {m}" : "";
-        }
-        var parents = op.ParentIds.Select(_ctx.Project.FindLot).Where(l => l is not null).Select(l => l!).ToList();
-        var siblings = op.ChildIds.Where(id => id != lot.Id).Select(_ctx.Project.FindLot).Where(l => l is not null).Select(l => l!).ToList();
-        string text;
-        if (op.Type == OperationType.Desmembramento && parents.Count > 0)
-        {
-            var p = parents[0];
-            text = $"O {lot.DisplayName}, com área de {AreaOf(lot)}, é resultante do desmembramento do {p.DisplayName}{Matr(p)}, com área total de {AreaOf(p)}.";
-            if (lot.IsRemanescente) text += " Trata-se do lote remanescente.";
-            if (siblings.Count > 0)
-                text += " Os demais lotes resultantes são: " + string.Join("; ", siblings.Select(s => $"{s.DisplayName} ({AreaOf(s)}{(s.IsRemanescente ? ", remanescente" : "")})")) + ".";
-        }
-        else
-            text = $"O {lot.DisplayName}, com área de {AreaOf(lot)}, é resultante do remembramento de " +
-                   string.Join(", ", parents.Select(p => $"{p.DisplayName}{Matr(p)} ({AreaOf(p)})")) + ".";
-        if (_ctx.Settings.Naming.Numbering == VertexNumbering.Lote) text += " Os vértices deste memorial são numerados a partir do primeiro vértice deste lote.";
-        return text;
-    }
-
     private static XElement Heading(string text) => Wml.Paragraph(H1, new RunSpec(text, true));
     private static XElement SubHeading(string text) => Wml.Paragraph(H2, new RunSpec(text, true));
 

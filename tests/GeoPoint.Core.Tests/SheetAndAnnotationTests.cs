@@ -127,25 +127,6 @@ public class SheetAndAnnotationTests
         Assert.Equal(Math.PI / 2, AnnotationPlanner.Readable(-Math.PI / 2), 9);
     }
 
-    [Theory]
-    [InlineData(SheetOrientation.Retrato, 210, 297)]
-    [InlineData(SheetOrientation.Paisagem, 297, 210)]
-    public void SheetLayout_A4CellsInsideFrame(SheetOrientation o, double w, double h)
-    {
-        var l = SheetLayout.A4(o);
-        Assert.Equal(w, l.Width);
-        Assert.Equal(h, l.Height);
-        Assert.Equal(25, l.Frame.X0);
-        Assert.Equal(7, l.Frame.Y0);
-        foreach (var key in new[] { "titulo", "proprietario", "imovel", "municipio", "matricula", "area", "perimetro", "coordenada", "localizacao", "resp", "assprop", "escala", "data", "folha", "prancha" })
-        {
-            var c = l.Cell(key).Rect;
-            Assert.True(c.X0 >= l.TitleBlock.X0 - 1e-9 && c.X1 <= l.TitleBlock.X1 + 1e-9 && c.Y0 >= l.TitleBlock.Y0 - 1e-9 && c.Y1 <= l.TitleBlock.Y1 + 1e-9, key);
-            Assert.True(c.Width > 10 && c.Height >= 6, key);
-        }
-        Assert.True(l.Drawing.Width > 150 && l.Drawing.Height > 150);
-    }
-
     [Fact]
     public void SheetLayout_ChooseScale()
     {

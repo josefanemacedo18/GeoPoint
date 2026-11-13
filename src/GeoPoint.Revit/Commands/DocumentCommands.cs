@@ -55,6 +55,7 @@ internal static class Folders
 public sealed class CmdMemorial : CommandBase
 {
     protected override string Title => "Memorial descritivo";
+    protected override string? BackupReason => "memorial";
 
     protected override Result Run(GpSession s) => Open(s, null, null);
 
@@ -79,9 +80,10 @@ public sealed class CmdMemorial : CommandBase
         }
         // Conferência antes de emitir (mesma das pranchas): dados que faltam e diferenças com a matrícula.
         {
-            var pend = GeoPoint.Core.Sheets.SheetContent.Build(s.NewContext(), new ValueFormatter(s.Settings.Format),
+            var conf = GeoPoint.Core.Sheets.SheetContent.Build(s.NewContext(), new ValueFormatter(s.Settings.Format),
                 new GeoPoint.Core.Sheets.SheetSpec { LotIds = w.Lots.Select(l => l.Id).ToList(), OperationId = operation?.Id ?? "" }, w.Lots,
-                m.CoordinateSystems.FirstOrDefault() ?? CrsDef.Utm()).Pendencias.Where(p => !p.StartsWith("Projeto sem georreferência")).Distinct().ToList();
+                m.CoordinateSystems.FirstOrDefault() ?? CrsDef.Utm());
+            var pend = conf.Pendencias.Where(p => !p.StartsWith("Projeto sem georreferência")).Distinct().ToList();
             if (pend.Count > 0)
             {
                 var td = new TaskDialog("GeoPoint – Conferência antes de emitir")
@@ -92,7 +94,12 @@ public sealed class CmdMemorial : CommandBase
                 };
                 td.AddCommandLink(TaskDialogCommandLinkId.CommandLink1, "Gerar o memorial mesmo assim");
                 td.AddCommandLink(TaskDialogCommandLinkId.CommandLink2, "Voltar e corrigir");
-                if (td.Show() != TaskDialogResult.CommandLink1) return Result.Cancelled;
+                if (conf.PendenciaLotIds.Count > 0)
+                    td.AddCommandLink(TaskDialogCommandLinkId.CommandLink3, "Selecionar no desenho os lotes com pendência");
+                var res = td.Show();
+                if (res == TaskDialogResult.CommandLink3)
+                    LotServices.SelectSources(s, conf.PendenciaLotIds.Select(s.Project.FindLot).Where(l => l is not null).Select(l => l!));
+                if (res != TaskDialogResult.CommandLink1) return Result.Cancelled;
             }
         }
 

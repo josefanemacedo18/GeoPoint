@@ -145,8 +145,7 @@
                     <GroupBox Header="Conteúdo e arquivo">
                         <StackPanel>
                             <CheckBox x:Name="Tables" Content="Quadros de coordenadas e de segmentos"/>
-                            <CheckBox x:Name="Notes" Visibility="Collapsed"/>
-                            <CheckBox x:Name="Buildings" Content="Área edificada (edificações e distâncias até as divisas)"/>
+                            <CheckBox x:Name="Buildings" Content="Construção existente (área edificada e distâncias até as divisas)"/>
                             <CheckBox x:Name="Altitudes" Visibility="Collapsed" Content="Altitudes dos vértices"/>
                             <CheckBox x:Name="OnePerLot" Content="Um arquivo por lote (tipo Lote(s))"/>
                             <CheckBox x:Name="OpenAfter" Content="Abrir no Word depois de gerar"/>

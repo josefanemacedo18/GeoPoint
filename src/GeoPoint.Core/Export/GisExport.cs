@@ -102,10 +102,10 @@ public static class GisExport
                     w.WriteStartElement("Placemark");
                     w.WriteElementString("name", lot.DisplayName);
                     w.WriteStartElement("description");
-                    w.WriteCData(LotHtml(lot, r, fmt));
+                    w.WriteCData(LotHtml(ctx.Project, lot, r, fmt));
                     w.WriteEndElement();
                     w.WriteElementString("styleUrl", "#uso" + (int)lot.Uso);
-                    WriteExtended(w, lot, r);
+                    WriteExtended(w, ctx.Project, lot, r);
                     w.WriteStartElement("Polygon");
                     w.WriteElementString("tessellate", "1");
                     w.WriteElementString("altitudeMode", "clampToGround");
@@ -195,7 +195,7 @@ public static class GisExport
         return sb.ToString().Replace("encoding=\"utf-16\"", "encoding=\"UTF-8\"");
     }
 
-    private static void WriteExtended(XmlWriter w, LotRecord lot, LotReport r)
+    private static void WriteExtended(XmlWriter w, ParcelProject p, LotRecord lot, LotReport r)
     {
         w.WriteStartElement("ExtendedData");
         void D(string name, string value)
@@ -210,12 +210,13 @@ public static class GisExport
         D("uso", LotUseInfo.Label(lot.Uso));
         D("area_m2", r.AreaLocal.ToString("0.00", Inv));
         D("perimetro_m", r.PerimeterLocal.ToString("0.00", Inv));
-        D("matricula", lot.Matricula);
-        D("proprietario", lot.Proprietario);
+        // Mesmos dados do memorial e das pranchas (lotes de desmembramento sem matrícula própria não herdam a do imóvel).
+        D("matricula", p.EffectiveMatricula(lot));
+        D("proprietario", p.EffectiveOwner(lot));
         w.WriteEndElement();
     }
 
-    private static string LotHtml(LotRecord lot, LotReport r, ValueFormatter fmt)
+    private static string LotHtml(ParcelProject p, LotRecord lot, LotReport r, ValueFormatter fmt)
     {
         string E(string s) => System.Net.WebUtility.HtmlEncode(s);
         var sb = new StringBuilder("<table>");
@@ -224,8 +225,8 @@ public static class GisExport
         Row("Área", fmt.Area(r.AreaLocal));
         Row("Perímetro", fmt.Distance(r.PerimeterLocal));
         if (r.Testada > 0) Row("Testada", fmt.Distance(r.Testada));
-        Row("Matrícula", lot.Matricula);
-        Row("Proprietário", lot.Proprietario);
+        Row("Matrícula", p.EffectiveMatricula(lot));
+        Row("Proprietário", p.EffectiveOwner(lot));
         Row("Endereço", lot.Endereco);
         sb.Append("</table>");
         return sb.ToString();
@@ -270,8 +271,8 @@ public static class GisExport
                 if (r.AreaUtm is double au) w.WriteNumber("area_utm_m2", Math.Round(au, 4));
                 w.WriteNumber("perimetro_m", Math.Round(r.PerimeterLocal, 4));
                 w.WriteNumber("testada_m", Math.Round(r.Testada, 4));
-                w.WriteString("matricula", lot.Matricula);
-                w.WriteString("proprietario", lot.Proprietario);
+                w.WriteString("matricula", ctx.Project.EffectiveMatricula(lot));
+                w.WriteString("proprietario", ctx.Project.EffectiveOwner(lot));
                 w.WriteEndObject();
                 w.WriteStartObject("geometry");
                 w.WriteString("type", "Polygon");

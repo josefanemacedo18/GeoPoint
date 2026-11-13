@@ -47,7 +47,7 @@
                             <TextBox Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3" x:Name="ResultOwner" ToolTip="Em branco: herda o proprietário dos lotes originais."/>
                         </Grid>
                     </GroupBox>
-                    <CheckBox x:Name="Sheets" IsChecked="True" Content="Gerar pranchas A4 (situação atual e proposta)"/>
+                    <CheckBox x:Name="Sheets" IsChecked="True" Content="Gerar pranchas (situação atual e proposta, pelo modelo de prancha escolhido)"/>
                     <DockPanel>
                         <Label Content="Observações:"/>
                         <TextBox x:Name="Notes"/>

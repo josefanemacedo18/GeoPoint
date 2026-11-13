@@ -121,8 +121,6 @@ public sealed class MemorialSettings
     public DistanceType DistanceType { get; set; } = DistanceType.Horizontal;
     public AreaType AreaType { get; set; } = AreaType.Local;
     public bool IncludeVertexTable { get; set; } = true;
-    /// <summary>Sem uso (as notas técnicas foram retiradas do memorial). Mantido para ler configurações antigas.</summary>
-    public bool IncludeSystemDeclaration { get; set; }
     public bool IncludeAltitude { get; set; }
     /// <summary>Inclui o lado do lote na descrição ("pela frente", "pela lateral direita"...).</summary>
     public bool IncludeSide { get; set; } = true;
@@ -247,7 +245,37 @@ public sealed class GeoPointSettings
         return RuleProfiles.FirstOrDefault(p => p.Name == name) ?? RuleProfiles.FirstOrDefault();
     }
 
-    public GeoPointSettings Clone() => SettingsStore.Deserialize(SettingsStore.Serialize(this)) ?? new GeoPointSettings();
+    public GeoPointSettings Clone()
+    {
+        var c = SettingsStore.Deserialize(SettingsStore.Serialize(this)) ?? new GeoPointSettings();
+        // A chave do Google não é serializada (fica no cofre): copia direto.
+        c.Imagery ??= new();
+        c.Imagery.GoogleKey = Imagery?.GoogleKey ?? "";
+        return c;
+    }
+}
+
+/// <summary>Cofre de segredos (chaves de API). No Revit é o Gerenciador de Credenciais do Windows.</summary>
+public interface ISecretStore
+{
+    string? Read(string name);
+    /// <summary>Grava (valor vazio = apaga).</summary>
+    void Write(string name, string? value);
+}
+
+/// <summary>Cofre em memória (testes e quando não há cofre do sistema).</summary>
+public sealed class MemorySecretStore : ISecretStore
+{
+    private readonly Dictionary<string, string> _d = new();
+    public string? Read(string name) => _d.TryGetValue(name, out var v) ? v : null;
+    public void Write(string name, string? value) { if (string.IsNullOrEmpty(value)) _d.Remove(name); else _d[name] = value; }
+}
+
+public static class Secrets
+{
+    public const string GoogleKeyName = "GeoPoint/GoogleMapsStaticKey";
+    /// <summary>Cofre em uso (o suplemento troca pelo do Windows ao iniciar).</summary>
+    public static ISecretStore Store { get; set; } = new MemorySecretStore();
 }
 
 public static class JsonOptions
@@ -303,7 +331,14 @@ public static class SettingsStore
                 try { File.Copy(path, path + ".corrompido-" + DateTime.Now.ToString("yyyyMMddHHmmss"), true); } catch { }
                 return Normalize(new GeoPointSettings());
             }
-            return Normalize(s);
+            s = Normalize(s);
+            // Chave do Google em texto (configurações antigas): vai para o cofre e sai do arquivo.
+            if (!string.IsNullOrWhiteSpace(s.Imagery.LegacyGoogleKey))
+            {
+                s.Imagery.GoogleKey = s.Imagery.LegacyGoogleKey.Trim();
+                try { Save(s, path); } catch { }
+            }
+            return s;
         }
         catch
         {
@@ -315,9 +350,18 @@ public static class SettingsStore
     {
         path ??= DefaultPath;
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        // A chave do Google vai para o cofre; se o cofre falhar, fica no arquivo como antes (para não perder a chave).
+        s.Imagery ??= new();
+        s.Imagery.LegacyGoogleKey = null;
+        try { Secrets.Store.Write(Secrets.GoogleKeyName, s.Imagery.GoogleKey.Trim()); }
+        catch { if (!string.IsNullOrWhiteSpace(s.Imagery.GoogleKey)) s.Imagery.LegacyGoogleKey = s.Imagery.GoogleKey.Trim(); }
         var tmp = path + ".tmp";
-        File.WriteAllText(tmp, Serialize(s));
-        File.Move(tmp, path, true);
+        try
+        {
+            File.WriteAllText(tmp, Serialize(s));
+            File.Move(tmp, path, true);
+        }
+        finally { s.Imagery.LegacyGoogleKey = null; }
     }
 
     private static GeoPointSettings Normalize(GeoPointSettings s)
@@ -332,6 +376,10 @@ public static class SettingsStore
         s.Streets ??= new();
         s.Sheets ??= new();
         s.Imagery ??= new();
+        if (string.IsNullOrWhiteSpace(s.Imagery.LegacyGoogleKey))
+        {
+            try { s.Imagery.GoogleKey = Secrets.Store.Read(Secrets.GoogleKeyName) ?? ""; } catch { s.Imagery.GoogleKey = ""; }
+        }
         s.Streets.Largura = Math.Clamp(s.Streets.Largura, 1, 200);
         s.Streets.Calcada = Math.Clamp(s.Streets.Calcada, 0, 50);
         s.Streets.RaioEsquina = Math.Clamp(s.Streets.RaioEsquina, 0, 50);

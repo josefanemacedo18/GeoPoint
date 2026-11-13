@@ -200,6 +200,10 @@ public class SheetV15PreviewTests
                 case PCircle c:
                     sb.Append($"<circle cx='{X(c.C.X)}' cy='{Y(c.C.Y)}' r='{F(c.Radius * px)}' fill='{(c.Filled ? "black" : "none")}'/>");
                     break;
+                case PImage im when im.Key == "logo" && comp.Input.Template.LogoBytes() is { } logo:
+                    sb.Append($"<image x='{X(im.Rect.X0)}' y='{Y(im.Rect.Y1)}' width='{F(im.Rect.Width * px)}' height='{F(im.Rect.Height * px)}' preserveAspectRatio='xMidYMid meet' " +
+                              $"href='data:image/{ImageHeader.Extension(logo)};base64,{Convert.ToBase64String(logo)}'/>");
+                    break;
                 case PImage im:
                     sb.Append($"<rect x='{X(im.Rect.X0)}' y='{Y(im.Rect.Y1)}' width='{F(im.Rect.Width * px)}' height='{F(im.Rect.Height * px)}' fill='#5a7a4a'/>");
                     break;

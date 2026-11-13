@@ -23,7 +23,7 @@ public sealed class BlockRow : Notify
         SheetBlockKind.Orientacao => "Orientação/Escala",
         SheetBlockKind.Croqui => "Croqui",
         SheetBlockKind.Titulo => "Título e folha",
-        SheetBlockKind.Escritorio => "Escritório",
+        SheetBlockKind.Escritorio => "Escritório (logomarca)",
         _ => "Observações",
     };
     public bool Visible { get => Block.Visible; set { Block.Visible = value; OnChanged(); } }
@@ -80,7 +80,7 @@ public partial class SheetTemplatesWindow : Window
         var st = _cur.Styles;
         SFont.Text = st.Font; STitulo.Text = N(st.TituloMm); SCab.Text = N(st.CabecalhoMm); SRot.Text = N(st.RotuloMm);
         SVal.Text = N(st.ValorMm); STab.Text = N(st.TabelaMm); SGrade.Text = N(st.GradeMm); SDes.Text = N(st.DesenhoMm);
-        TOffice.Text = _cur.OfficeName; TLogo.Text = _cur.LogoPath;
+        TOffice.Text = _cur.OfficeName; ShowLogo();
         Blocks.ItemsSource = _cur.Blocks.Select(b => new BlockRow(b)).ToList();
         History.ItemsSource = _cur.History.OrderByDescending(h => h.Version).ToList();
         _loading = false;
@@ -125,7 +125,6 @@ public partial class SheetTemplatesWindow : Window
             st.ValorMm = Num(SVal, "Valores", 1, 8); st.TabelaMm = Num(STab, "Tabelas", 1, 8); st.GradeMm = Num(SGrade, "Grade", 1, 8);
             st.DesenhoMm = Num(SDes, "Desenho", 0, 8);
             t.OfficeName = TOffice.Text.Trim();
-            t.LogoPath = TLogo.Text.Trim();
             return true;
         }
         catch (FormatException ex)
@@ -167,7 +166,8 @@ public partial class SheetTemplatesWindow : Window
         foreach (var b in blocks)
         {
             var old = _cur.Blocks.FirstOrDefault(x => x.Kind == b.Kind);
-            if (old is not null) { b.Title = old.Title; b.Text = old.Text; if (b.W > 0) b.Visible = old.Visible; }
+            // Modelos até 1.5.2 tinham o bloco Escritório sem posição: agora ele vira o espaço da logomarca.
+            if (old is not null && !(b.Kind == SheetBlockKind.Escritorio && old.W <= 0)) { b.Title = old.Title; b.Text = old.Text; if (b.W > 0) b.Visible = old.Visible; }
         }
         _cur.Blocks = blocks;
         Blocks.ItemsSource = _cur.Blocks.Select(b => new BlockRow(b)).ToList();
@@ -270,10 +270,55 @@ public partial class SheetTemplatesWindow : Window
         catch (Exception ex) { Fmt.Msg("Não foi possível restaurar: " + ex.Message, icon: MessageBoxImage.Error); }
     }
 
+    /// <summary>Mostra a situação da logomarca do modelo.</summary>
+    private void ShowLogo()
+    {
+        if (_cur is null) { TLogo.Text = ""; return; }
+        var bytes = _cur.LogoBytes();
+        var size = ImageHeader.Size(bytes);
+        if (bytes is null || size is null) { TLogo.Text = "(sem logomarca – o espaço fica em branco na prancha)"; return; }
+        string where = _cur.LogoData.Length > 0 ? "guardada no modelo" : "arquivo " + System.IO.Path.GetFileName(_cur.LogoPath);
+        TLogo.Text = $"{(ImageHeader.Extension(bytes) ?? "").ToUpperInvariant()} {size.Value.W}×{size.Value.H} px, {bytes.Length / 1024.0:0} KB – {where}";
+        if (_cur.LogoData.Length == 0 && size is not null)
+        {
+            // Modelo antigo (só o caminho do arquivo): passa a guardar a imagem no modelo.
+            try { _cur.SetLogo(bytes); TLogo.Text += " (será guardada no modelo ao salvar)"; } catch { }
+        }
+        var vis = _cur.Blocks.FirstOrDefault(b => b.Kind == SheetBlockKind.Escritorio);
+        if (vis is { Visible: false }) TLogo.Text += " – ligue o bloco Escritório na tabela abaixo";
+    }
+
     private void Logo_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new Microsoft.Win32.OpenFileDialog { Title = "Logotipo", Filter = "Imagens|*.png;*.jpg;*.jpeg;*.bmp" };
-        if (dlg.ShowDialog(this) == true) TLogo.Text = dlg.FileName;
+        if (_cur is null) return;
+        var dlg = new Microsoft.Win32.OpenFileDialog { Title = "Logomarca do escritório", Filter = "Imagens|*.png;*.jpg;*.jpeg;*.gif;*.bmp" };
+        if (dlg.ShowDialog(this) != true) return;
+        try
+        {
+            if (!Collect()) return;
+            _cur.SetLogo(System.IO.File.ReadAllBytes(dlg.FileName));
+            // Sem bloco Escritório visível, a logomarca não aparece: liga o bloco (na posição padrão se ainda não tiver tamanho).
+            var b = _cur.Blocks.FirstOrDefault(x => x.Kind == SheetBlockKind.Escritorio);
+            if (b is not null && (!b.Visible || b.W <= 2 || b.H <= 2))
+            {
+                var d = SheetTemplate.DefaultBlocks(_cur).First(x => x.Kind == SheetBlockKind.Escritorio);
+                if (b.W <= 2 || b.H <= 2) { b.X = d.X; b.Y = d.Y; b.W = d.W; b.H = d.H; }
+                b.Visible = true;
+                Blocks.ItemsSource = _cur.Blocks.Select(x => new BlockRow(x)).ToList();
+            }
+            ShowLogo();
+            RefreshPreview();
+        }
+        catch (Exception ex) { Fmt.Msg(ex.Message, icon: MessageBoxImage.Warning); }
+    }
+
+    private void LogoRemove_Click(object sender, RoutedEventArgs e)
+    {
+        if (_cur is null) return;
+        if (!Collect()) return;
+        _cur.SetLogo(null);
+        ShowLogo();
+        RefreshPreview();
     }
 
     private void Use_Click(object sender, RoutedEventArgs e)

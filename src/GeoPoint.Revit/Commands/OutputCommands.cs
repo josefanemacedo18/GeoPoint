@@ -65,7 +65,7 @@ public sealed class CmdAnotar : CommandBase
             new("refc", "Coordenada do ponto de referência de cada lote (ponto, linha de chamada, nome e coordenadas no sistema das opções)", a.RefCallout),
             new("area", "Nome e área no centro do lote", a.AreaLabel),
             new("opaque", "Fundo opaco nos textos (legíveis sobre hachuras)", a.OpaqueText),
-            new("size", "Altura do texto no papel (mm)", a.TextSizeMm),
+            new("size", "Altura do texto no papel (mm) – nas vistas; nas pranchas vale o tamanho \"Desenho\" do modelo de prancha (0 = este)", a.TextSizeMm),
             new("offset", "Afastamento das linhas no papel (mm)", a.OffsetMm),
             new("dot", "Diâmetro do ponto no papel (mm)", a.DotMm),
             new("clear", "Somente remover as anotações do GeoPoint dos lotes marcados nesta vista", false),
@@ -85,7 +85,6 @@ public sealed class CmdAnotar : CommandBase
         var pctx = s.NewContext();
         var pfmt = new ValueFormatter(s.Settings.Format);
         double vAng = Annotator.ViewAngle(view);
-        double vScale = Math.Max(1, view.Scale);
         var pdef = pctx.Coords.HasGeoreference ? (s.Settings.Memorial.CoordinateSystems.FirstOrDefault() ?? GeoPoint.Core.Geodesy.CrsDef.Utm()) : GeoPoint.Core.Geodesy.CrsDef.ProjectLocalDef();
         w.EnablePreview((lots, B, N) =>
         {
@@ -93,18 +92,14 @@ public sealed class CmdAnotar : CommandBase
             var reps = new List<LotReport>();
             foreach (var l in lots) { try { reps.Add(pctx.Report(l)); } catch { } }
             if (reps.Count == 0) return (items, -vAng, "Marque os lotes.");
+            // Mesmas opções do planejador da anotação de verdade, com os valores marcados na janela.
             var lo = Annotator.Options.From(s.Settings.Annotation);
-            lo.LabelOwner = B("lowner"); lo.LabelMatricula = B("lmat"); lo.LabelPerimeter = B("lper");
+            lo.Edges = B("edges"); lo.EdgeAngle = B("angle"); lo.Vertices = B("vert"); lo.Dots = B("dots"); lo.Confrontantes = B("conf");
+            lo.Area = B("area"); lo.Outside = B("out"); lo.LabelOwner = B("lowner"); lo.LabelMatricula = B("lmat"); lo.LabelPerimeter = B("lper");
             double textMm = Math.Clamp(N("size"), 0.5, 20);
-            var po = new AnnotationPlanOptions
-            {
-                Edges = B("edges"), EdgeAngle = B("angle"), Vertices = B("vert"), Dots = B("dots"), Confrontantes = B("conf"), Area = B("area"), Outside = B("out"),
-                TextM = textMm / 1000 * vScale, OffsetM = N("offset") / 1000 * vScale, DotRadiusM = N("dot") / 2000 * vScale,
-                PadM = RevitStyles.TextPadMm / 1000 * vScale, LineFactor = RevitStyles.LineFactor, ViewAngle = vAng,
-                LabelOf = r => Annotator.LotLabel(r, pctx, pfmt, lo),
-                PerLotVertexNames = pctx.Settings.Naming.Numbering == VertexNumbering.Lote && reps.Count > 1,
-                RefCallout = B("refc") ? r => SheetBuilder.Callout(r, pctx, pfmt, pdef) : null,
-            };
+            lo.TextMm = textMm; lo.OffsetMm = Math.Clamp(N("offset"), 0, 50); lo.DotMm = Math.Clamp(N("dot"), 0.2, 10);
+            var po = Annotator.PlanOptions(s.Doc, view, pctx, pfmt, lo, reps.Count,
+                refCallout: B("refc") ? r => SheetBuilder.Callout(r, pctx, pfmt, pdef) : null);
             var plan = AnnotationPlanner.Plan(reps, pfmt, po);
             int i = 0;
             foreach (var r in reps)
@@ -300,7 +295,7 @@ public sealed class CmdAjuda : CommandBase
                 "Fluxo recomendado:\n" +
                 "1. Desenhe as divisas com linhas (modelo ou detalhe), com snap nos encontros – ou use Importar Pontos / Gerar Lote.\n" +
                 "2. Reconhecer Lotes. 3. Gerenciar Lotes (nomes, confrontantes, testada). 4. Definir Referência.\n" +
-                "5. Anotar Lotes, Área Edificada, Vias. 6. Memorial, Pranchas e Exportar PDF.\n\n" +
+                "5. Anotar Lotes, Construção Existente, Vias. 6. Memorial, Pranchas e Exportar PDF.\n\n" +
                 "Atalhos de teclado: os comandos do GeoPoint aparecem em Vista › Interface do usuário › Atalhos de teclado (filtro \"Ferramentas externas\"/\"GeoPoint\"), onde você define as teclas.\n\n" +
                 "Os dados ficam no próprio .rvt (Desfazer funciona). Antes de cada operação o GeoPoint guarda uma cópia dos seus dados.\n" +
                 $"Configurações, modelos e registros: {SettingsStore.DefaultFolder}",
@@ -344,7 +339,7 @@ public sealed class CmdAjuda : CommandBase
         var w = new SheetExportWindow(rows, Backups.Folder(s.Doc), "") { Title = "GeoPoint – Restaurar cópia de segurança" };
         w.ConfigureAsPicker("Restaurar cópia de segurança", "Marque UMA cópia. Os dados atuais do GeoPoint também são guardados antes (dá para voltar).", "Restaurar");
         if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
-        var chosen = w.Selected.FirstOrDefault()?.Tag as Backups.Entry;
+        var chosen = w.Selected.FirstOrDefault()?.Tag as BackupEntry;
         if (chosen is null) return Result.Cancelled;
         if (w.Selected.Count > 1) { Ui.Warn("Restaurar", "Marque só uma cópia."); return Result.Cancelled; }
         var data = Backups.Load(chosen.Path);
@@ -433,7 +428,7 @@ public sealed class CmdAjuda : CommandBase
         }
         tg.Assimilate();
         try { s.UiDoc.GetOpenUIViews().FirstOrDefault(v => v.ViewId == view.Id)?.ZoomToFit(); } catch { }
-        Ui.Info("Projeto de exemplo criado", "Três lotes (01, 02 e 03 – Quadra A), a Rua Exemplo na frente e uma edificação no lote 02, com a referência em Porto Franco – MA.\n\nExperimente: Anotar Lotes, Área Edificada, Vias, Memorial, Pranchas e Desmembramento (desenhando com a ferramenta Linha).");
+        Ui.Info("Projeto de exemplo criado", "Três lotes (01, 02 e 03 – Quadra A), a Rua Exemplo na frente e uma edificação no lote 02, com a referência em Porto Franco – MA.\n\nExperimente: Anotar Lotes, Construção Existente, Vias, Memorial, Pranchas e Desmembramento (desenhando com a ferramenta Linha).");
         return Result.Succeeded;
     }
 }

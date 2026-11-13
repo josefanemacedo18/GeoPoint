@@ -14,9 +14,7 @@ namespace GeoPoint.Revit.Infrastructure;
 /// <summary>Cópias de segurança dos dados do GeoPoint (lotes, fases, operações) antes das operações que alteram o projeto.</summary>
 public static class Backups
 {
-    public const int Keep = 40;
-
-    public sealed record Entry(string Path, DateTime When, string Reason, int Lots);
+    public const int Keep = ProjectBackups.Keep;
 
     public static string Folder(Document doc)
     {
@@ -25,42 +23,20 @@ public static class Backups
         return System.IO.Path.Combine(SettingsStore.DefaultFolder, "copias", name.Length == 0 ? "projeto" : name);
     }
 
-    /// <summary>Grava a cópia (silencioso: uma falha aqui nunca impede o comando).</summary>
+    /// <summary>Grava a cópia compactada (silencioso: uma falha aqui nunca impede o comando; cópia igual à última não é repetida).</summary>
     public static void Save(GpSession s, string reason)
     {
         try
         {
             if (s.Project.Lots.Count == 0 && s.Project.Fases.Count <= 1) return;
-            var dir = Folder(s.Doc);
-            Directory.CreateDirectory(dir);
-            string safe = new string(reason.Select(c => System.IO.Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
-            string file = System.IO.Path.Combine(dir, $"{DateTime.Now:yyyyMMdd-HHmmss} - {safe}.json");
-            File.WriteAllText(file, JsonSerializer.Serialize(s.Project, JsonOptions.Default));
-            foreach (var old in Directory.GetFiles(dir, "*.json").OrderByDescending(f => f).Skip(Keep)) File.Delete(old);
+            ProjectBackups.Save(Folder(s.Doc), s.Project, reason);
         }
         catch (Exception ex) { Logger.Error("Cópia de segurança", ex); }
     }
 
-    public static List<Entry> List(Document doc)
-    {
-        var res = new List<Entry>();
-        var dir = Folder(doc);
-        if (!Directory.Exists(dir)) return res;
-        foreach (var f in Directory.GetFiles(dir, "*.json").OrderByDescending(x => x))
-        {
-            var name = System.IO.Path.GetFileNameWithoutExtension(f);
-            var parts = name.Split(" - ", 2);
-            DateTime when = File.GetLastWriteTime(f);
-            if (parts.Length > 0 && DateTime.TryParseExact(parts[0], "yyyyMMdd-HHmmss", null, System.Globalization.DateTimeStyles.None, out var d)) when = d;
-            int lots = 0;
-            try { lots = Load(f).Lots.Count; } catch { }
-            res.Add(new Entry(f, when, parts.Length > 1 ? parts[1] : "", lots));
-        }
-        return res;
-    }
+    public static List<BackupEntry> List(Document doc) => ProjectBackups.List(Folder(doc));
 
-    public static ParcelProject Load(string path) =>
-        JsonSerializer.Deserialize<ParcelProject>(File.ReadAllText(path), JsonOptions.Default) ?? throw new InvalidOperationException("Cópia inválida.");
+    public static ParcelProject Load(string path) => ProjectBackups.Load(path);
 
     /// <summary>Arquivo .zip com registros, configurações (sem chaves) e dados do projeto, para enviar ao suporte.</summary>
     public static string Diagnostic(GpSession s)
@@ -85,10 +61,8 @@ public static class Backups
         sb.AppendLine($"Lotes: {s.Project.Lots.Count} (ativos na fase: {s.Project.ActiveLots.Count()})  Operações: {s.Project.Operations.Count}  Pranchas: {s.Project.Sheets.Count}  Edificações: {s.Project.Buildings.Count}");
         sb.AppendLine($"Referência: {(s.Project.Reference.IsSet ? $"{s.Project.Reference.Lat:0.######}, {s.Project.Reference.Lon:0.######} ({s.Project.Reference.Mode})" : "não definida")}");
         Add("sistema.txt", sb.ToString());
-        // Configurações sem a chave do Google.
-        var st = s.Settings.Clone();
-        st.Imagery.GoogleKey = st.Imagery.GoogleKey.Length > 0 ? "(omitida)" : "";
-        Add("configuracoes.json", JsonSerializer.Serialize(st, JsonOptions.Default));
+        // Configurações (a chave do Google fica no cofre do Windows e não entra no arquivo).
+        Add("configuracoes.json", SettingsStore.Serialize(s.Settings));
         Add("projeto-geopoint.json", JsonSerializer.Serialize(s.Project, JsonOptions.Default));
         try
         {

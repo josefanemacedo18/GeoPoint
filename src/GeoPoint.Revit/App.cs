@@ -20,6 +20,8 @@ public sealed class App : IExternalApplication
     public Result OnStartup(UIControlledApplication app)
     {
         AppDomain.CurrentDomain.AssemblyResolve += ResolveLocal;
+        // Chaves de API ficam no Gerenciador de Credenciais do Windows, não no arquivo de configurações.
+        GeoPoint.Core.Settings.Secrets.Store = new Infrastructure.WindowsCredentialStore();
         try
         {
             try { app.CreateRibbonTab(TabName); } catch { /* já existe */ }
@@ -40,8 +42,8 @@ public sealed class App : IExternalApplication
             var ops = app.CreateRibbonPanel(TabName, "Operações");
             Add(ops, "Desmem-\nbramento", typeof(Commands.CmdDesmembramento), "Divide um lote: automático (partes iguais, áreas ou testadas definidas), pelas linhas que você desenhou ou por lotes já reconhecidos. Com prévia, lote remanescente, proprietários e anexação a lotes vizinhos.", IconKind.Split);
             Add(ops, "Remem-\nbramento", typeof(Commands.CmdRemembramento), "Une lotes contíguos em um único lote (remembramento/unificação), com prévia.", IconKind.Merge);
-            Add(ops, "Área\nEdificável", typeof(Commands.CmdAreaEdificavel), "Calcula e desenha a área edificável a partir dos recuos de cada divisa.", IconKind.Setback);
-            Add(ops, "Área\nEdificada", typeof(Commands.CmdAreaEdificada), "Edificações existentes desenhadas com linhas dentro do lote: área de projeção, pavimentos, área construída, taxa de ocupação e distância até cada divisa (no desenho, no memorial e nas pranchas).", IconKind.Building);
+            Add(ops, "Recuos", typeof(Commands.CmdAreaEdificavel), "Recuos (área edificável): calcula e desenha a área onde se pode construir, a partir do recuo de cada divisa. Para planejar uma construção nova.", IconKind.Setback);
+            Add(ops, "Construção\nExistente", typeof(Commands.CmdAreaEdificada), "Construção existente (área edificada): edificações que já existem, desenhadas com linhas dentro do lote: área de projeção, pavimentos, área construída, taxa de ocupação e distância até cada divisa (no desenho, no memorial e nas pranchas).", IconKind.Building);
 
             var anot = app.CreateRibbonPanel(TabName, "Anotação");
             Add(anot, "Anotar\nLotes", typeof(Commands.CmdAnotar), "Distâncias e azimutes fora do lote, vértices com ponto preenchido, área e extensão de cada confrontante, na vista atual.", IconKind.Annotate);
@@ -105,7 +107,7 @@ public sealed class App : IExternalApplication
     }
 }
 
-public enum IconKind { Recognize, Manager, Sync, Info, Reference, Traverse, Split, Merge, Divide, Setback, Annotate, Table, Native, Memorial, Globe, Excel, Chart, Check, Topo, Settings, Help, Hatch, Street, Signature, Sheet, Phases, Import, Generate, Building, Pdf }
+public enum IconKind { Recognize, Manager, Sync, Info, Reference, Traverse, Split, Merge, Setback, Annotate, Table, Memorial, Globe, Excel, Check, Settings, Help, Hatch, Street, Signature, Sheet, Phases, Import, Generate, Building, Pdf }
 
 /// <summary>Ícones vetoriais desenhados em código (sem arquivos externos).</summary>
 public static class Icons
@@ -222,10 +224,6 @@ public static class Icons
                 dc.DrawRectangle(Light, P(Blue, 2), new Rect(16, 8, 13, 16));
                 dc.DrawLine(P(Light, 3), new Point(16, 10), new Point(16, 22));
                 break;
-            case IconKind.Divide:
-                dc.DrawRectangle(Light, P(Blue, 2), new Rect(3, 6, 26, 20));
-                for (int i = 1; i < 4; i++) dc.DrawLine(P(Orange, 1.8), new Point(3 + i * 6.5, 6), new Point(3 + i * 6.5, 26));
-                break;
             case IconKind.Pdf:
                 dc.DrawGeometry(Brushes.White, P(Gray, 1.5), Geometry.Parse("M 7,3 L 21,3 L 27,9 L 27,29 L 7,29 Z"));
                 dc.DrawRectangle(Freeze(new SolidColorBrush(Color.FromRgb(0xC6, 0x28, 0x28))), null, new Rect(3, 14, 18, 10));
@@ -253,10 +251,6 @@ public static class Icons
                 for (int i = 1; i < 4; i++) dc.DrawLine(P(Gray, 1), new Point(3, 10 + i * 4.3), new Point(29, 10 + i * 4.3));
                 dc.DrawLine(P(Gray, 1), new Point(12, 10), new Point(12, 27));
                 break;
-            case IconKind.Native:
-                Lot(dc, Freeze(new SolidColorBrush(Color.FromRgb(0xC8, 0xE6, 0xC9))));
-                dc.DrawGeometry(null, P(Green, 2), Geometry.Parse("M 9,16 L 14,21 L 23,11"));
-                break;
             case IconKind.Memorial:
                 dc.DrawGeometry(Brushes.White, P(Gray, 1.5), Geometry.Parse("M 7,3 L 21,3 L 27,9 L 27,29 L 7,29 Z"));
                 dc.DrawRectangle(Blue, null, new Rect(3, 12, 14, 12));
@@ -271,17 +265,9 @@ public static class Icons
                 dc.DrawRectangle(Green, null, new Rect(3, 4, 26, 24));
                 dc.DrawText(new FormattedText("X", System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal), 16, Brushes.White, 1.0), new Point(10, 5));
                 break;
-            case IconKind.Chart:
-                dc.DrawRectangle(Blue, null, new Rect(5, 16, 5, 12));
-                dc.DrawRectangle(Green, null, new Rect(13, 9, 5, 19));
-                dc.DrawRectangle(Orange, null, new Rect(21, 4, 5, 24));
-                break;
             case IconKind.Check:
                 dc.DrawEllipse(Green, null, new Point(16, 16), 13, 13);
                 dc.DrawGeometry(null, P(Brushes.White, 3), Geometry.Parse("M 9,16 L 14,21 L 23,11"));
-                break;
-            case IconKind.Topo:
-                dc.DrawGeometry(Freeze(new SolidColorBrush(Color.FromRgb(0xA5, 0xD6, 0xA7))), P(Green, 1.5), Geometry.Parse("M 2,28 L 10,14 L 16,20 L 22,8 L 30,28 Z"));
                 break;
             case IconKind.Settings:
                 dc.DrawEllipse(Gray, null, new Point(16, 16), 11, 11);

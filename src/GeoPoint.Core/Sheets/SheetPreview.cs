@@ -86,6 +86,7 @@ public static class SheetPreview
             CrsAt = q => ctx.Coords.ToCrs(ToModel(q), def) is { } cc ? (geo ? (cc.Lon, cc.Lat) : (cc.East, cc.North)) : null,
             Geographic = geo, WestAsO = ctx.Settings.Format.WestAsO,
             Table = fit.Table is null ? null : table, TableRect = fit.Table, Palette = palette,
+            Images = tpl.HasLogo ? new HashSet<string> { "logo" } : new HashSet<string>(), LogoAspect = tpl.LogoAspect(), Placeholders = true,
         };
         var mapPrims = new List<SheetPrim>();
         for (int i = 0; i < reps.Count; i++)
@@ -141,19 +142,10 @@ public static class SheetPreview
         return new RefCallout(v.Internal, v.Name, SheetTexts.CalloutLines(ctx.Coords, fmt, def, v.Internal));
     }
 
-    /// <summary>Rótulo padrão do lote: nome, proprietário, matrícula, área e perímetro.</summary>
+    /// <summary>Rótulo padrão do lote (opções de rótulo das Configurações de anotação).</summary>
     public static string DefaultLabel(LotReport rep, ProjectContext ctx, ValueFormatter fmt)
     {
-        var lot = rep.Lot;
-        var info = ctx.Project.Info;
         var a = ctx.Settings.Annotation;
-        var lines = new List<string> { lot.IsRemanescente ? lot.DisplayName.ToUpperInvariant() : lot.DisplayName };
-        string owner = ctx.Project.EffectiveOwner(lot);
-        if (a.LabelOwner && !string.IsNullOrWhiteSpace(owner)) lines.Add(owner.Trim().ToUpperInvariant());
-        string m = ctx.Project.EffectiveMatricula(lot);
-        if (a.LabelMatricula && !string.IsNullOrWhiteSpace(m)) lines.Add("MATRÍCULA: " + m.Trim());
-        lines.Add("ÁREA = " + fmt.Area(rep.AreaLocal));
-        if (a.LabelPerimeter) lines.Add("PERÍMETRO = " + fmt.Distance(rep.PerimeterLocal));
-        return string.Join("\n", lines);
+        return LotLabels.Text(rep, ctx.Project, fmt, a.LabelOwner, a.LabelMatricula, a.LabelPerimeter);
     }
 }

@@ -27,6 +27,8 @@ public sealed class SheetContent
     public List<string[]> Assinaturas { get; } = new();
     /// <summary>Pendências encontradas (campo vazio, área diferente da matrícula...).</summary>
     public List<string> Pendencias { get; } = new();
+    /// <summary>Lotes que têm pendência (para selecionar no desenho).</summary>
+    public HashSet<string> PendenciaLotIds { get; } = new();
 
     public static SheetContent Build(ProjectContext ctx, ValueFormatter fmt, SheetSpec spec, IReadOnlyList<LotRecord> lots, CrsDef tableCrs,
         bool vias = false, bool edificacoes = false)
@@ -105,14 +107,21 @@ public sealed class SheetContent
         // Conferência antes de emitir.
         if (owners.Length == 0) c.Pendencias.Add("Proprietário não informado (Dados do Imóvel ou Gerenciar Lotes).");
         foreach (var x in ownerList.Where(x => x.Doc.Length == 0))
+        {
             c.Pendencias.Add($"CPF/CNPJ de {x.Owner} não informado ({string.Join(", ", x.Lots.Select(Short))}).");
+            foreach (var l in x.Lots) c.PendenciaLotIds.Add(l.Id);
+        }
         foreach (var x in mats.Where(x => x.Mat.Length == 0 && !p.IsOperationResult(x.Lot)))
+        {
             c.Pendencias.Add($"{x.Lot.DisplayName}: matrícula não informada.");
+            c.PendenciaLotIds.Add(x.Lot.Id);
+        }
         if (string.IsNullOrWhiteSpace(info.Municipio)) c.Pendencias.Add("Município não informado (Dados do Imóvel).");
         if (string.IsNullOrWhiteSpace(tech.Nome)) c.Pendencias.Add("Responsável técnico não informado (Configurações).");
         if (string.IsNullOrWhiteSpace(info.RrtArt)) c.Pendencias.Add("RRT/ART não informado (Dados do Imóvel).");
         foreach (var r in reps)
         {
+            int before = c.Pendencias.Count;
             if (r.Lot.AreaTitulo is double at && at > 0 && Math.Abs(r.AreaLocal - at) / at > 0.05)
                 c.Pendencias.Add($"{r.Lot.DisplayName}: área medida {fmt.Area(r.AreaLocal)} difere mais de 5% da área da matrícula ({fmt.Area(at)}).");
             if (r.Lot.PerimetroTitulo is double pt && pt > 0 && Math.Abs(r.PerimeterLocal - pt) / pt > 0.05)
@@ -123,7 +132,11 @@ public sealed class SheetContent
             if (ctx.Settings.Naming.ConfrontanteNome == GeoPoint.Core.Settings.ConfrontanteNome.Proprietario)
                 foreach (var nb in r.Segments.Where(s => s.ConfrontanteLotId.Length > 0).Select(s => p.FindLot(s.ConfrontanteLotId)).Where(l => l is not null).Distinct())
                     if (p.ConfrontanteOwner(nb!).Length == 0)
+                    {
                         c.Pendencias.Add($"{r.Lot.DisplayName}: o confrontante {nb!.DisplayName} está sem proprietário (informe em Gerenciar Lotes; até lá aparece o nome do lote).");
+                        c.PendenciaLotIds.Add(nb.Id);
+                    }
+            if (c.Pendencias.Count > before) c.PendenciaLotIds.Add(r.Lot.Id);
         }
         if (!ctx.Coords.HasGeoreference) c.Pendencias.Add("Projeto sem georreferência (use Definir Referência): as coordenadas são locais.");
         return c;

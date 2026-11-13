@@ -17,17 +17,59 @@ public static class CoordinateTableReader
         public List<string> Warnings { get; } = new();
         /// <summary>"UTM" ou "Geográficas".</summary>
         public string Kind { get; set; } = "";
+        /// <summary>Datum das coordenadas lidas (os pontos já saem convertidos para SIRGAS 2000).</summary>
+        public DatumId Datum { get; set; } = DatumId.Sirgas2000;
+        /// <summary>true = o datum foi escrito na planilha (cabeçalho, título ou código EPSG); false = considerado SIRGAS 2000.</summary>
+        public bool DatumFromFile { get; set; }
+
+        /// <summary>Frase para o usuário sobre o datum usado.</summary>
+        public string DatumText => DatumFromFile
+            ? $"Datum {GeoPoint.Core.Geodesy.Datum.Get(Datum).Name} (informado na planilha)" + (Datum is DatumId.Sad69 or DatumId.CorregoAlegre ? ", convertido para SIRGAS 2000." : ".")
+            : "Datum não informado na planilha: considerado SIRGAS 2000. Se for SAD 69 ou Córrego Alegre, escreva o datum no cabeçalho (ex.: \"Datum: SAD 69\") e importe de novo.";
+    }
+
+    /// <summary>Datum escrito no texto (nome ou código EPSG); null = não informado. Com mais de um, vale o primeiro.</summary>
+    public static DatumId? DetectDatum(string text)
+    {
+        string t = RemoveAccents(text).ToUpperInvariant();
+        var found = new List<(int At, DatumId D)>();
+        void Find(string pattern, DatumId d)
+        {
+            var m = Regex.Match(t, pattern, RegexOptions.CultureInvariant);
+            if (m.Success) found.Add((m.Index, d));
+        }
+        Find(@"\bSAD\s*[-_ ]?\s*69\b|\bSAD69\b|\bSAD\b(?=.{0,3}\b69)", DatumId.Sad69);
+        Find(@"CORREGO\s+ALEGRE", DatumId.CorregoAlegre);
+        Find(@"\bSIRGAS\b|\bSIRGAS\s*2000\b|SIRGAS2000", DatumId.Sirgas2000);
+        Find(@"\bWGS\s*[-_ ]?\s*84\b|\bWGS84\b", DatumId.Wgs84);
+        // Códigos EPSG usuais no Brasil.
+        Find(@"\bEPSG\s*:?\s*(4674|3198[0-9]|5880)\b", DatumId.Sirgas2000);
+        Find(@"\bEPSG\s*:?\s*(4618|2919[0-9]|5530)\b", DatumId.Sad69);
+        Find(@"\bEPSG\s*:?\s*(4225|2252[0-9])\b", DatumId.CorregoAlegre);
+        Find(@"\bEPSG\s*:?\s*(4326|3272[0-9]|3262[0-9])\b", DatumId.Wgs84);
+        return found.Count == 0 ? null : found.OrderBy(f => f.At).First().D;
+    }
+
+    private static string RemoveAccents(string s)
+    {
+        var n = s.Normalize(System.Text.NormalizationForm.FormD);
+        return new string(n.Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).ToArray());
     }
 
     private static readonly Regex Dms = new(@"(-?\d+(?:[.,]\d+)?)\s*[°º]\s*(?:(\d+(?:[.,]\d+)?)\s*['′])?\s*(?:(\d+(?:[.,]\d+)?)\s*(?:""|″|''))?\s*([NSEWLO])?", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     /// <param name="utmZone">Fuso para coordenadas UTM (0 = o fuso do projeto).</param>
     /// <param name="south">Hemisfério das coordenadas UTM.</param>
-    public static Result Parse(string text, int utmZone, bool south)
+    /// <param name="datum">Datum das coordenadas (null = o escrito na planilha; sem nada escrito, SIRGAS 2000).</param>
+    public static Result Parse(string text, int utmZone, bool south, DatumId? datum = null)
     {
         var res = new Result();
         var lines = text.Replace("\r", "").Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
         if (lines.Count == 0) return res;
+        // Datum: o informado, ou o escrito no texto (cabeçalho/título), ou SIRGAS 2000.
+        var detected = datum ?? DetectDatum(string.Join("\n", lines.Where(l => !Regex.IsMatch(l, @"^[\s\d.,;\-+°º'""′″NSEWLO\t|]*$", RegexOptions.IgnoreCase))));
+        res.Datum = detected ?? DatumId.Sirgas2000;
+        res.DatumFromFile = detected is not null;
         char sep = DetectSeparator(lines);
         int auto = 1;
         var rows = new List<(string Name, string A, string B, string? C, int Line)>();
@@ -62,7 +104,10 @@ public static class CoordinateTableReader
                     // Latitude é a que tem |valor| ≤ 90 (no Brasil, longitudes são -74..-28): se a primeira parecer longitude, troca.
                     double lat = a, lon = b;
                     if (Math.Abs(a) > 90 || (Math.Abs(b) <= 35 && Math.Abs(a) > 35)) (lat, lon) = (b, a);
-                    res.Points.Add(new KmlPoint(r.Name, lat, lon, r.C is { } c && Num(c) is double h ? h : 0));
+                    double hh = r.C is { } c && Num(c) is double h ? h : 0;
+                    // Converte para SIRGAS 2000 (SAD 69 / Córrego Alegre mudam dezenas de metros).
+                    var g = CoordinateService.CrsToGeodetic(new CrsCoord(lat, lon, true), CrsDef.Geographic(res.Datum), 0);
+                    res.Points.Add(new KmlPoint(r.Name, g.LatDeg, g.LonDeg, hh));
                 }
                 else
                 {
@@ -70,7 +115,7 @@ public static class CoordinateTableReader
                     double e = a, n = b;
                     if (a > 1_000_000 && b < 1_000_000) (e, n) = (b, a);   // N antes de E
                     if (utmZone <= 0) throw new InvalidOperationException("Informe o fuso UTM (ou defina a referência do projeto).");
-                    var def = CrsDef.Utm(DatumId.Sirgas2000, utmZone);
+                    var def = CrsDef.Utm(res.Datum, utmZone);
                     def.UtmSouth = south;
                     var g = CoordinateService.CrsToGeodetic(new CrsCoord(e, n, false), def, 0);
                     res.Points.Add(new KmlPoint(r.Name, g.LatDeg, g.LonDeg, r.C is { } c && Num(c) is double h ? h : 0));

@@ -314,7 +314,7 @@ public sealed class CmdRemembramento : CommandBase
 [Transaction(TransactionMode.Manual)]
 public sealed class CmdAreaEdificavel : CommandBase
 {
-    protected override string Title => "Área edificável";
+    protected override string Title => "Recuos (área edificável)";
     protected override string? BackupReason => "area edificavel";
 
     protected override Result Run(GpSession s)
@@ -359,7 +359,7 @@ public sealed class CmdAreaEdificavel : CommandBase
         }
         ProjectStore.Save(s.Doc, s.Project);
         t.Commit();
-        Ui.Info("Área edificável", $"{lot.DisplayName}: {Fmt.N(w.ResultData.Area, 2)} m² de área edificável.");
+        Ui.Info("Recuos (área edificável)", $"{lot.DisplayName}: {Fmt.N(w.ResultData.Area, 2)} m² de área edificável.");
         return Result.Succeeded;
     }
 }

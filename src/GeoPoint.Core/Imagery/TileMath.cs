@@ -12,8 +12,15 @@ public sealed class ImagerySettings
     /// <summary>URL de tiles XYZ com {z}, {x}, {y} (ou {q} = quadkey). Usada no fornecedor personalizado.</summary>
     public string CustomUrl { get; set; } = "";
     public string CustomAttribution { get; set; } = "";
-    /// <summary>Chave da Google Maps Static API (fornecedor Google).</summary>
-    public string GoogleKey { get; set; } = "";
+    /// <summary>
+    /// Chave da Google Maps Static API (fornecedor Google). Não vai para o arquivo de configurações:
+    /// fica no Gerenciador de Credenciais do Windows (<see cref="Settings.Secrets"/>).
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore] public string GoogleKey { get; set; } = "";
+    /// <summary>Chave em texto das configurações antigas (até 1.5.2): lida uma vez e levada para o cofre.</summary>
+    [System.Text.Json.Serialization.JsonPropertyName("GoogleKey")]
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? LegacyGoogleKey { get; set; }
     /// <summary>O usuário confirmou que tem direito de uso das imagens do fornecedor (termos de uso/licença).</summary>
     public bool AcceptedTerms { get; set; }
     /// <summary>Quanto de vizinhança mostrar: largura da imagem = largura do imóvel × este fator.</summary>

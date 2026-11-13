@@ -197,7 +197,7 @@
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
-                        <Label Content="Altura do texto das anotações (mm no papel):"/>
+                        <Label Content="Altura do texto das anotações (mm no papel):" ToolTip="Vale para as anotações nas vistas (Anotar Lotes). Nas pranchas vale o tamanho &quot;Desenho&quot; do modelo de prancha; com 0 no modelo, usa este."/>
                         <TextBox Grid.Column="1" x:Name="TextMm"/>
                         <Label Grid.Row="1" Content="Afastamento do texto (mm no papel):"/>
                         <TextBox Grid.Row="1" Grid.Column="1" x:Name="OffsetMm"/>
@@ -216,7 +216,7 @@
                         <Label Grid.Row="8" Content="Vias – altura do nome da rua (mm no papel):"/>
                         <TextBox Grid.Row="8" Grid.Column="1" x:Name="StreetText"/>
                         <Label Grid.Row="9" Content="Pranchas – carimbo próprio (Família: Tipo):"/>
-                        <TextBox Grid.Row="9" Grid.Column="1" Grid.ColumnSpan="2" x:Name="TitleBlock" ToolTip="Vazio = moldura e carimbo A4 desenhados pelo GeoPoint (recomendado)."/>
+                        <TextBox Grid.Row="9" Grid.Column="1" Grid.ColumnSpan="2" x:Name="TitleBlock" ToolTip="Vazio = moldura e carimbo do modelo de prancha, desenhados pelo GeoPoint (recomendado)."/>
                     </Grid>
                 </StackPanel>
             </TabItem>

@@ -30,7 +30,6 @@ public partial class TraverseWindow : Window
     private readonly bool _hasReference;
     private readonly GeoPoint.Core.Memorial.ValueFormatter? _fmt;
     private readonly System.Windows.Threading.DispatcherTimer _timer;
-    private bool _typing;
 
     public const string TemplateText =
         "Inicia-se no vértice P-01; deste, segue com azimute de 90°00'00\" e distância de 30,00 m até o vértice P-02;\r\n" +
@@ -54,7 +53,7 @@ public partial class TraverseWindow : Window
 
     private void Source_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (_timer is null || _typing) return;
+        if (_timer is null) return;
         _timer.Stop();
         _timer.Start();
     }

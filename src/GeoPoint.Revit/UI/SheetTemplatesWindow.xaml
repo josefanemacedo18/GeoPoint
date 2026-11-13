@@ -124,7 +124,7 @@
                             <Label Grid.Row="2" Content="Grade:"/>
                             <TextBox Grid.Row="2" Grid.Column="1" x:Name="SGrade" Width="55" HorizontalAlignment="Left"/>
                             <Label Grid.Row="2" Grid.Column="2" Content="Desenho:"/>
-                            <TextBox Grid.Row="2" Grid.Column="3" x:Name="SDes" Width="55" HorizontalAlignment="Left" ToolTip="Distâncias, confrontantes, rótulos e chamadas no mapa. 0 = o tamanho das Configurações de anotação."/>
+                            <TextBox Grid.Row="2" Grid.Column="3" x:Name="SDes" Width="55" HorizontalAlignment="Left" ToolTip="Distâncias, confrontantes, rótulos e chamadas no mapa das pranchas. 0 = o tamanho das Configurações de anotação (o mesmo das vistas)."/>
                         </Grid>
                     </GroupBox>
                     <GroupBox Header="Escritório">
@@ -132,10 +132,14 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
                             <Label Content="Nome:"/>
-                            <TextBox Grid.Column="1" Grid.ColumnSpan="2" x:Name="TOffice" ToolTip="Aparece no bloco Escritório (ligue o bloco na tabela abaixo)."/>
-                            <Label Grid.Row="1" Content="Logotipo:"/>
-                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="TLogo"/>
-                            <Button Grid.Row="1" Grid.Column="2" Content="Escolher…" Click="Logo_Click"/>
+                            <TextBox Grid.Column="1" Grid.ColumnSpan="2" x:Name="TOffice" ToolTip="Opcional: aparece ao lado da logomarca, no espaço do escritório (entre o croqui e o título)."/>
+                            <Label Grid.Row="1" Content="Logomarca:"/>
+                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="TLogo" IsReadOnly="True" Background="#F4F4F4"
+                                     ToolTip="A imagem fica guardada dentro do modelo: vai junto quando o modelo é exportado ou copiado para outro computador."/>
+                            <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal">
+                                <Button Content="Escolher…" Click="Logo_Click"/>
+                                <Button Content="Remover" Click="LogoRemove_Click"/>
+                            </StackPanel>
                         </Grid>
                     </GroupBox>
                     <GroupBox Header="Blocos do carimbo (mm, a partir do canto inferior esquerdo da folha)">

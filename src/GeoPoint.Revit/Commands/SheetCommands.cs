@@ -128,12 +128,19 @@ public sealed class CmdPranchas : CommandBase
 
         // Conferência antes de emitir: dados que faltam ou diferem da matrícula.
         var pend = new List<string>();
+        var pendLots = new HashSet<string>();
         var fmtC = new ValueFormatter(s.Settings.Format);
         var defC = s.Settings.Memorial.CoordinateSystems.FirstOrDefault() ?? GeoPoint.Core.Geodesy.CrsDef.Utm();
         foreach (var sp in specs)
         {
             var ls = sp.LotIds.Select(s.Project.FindLot).Where(l => l is not null).Select(l => l!).ToList();
-            try { pend.AddRange(SheetContent.Build(s.NewContext(), fmtC, sp, ls, defC).Pendencias); } catch { }
+            try
+            {
+                var cc = SheetContent.Build(s.NewContext(), fmtC, sp, ls, defC);
+                pend.AddRange(cc.Pendencias);
+                pendLots.UnionWith(cc.PendenciaLotIds);
+            }
+            catch { }
         }
         foreach (var warn in template.Validate()) pend.Add("Modelo de prancha: " + warn);
         pend = pend.Distinct().ToList();
@@ -147,7 +154,11 @@ public sealed class CmdPranchas : CommandBase
             };
             td.AddCommandLink(TaskDialogCommandLinkId.CommandLink1, "Gerar as pranchas mesmo assim", "Os campos vazios ficam com \"—\" no carimbo; você pode completar depois e gerar de novo.");
             td.AddCommandLink(TaskDialogCommandLinkId.CommandLink2, "Voltar e corrigir", "Abra Dados do Imóvel, Gerenciar Lotes ou Configurações.");
-            if (td.Show() != TaskDialogResult.CommandLink1) return false;
+            if (pendLots.Count > 0)
+                td.AddCommandLink(TaskDialogCommandLinkId.CommandLink3, "Selecionar no desenho os lotes com pendência", $"{pendLots.Count} lote(s) ficam selecionados e enquadrados na vista.");
+            var res = td.Show();
+            if (res == TaskDialogResult.CommandLink3) LotServices.SelectSources(s, pendLots.Select(s.Project.FindLot).Where(l => l is not null).Select(l => l!));
+            if (res != TaskDialogResult.CommandLink1) return false;
         }
         if (s.Project.Fases.Count > 1)
             foreach (var sp in specs) sp.Subtitle = string.Join(" – ", new[] { sp.Subtitle, s.Project.Fase.Label.ToUpperInvariant() }.Where(x => x.Length > 0));
@@ -197,6 +208,7 @@ public sealed class CmdPranchas : CommandBase
 public sealed class CmdHachuras : CommandBase
 {
     protected override string Title => "Hachuras";
+    protected override string? BackupReason => "hachuras";
 
     protected override Result Run(GpSession s)
     {

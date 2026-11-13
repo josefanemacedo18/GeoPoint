@@ -175,13 +175,13 @@ public partial class PranchasWindow : Window
         OkButton.IsEnabled = Specs.Count > 0;
     }
 
-    public SheetTemplate? SelectedTemplate => Template.SelectedItem as SheetTemplate;
+    public SheetTemplate? SelectedTemplate => TemplateBox.SelectedItem as SheetTemplate;
 
     private void LoadTemplates(string? name, SheetOrientation fallback)
     {
         var all = SheetTemplateLibrary.LoadAll();
-        Template.ItemsSource = all;
-        Template.SelectedItem = all.FirstOrDefault(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase))
+        TemplateBox.ItemsSource = all;
+        TemplateBox.SelectedItem = all.FirstOrDefault(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase))
                                 ?? all.FirstOrDefault(t => t.Orientation == fallback) ?? all.FirstOrDefault();
         FillScales();
     }

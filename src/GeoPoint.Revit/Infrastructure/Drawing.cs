@@ -40,15 +40,12 @@ public static class Annotator
         public bool LabelOwner { get; set; } = true;
         public bool LabelMatricula { get; set; } = true;
         public bool LabelPerimeter { get; set; } = true;
-        /// <summary>Chamada com a coordenada do ponto de referência de cada lote.</summary>
-        public bool RefPoints { get; set; } = true;
 
         public static Options From(AnnotationSettings a) => new()
         {
             Vertices = a.Vertices, Edges = a.Edges, Area = a.AreaLabel, EdgeAngle = a.EdgeAzimuth, Dots = a.VertexDots,
             Outside = a.TextOutside, Confrontantes = a.Confrontantes, Opaque = a.OpaqueText, TextMm = a.TextSizeMm, OffsetMm = a.OffsetMm,
             DotMm = a.DotMm, Font = a.Font, LabelOwner = a.LabelOwner, LabelMatricula = a.LabelMatricula, LabelPerimeter = a.LabelPerimeter,
-            RefPoints = a.RefCallout,
         };
     }
 
@@ -58,26 +55,31 @@ public static class Annotator
         try { var r = v.RightDirection; return Math.Atan2(r.Y, r.X); } catch { return 0; }
     }
 
-    /// <summary>Rótulo do lote: nome; proprietário; matrícula; área; perímetro (sem CPF).</summary>
-    public static string LotLabel(LotReport rep, ProjectContext ctx, ValueFormatter fmt, Options o)
+    /// <summary>Rótulo do lote: nome; proprietário; matrícula; área; perímetro (sem CPF). Mesmo texto das pranchas (<see cref="LotLabels"/>).</summary>
+    public static string LotLabel(LotReport rep, ProjectContext ctx, ValueFormatter fmt, Options o) =>
+        LotLabels.Text(rep, ctx.Project, fmt, o.LabelOwner, o.LabelMatricula, o.LabelPerimeter);
+
+    /// <summary>
+    /// Opções do planejador de textos para a vista (as mesmas na prévia da janela Anotar e na anotação de verdade).
+    /// </summary>
+    public static AnnotationPlanOptions PlanOptions(Document doc, View view, ProjectContext ctx, ValueFormatter fmt, Options o, int lotCount,
+        Func<LotRecord, string>? ownerOf = null, IEnumerable<Obb>? obstacles = null, bool? perLotNames = null, Func<LotReport, RefCallout?>? refCallout = null)
     {
-        var lot = rep.Lot;
-        var info = ctx.Project.Info;
-        var lines = new List<string> { lot.IsRemanescente ? lot.DisplayName.ToUpperInvariant() : lot.DisplayName };
-        if (o.LabelOwner)
+        double scale = Math.Max(1, view.Scale);
+        return new AnnotationPlanOptions
         {
-            string owner = ctx.Project.EffectiveOwner(lot);
-            if (!string.IsNullOrWhiteSpace(owner)) lines.Add(owner.Trim().ToUpperInvariant());
-        }
-        if (o.LabelMatricula)
-        {
-            // Lotes resultantes de operação sem matrícula própria não herdam a do imóvel.
-            string m = ctx.Project.EffectiveMatricula(lot);
-            if (!string.IsNullOrWhiteSpace(m)) lines.Add("MATRÍCULA: " + m.Trim());
-        }
-        lines.Add("ÁREA = " + fmt.Area(rep.AreaLocal));
-        if (o.LabelPerimeter) lines.Add("PERÍMETRO = " + fmt.Distance(rep.PerimeterLocal));
-        return string.Join("\n", lines);
+            Edges = o.Edges, EdgeAngle = o.EdgeAngle, Vertices = o.Vertices, Area = o.Area, Dots = o.Dots, Outside = o.Outside,
+            Confrontantes = o.Confrontantes, TextM = o.TextMm / 1000.0 * scale, OffsetM = o.OffsetMm / 1000.0 * scale, DotRadiusM = o.DotMm / 2000.0 * scale,
+            PadM = RevitStyles.TextPadMm / 1000.0 * scale, LineFactor = RevitStyles.LineFactor,
+            OwnerOf = ownerOf, Obstacles = obstacles?.ToList() ?? new List<Obb>(),
+            ViewAngle = ViewAngle(view),
+            LabelOf = r => LotLabel(r, ctx, fmt, o),
+            // Numeração por lote com vários lotes: cada lote mostra os seus números (dentro dele).
+            PerLotVertexNames = perLotNames ?? (ctx.Settings.Naming.Numbering == VertexNumbering.Lote && lotCount > 1),
+            // Rua desenhada nesta vista: o nome da via já aparece na rua.
+            SkipViaNames = ctx.Project.StreetDrawings.Any(d => d.ViewId == view.UniqueId && ElementUtil.ExistingIds(doc, d.ElementIds).Count > 0),
+            RefCallout = refCallout,
+        };
     }
 
     /// <summary>Remove anotações anteriores do lote nesta vista. Dentro de transação.</summary>
@@ -126,23 +128,7 @@ public static class Annotator
             try { reports.Add(ctx.Report(l)); }
             catch (Exception ex) { failures?.Add($"{l.DisplayName}: {ex.Message}"); }
         }
-        double scale = Math.Max(1, view.Scale);
-        double textM = o.TextMm / 1000.0 * scale;
-        double viewAngle = ViewAngle(view);
-        var plan = AnnotationPlanner.Plan(reports, fmt, new AnnotationPlanOptions
-        {
-            Edges = o.Edges, EdgeAngle = o.EdgeAngle, Vertices = o.Vertices, Area = o.Area, Dots = o.Dots, Outside = o.Outside,
-            Confrontantes = o.Confrontantes, TextM = textM, OffsetM = o.OffsetMm / 1000.0 * scale, DotRadiusM = o.DotMm / 2000.0 * scale,
-            PadM = RevitStyles.TextPadMm / 1000.0 * scale, LineFactor = RevitStyles.LineFactor,
-            OwnerOf = ownerOf, Obstacles = obstacles?.ToList() ?? new List<Obb>(),
-            ViewAngle = viewAngle,
-            LabelOf = r => LotLabel(r, ctx, fmt, o),
-            // Numeração por lote com vários lotes: cada lote mostra os seus números (dentro dele).
-            PerLotVertexNames = perLotNames ?? (ctx.Settings.Naming.Numbering == VertexNumbering.Lote && lots.Count > 1),
-            // Rua desenhada nesta vista: o nome da via já aparece na rua.
-            SkipViaNames = ctx.Project.StreetDrawings.Any(d => d.ViewId == view.UniqueId && ElementUtil.ExistingIds(doc, d.ElementIds).Count > 0),
-            RefCallout = refCallout,
-        }, existing);
+        var plan = AnnotationPlanner.Plan(reports, fmt, PlanOptions(doc, view, ctx, fmt, o, lots.Count, ownerOf, obstacles, perLotNames, refCallout), existing);
         LastConflicts = plan.Conflicts;
         if (plan.Conflicts > 0) Logger.Info($"Anotação: {plan.Conflicts} texto(s) sem espaço livre na vista {view.Name} (posição de menor conflito).");
 
@@ -181,7 +167,7 @@ public static class Annotator
                 var opts = new TextNoteOptions(type)
                 {
                     HorizontalAlignment = HorizontalTextAlignment.Center,
-                    Rotation = AngleUtil.NormPi(t.Rotation - viewAngle),
+                    Rotation = AngleUtil.NormPi(t.Rotation - ViewAngle(view)),
                     KeepRotatedTextReadable = false,
                 };
                 var at = RvtUnits.ToXyz(t.TopCenter, Z(t.Owner));

@@ -20,8 +20,6 @@ public sealed class SheetSpec
     /// <summary>Prancha de um lote só: vértices com numeração própria (P-01…), todos os azimutes e quadro de coordenadas.
     /// Pranchas com vários lotes são de visualização: distâncias, confrontantes, áreas e proprietários.</summary>
     public bool Detailed => LotIds.Count == 1;
-    /// <summary>Ponto (coordenadas do desenho, m) cuja coordenada vai no carimbo. Null = padrão.</summary>
-    public Vec2? RefPoint { get; set; }
     public SheetReplace Replace { get; set; } = SheetReplace.Substituir;
     public string Title { get; init; } = "";
     public string Subtitle { get; set; } = "";

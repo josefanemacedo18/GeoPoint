@@ -204,7 +204,10 @@ public sealed class SheetBuilder
         try { croqui = _o.Croqui?.Invoke(spec, lots); } catch (Exception ex) { Logger.Error("Croqui automático", ex); Warnings.Add($"{spec.Title}: croqui automático – {ex.Message}"); }
         if (string.IsNullOrWhiteSpace(croqui) || !File.Exists(croqui)) croqui = File.Exists(_o.LocationImage) ? _o.LocationImage : null;
         if (croqui is not null) images.Add("croqui");
-        if (!string.IsNullOrWhiteSpace(tpl.LogoPath) && File.Exists(tpl.LogoPath)) images.Add("logo");
+        // Logomarca do escritório (embutida no modelo): gravada na pasta de cache para o Revit inserir.
+        string? logo = null;
+        try { logo = SheetTemplateLibrary.LogoFile(tpl); } catch (Exception ex) { Logger.Error("Logomarca", ex); Warnings.Add("Logomarca do escritório: " + ex.Message); }
+        if (logo is not null) images.Add("logo");
         var northDir = NorthOnPaper(view);
         bool geo = def.Kind == CrsKind.Geographic;
         var prims = SheetRenderer.Render(new SheetRenderInput
@@ -213,7 +216,7 @@ public sealed class SheetBuilder
             CrsAt = q => _ctx.Coords.ToCrs(ToModel(q), def) is { } c ? (geo ? (c.Lon, c.Lat) : (c.East, c.North)) : null,
             Geographic = geo, WestAsO = _s.Settings.Format.WestAsO,
             Table = fit.Table is null ? null : table, TableRect = fit.Table, North = northDir, FrameAndBlocks = !customTitleBlock,
-            Palette = Hatcher.Palette, Images = images,
+            Palette = Hatcher.Palette, Images = images, LogoAspect = logo is null ? 0 : tpl.LogoAspect(),
         });
 
         // ---- Conteúdo da vista. A grade vem primeiro (fica atrás das hachuras e do desenho).
@@ -258,7 +261,7 @@ public sealed class SheetBuilder
         AlignViewport(vp, view, ToModel(map.Center), map.Center);
 
         // ---- Elementos da folha (tudo menos a grade, que está na vista).
-        DrawPrims(sheet, prims.Where(x => x is not PLine { Style: PLineStyle.Grade }), croqui, tpl.LogoPath);
+        DrawPrims(sheet, prims.Where(x => x is not PLine { Style: PLineStyle.Grade }), croqui, logo);
         _doc.Regenerate();
         var g = SheetRegistry.Register(_s, spec, sheet, view);
         g.Folha = folha;
@@ -334,7 +337,7 @@ public sealed class SheetBuilder
         return gs;
     }
 
-    private void DrawPrims(ViewSheet sheet, IEnumerable<SheetPrim> prims, string? croqui, string logo)
+    private void DrawPrims(ViewSheet sheet, IEnumerable<SheetPrim> prims, string? croqui, string? logo)
     {
         foreach (var pr in prims)
         {

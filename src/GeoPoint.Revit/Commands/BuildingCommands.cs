@@ -18,11 +18,11 @@ using GeoPoint.Revit.UI;
 
 namespace GeoPoint.Revit.Commands;
 
-/// <summary>Área edificada: edificações desenhadas com linhas dentro dos lotes, com área, taxa de ocupação e afastamentos.</summary>
+/// <summary>Construção existente (área edificada): edificações desenhadas com linhas dentro dos lotes, com área, taxa de ocupação e afastamentos.</summary>
 [Transaction(TransactionMode.Manual)]
 public sealed class CmdAreaEdificada : CommandBase
 {
-    protected override string Title => "Área edificada";
+    protected override string Title => "Construção existente";
     protected override string? BackupReason => "area edificada";
 
     protected override Result Run(GpSession s)
@@ -86,7 +86,7 @@ public sealed class CmdAreaEdificada : CommandBase
             ProjectStore.Save(s.Doc, s.Project);
             t.Commit();
         }
-        Ui.Info("Área edificada", $"{s.Project.PhaseBuildings.Count()} edificação(ões) na fase.\n" +
+        Ui.Info("Construção existente", $"{s.Project.PhaseBuildings.Count()} edificação(ões) na fase.\n" +
             (canDraw ? $"{drawn} desenhada(s) na vista \"{view.Name}\"." : "Abra uma planta para desenhar as edificações (hachura, rótulo e afastamentos).") +
             "\n\nAs edificações também aparecem no memorial (área edificada e distância até as divisas) e nas pranchas.");
         return Result.Succeeded;
@@ -118,7 +118,7 @@ public sealed class CmdAreaEdificada : CommandBase
         if (elements.Count == 0) return null;
         RecognitionResult rec;
         try { rec = LotServices.Recognize(s, elements, null); }
-        catch (Exception ex) { Ui.Warn("Área edificada", ex.Message); return null; }
+        catch (Exception ex) { Ui.Warn("Construção existente", ex.Message); return null; }
         var lots = s.Project.ActiveLots.ToList();
         string? last = null;
         int created = 0, outside = 0;
@@ -141,7 +141,7 @@ public sealed class CmdAreaEdificada : CommandBase
             created++;
         }
         if (created == 0)
-            Ui.Warn("Área edificada", outside > 0
+            Ui.Warn("Construção existente", outside > 0
                 ? "O contorno selecionado não fica dentro de nenhum lote ativo."
                 : "Nenhuma área fechada nova: confira se as linhas da edificação se encontram nos cantos." + (rec.Warnings.Count > 0 ? "\n\n" + string.Join("\n", rec.Warnings.Take(5)) : ""));
         return last;
@@ -150,15 +150,15 @@ public sealed class CmdAreaEdificada : CommandBase
     private static void UpdateFromLines(GpSession s, BuildingRecord b)
     {
         var elements = b.SourceIds.Select(id => ElementUtil.ByUniqueId(s.Doc, id)).Where(e => e is not null).Select(e => e!).ToList();
-        if (elements.Count == 0) { Ui.Warn("Área edificada", "As linhas desta edificação não existem mais. Remova-a e adicione de novo pelas linhas atuais."); return; }
+        if (elements.Count == 0) { Ui.Warn("Construção existente", "As linhas desta edificação não existem mais. Remova-a e adicione de novo pelas linhas atuais."); return; }
         try
         {
             var rec = LotServices.Recognize(s, elements, null);
             var face = rec.Network.Faces.OrderByDescending(f => Math.Abs(f.Region.Area)).FirstOrDefault();
-            if (face is null) { Ui.Warn("Área edificada", "As linhas não formam mais uma área fechada."); return; }
+            if (face is null) { Ui.Warn("Construção existente", "As linhas não formam mais uma área fechada."); return; }
             var (outer, _) = LotBuilder.FromFace(rec.Network, face, rec.SourcesOfTag, false, true);
             b.Outer = outer;
         }
-        catch (Exception ex) { Ui.Warn("Área edificada", ex.Message); }
+        catch (Exception ex) { Ui.Warn("Construção existente", ex.Message); }
     }
 }

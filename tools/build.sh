@@ -12,6 +12,7 @@ cp "$OUT/GeoPoint.Revit.dll" "$OUT/GeoPoint.Core.dll" "$PKG/GeoPoint/"
 cp src/GeoPoint.Core/ThirdParty/Clipper2/LICENSE_Clipper2.txt "$PKG/GeoPoint/"
 cp docs/MANUAL.md "$PKG/GeoPoint/MANUAL.md"
 cp docs/MANUAL.md "$PKG/MANUAL.md"
+cp docs/ROTEIRO-DE-TESTE.md "$PKG/ROTEIRO-DE-TESTE.md"
 cp src/GeoPoint.Revit/GeoPoint.addin "$PKG/"
 cp tools/Instalar.bat tools/Desinstalar.bat "$PKG/"
 # Os .ps1 são gravados com BOM (PowerShell 5.1 lê os acentos corretamente).

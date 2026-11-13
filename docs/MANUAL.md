@@ -23,6 +23,29 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 
 ---
 
+## Ajustes da versão 1.5.3
+
+- **Espaço para a logomarca do escritório** em todas as pranchas: bloco entre o croqui e o título (retrato e paisagem, A4 a A1).
+  Escolha a imagem em *Pranchas › Modelos… › Escritório › Logomarca* (PNG, JPG, GIF ou BMP até 3 MB). A imagem fica **guardada
+  dentro do modelo de prancha** – vai junto quando você exporta o modelo para outro computador – e aparece com a proporção certa,
+  centralizada; com o *Nome* do escritório preenchido, a logomarca fica à esquerda e o nome ao lado. Sem logomarca o espaço fica em
+  branco na prancha (para colar a imagem depois, se preferir). Modelos gravados em versões anteriores: clique em *Reorganizar blocos*
+  para abrir o espaço.
+- **Nomes mais claros**: *Área Edificável* agora é **Recuos** (onde se pode construir pelos recuos) e *Área Edificada* agora é
+  **Construção Existente** (edificações que já existem). Os documentos continuam com os termos técnicos (área edificável / área edificada).
+- **Chave do Google protegida**: fica no *Gerenciador de Credenciais do Windows*, não mais em texto no arquivo de configurações
+  (a chave antiga é levada para lá sozinha na primeira vez).
+- **Importar Pontos com datum**: se a planilha disser o datum (ex.: `Datum: SAD 69`, `Córrego Alegre`, `SIRGAS 2000`, `WGS 84` ou o
+  código EPSG), os pontos são convertidos para SIRGAS 2000; sem datum escrito vale SIRGAS 2000 e o GeoPoint avisa.
+- **Conferência antes de emitir** com a opção *Selecionar no desenho os lotes com pendência*.
+- **Cópias de segurança compactadas** (arquivos menores) e sem repetição: uma cópia igual à anterior não é gravada de novo. Também antes
+  de *Hachuras* e do *Memorial* (quando os dados do imóvel mudam).
+- **Desmembramento com a ferramenta Linha**: fechar o projeto encerra a janela de prévia; *Concluir* pede para voltar ao projeto
+  certo se outro estiver ativo.
+- Rótulo do lote igual na vista, na prancha e nas prévias; prévia do *Anotar Lotes* com exatamente as mesmas regras da anotação;
+  KML/GeoJSON com o proprietário e a matrícula efetivos (lote do desmembramento sem matrícula própria não herda a do imóvel).
+- **Roteiro de teste** (`ROTEIRO-DE-TESTE.md`, no pacote) e **glossário** no fim deste manual.
+
 ## Ajustes da versão 1.5.2
 
 - **Rótulo do lote sempre dentro do lote**: o nome, o proprietário e os demais dados são quebrados em linhas pela largura do lote e o
@@ -64,7 +87,7 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
   assinaturas*, *Convenções topográficas*, *Orientação* (com escala gráfica), *Croqui de localização* e título com a **folha**.
 - **Biblioteca de modelos de prancha** (vários modelos, ex.: um por escritório), com prévia, estilos de texto e histórico de versões.
 - **Croqui de satélite automático** com o lote desenhado por cima (Esri, Google ou servidor próprio).
-- **Área Edificada**: edificações desenhadas com linhas, taxa de ocupação e **distância até cada divisa** (desenho, memorial e pranchas).
+- **Área Edificada** (hoje *Construção Existente*): edificações desenhadas com linhas, taxa de ocupação e **distância até cada divisa** (desenho, memorial e pranchas).
 - **Desmembramento desenhando com a ferramenta Linha do Revit**, com prévia que se atualiza a cada linha, e **corte em leque**.
 - **Prévias** nas pranchas, no Anotar Lotes, nas Vias, no Desenhar por Azimutes e nos modelos de prancha.
 - **Importar Pontos** de planilha (CSV/TXT) ou coordenadas coladas do Excel/SIGEF; **Exportar PDF**; **cópias de segurança**;
@@ -91,13 +114,13 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
    preencha no lote só o que for diferente (ex.: o proprietário de um lote do desmembramento).
 4. **Gerenciar Lotes** – nome/número, quadra, uso, **confrontantes** e **testadas**.
 5. **Definir Referência** – coordenada de **um** vértice (Google Maps/Earth, QGIS, GPS ou UTM).
-6. **Vias**, **Área Edificada**, **Anotar Lotes**, **Hachuras**.
+6. **Vias**, **Construção Existente**, **Anotar Lotes**, **Hachuras**.
 7. **Desmembramento** / **Remembramento** – com prévia; o original fica arquivado no histórico.
 8. **Memorial Descritivo**, **Pranchas**, **Exportar PDF**, **Anuência de Confrontantes**, **Planilha Excel**, **Google Earth / QGIS**.
 
 Antes de emitir memorial e pranchas o GeoPoint faz a **conferência**: proprietário, matrícula, município, responsável técnico e
 RRT/ART preenchidos, área e perímetro medidos × os da matrícula (diferença acima de 5%) e divisas sem confrontante.
-Você pode corrigir ou gerar mesmo assim.
+Você pode corrigir, **selecionar no desenho os lotes com pendência** ou gerar mesmo assim.
 
 ### Fases do projeto
 Use **Fases** (painel Lotes) para separar as etapas, ex.: *Fase 0 – Situação atual* → *Fase 1 – Remembramento* → *Fase 2 – Desmembramento*.
@@ -163,6 +186,8 @@ Prévia com medidas, área e perímetro; desenha linhas nativas, cadastra e anot
   (`-6,333656; -47,394191`) ou graus/minutos/segundos (`6°20'01,1641" S; 47°23'39,0858" O`). Cabeçalho é ignorado;
 - **coordenadas coladas** – copie as linhas no Excel, no SIGEF ou num memorial e escolha *Colar*.
 UTM usa o fuso da referência do projeto (sem referência: o fuso das Configurações, ou 23 S – o GeoPoint avisa).
+**Datum**: escreva-o em qualquer linha de título da planilha (`Datum: SAD 69`, `Córrego Alegre`, `SIRGAS 2000`, `WGS 84` ou o código
+EPSG, ex.: `EPSG:29193`) e os pontos são convertidos para SIRGAS 2000. Sem datum escrito, vale SIRGAS 2000 e o GeoPoint avisa.
 Marque os pontos, escolha a posição (**clicar onde fica um dos pontos**, que vira a referência, ou usar a referência já definida) e,
 se quiser, **Ligar os pontos com linhas** (polígono fechado na ordem da lista) – depois é só *Reconhecer Lotes*.
 Cada ponto aparece como cruz laranja com o nome; desenhe as divisas com o snap de interseção. *Verificar Projeto* e a planilha
@@ -199,9 +224,10 @@ mostram a distância de cada ponto ao vértice mais próximo.
 contorno, em qualquer formato**: pontos dos lotes antigos sobre um mesmo alinhamento (divisas retas em sequência ou arcos do mesmo
 círculo) são retirados e os confrontantes desses trechos são juntados ("Fulano, Beltrano e Sicrano").
 
-**Área Edificável** – recuo por divisa (ou do perfil); calcula e desenha a área edificável.
+**Recuos** (área edificável) – para planejar uma construção nova: recuo por divisa (ou do perfil); calcula e desenha a área onde se
+pode construir.
 
-**Área Edificada** – edificações existentes dentro dos lotes:
+**Construção Existente** (área edificada) – edificações que já existem dentro dos lotes:
 1. desenhe o contorno de cada edificação com linhas (modelo ou detalhe) **dentro do lote** e use *Adicionar pelas linhas desenhadas…*
    (várias edificações de uma vez; cada uma é atribuída ao lote que a contém);
 2. na tabela: nome, uso, **pavimentos** e, se quiser, a **área construída** informada (vazio = projeção × pavimentos);
@@ -251,7 +277,8 @@ As edificações aparecem no **memorial** (seção *ÁREA EDIFICADA* com as dist
 - **Sem "notas técnicas"** no final. A descrição termina com **uma frase** do referencial (*"Todas as coordenadas aqui descritas estão
   georreferenciadas ao Sistema Geodésico Brasileiro, datum SIRGAS 2000, projeção UTM, fuso 23, hemisfério Sul…"*), exigida por muitos
   cartórios e pelo INCRA – edite ou apague em *Frases da descrição* (`Referencial`).
-- **Área edificada** de cada lote, com as distâncias até as divisas (opção *Área edificada* na janela do memorial).
+- **Construção existente** de cada lote (seção *ÁREA EDIFICADA*), com as distâncias até as divisas (opção *Construção existente* na
+  janela do memorial).
 - Desmembramento: por padrão **um memorial por lote resultante** (numeração própria P-01…); também só o geral ou os dois.
 - Conferência antes de emitir (ver o fluxo).
 
@@ -273,7 +300,8 @@ As edificações aparecem no **memorial** (seção *ÁREA EDIFICADA* com as dist
   (procedimento, **transcrição** – ex.: "UNIFICAÇÃO DOS LOTES DAS MATRÍCULAS Nº 7607 E Nº 7033, COM CONSTITUIÇÃO DE LOTE URBANO RESULTANTE
   DO REMEMBRAMENTO" –, município/UF, endereço e CEP), *Quadro de áreas e perímetros*, *Quadro de assinaturas* (responsável técnico com
   CAU/CREA e RRT/ART, e proprietário), *Convenções topográficas* (só o que aparece no desenho), *Orientação* (sistema geodésico,
-  projeção, fuso, meridiano central, EPSG, **escala** e **escala gráfica**), *Croqui de localização* e o **título** com a **FOLHA**;
+  projeção, fuso, meridiano central, EPSG, **escala** e **escala gráfica**), *Croqui de localização*, o espaço da **logomarca do
+  escritório** e o **título** com a **FOLHA**;
 - **folhas numeradas por projeto** (FOLHA 01, 02, 03…; uma prancha substituída mantém o número);
 - **croqui de localização automático**: o GeoPoint baixa a imagem de satélite da região e desenha o lote por cima (fornecedor em
   *Configurações › Croqui*). Na primeira vez ele mostra a licença do fornecedor e pede a sua confirmação. Sem internet, ou com o croqui
@@ -289,12 +317,15 @@ As pranchas ficam **editáveis** no Revit.
 - papel **A4, A3, A2 ou A1**, orientação, margens (padrão ABNT 25/7 mm), espaço entre blocos;
 - **mapa**: grade (liga/desliga, espaçamento, cor), faixa dos valores, canto e tamanho do norte, tabela dentro do mapa e o canto dela,
   folga do desenho e **lista de escalas** permitidas;
-- **estilos de texto** por tipo (título, cabeçalhos, rótulos, valores, tabelas, grade e textos do desenho), em mm no papel;
-- **escritório**: nome e **logotipo** (bloco *Escritório*, desligado no padrão);
+- **estilos de texto** por tipo (título, cabeçalhos, rótulos, valores, tabelas, grade e textos do desenho), em mm no papel. O tamanho
+  *Desenho* vale para os textos do mapa das pranchas; com 0 vale o das Configurações de anotação (o mesmo das vistas);
+- **escritório**: **logomarca** e nome (opcional). O espaço da logomarca (bloco *Escritório (logomarca)*) fica entre o croqui e o título e
+  vem ligado no padrão. A imagem é **guardada dentro do modelo** (vai junto ao exportar); *Remover* tira a imagem. Sem imagem o espaço
+  fica em branco na prancha (na prévia aparece "(logomarca do escritório)");
 - **blocos do carimbo**: ligue/desligue, renomeie o cabeçalho e ajuste posição e tamanho (mm); *Reorganizar blocos* refaz a disposição
   padrão para o papel escolhido; bloco *Observações* com texto livre;
 - **prévia ao vivo** com conteúdo de exemplo e avisos (blocos sobrepostos, textos pequenos demais);
-- **histórico de versões**: cada gravação guarda a versão anterior (com uma nota); *Restaurar versão* volta a ela.
+- **histórico de versões**: cada gravação guarda a versão anterior (com uma nota); *Restaurar versão* volta a ela (a logomarca é sempre a atual).
 
 **Exportar PDF** – exporta as pranchas pelo recurso do próprio Revit, em **escala real (100%)** e no papel de cada prancha (A4…A0,
 retrato ou paisagem, detectado pelo tamanho da folha); um arquivo só ou um por prancha.
@@ -323,11 +354,14 @@ sistemas de coordenadas (o **primeiro** é o usado nas pranchas, na grade e nas 
 | **Servidor personalizado** (XYZ `{z}/{x}/{y}` ou `{q}`) | depende | ex.: imagens da prefeitura; confira se a licença permite imprimir. |
 | **Nenhum** | – | usa a imagem escolhida por você. |
 Também: vizinhança (quantas vezes o tamanho do imóvel) e resolução (dpi). As imagens baixadas ficam em cache em
-`%LocalAppData%\GeoPoint`. A chave do Google fica gravada nas suas configurações locais (não vai no arquivo de diagnóstico).
+`%LocalAppData%\GeoPoint`. A chave do Google fica no **Gerenciador de Credenciais do Windows** (*Painel de Controle › Gerenciador de
+Credenciais › Credenciais do Windows*, item `GeoPoint/GoogleMapsStaticKey`): não fica em texto no arquivo de configurações nem vai no
+arquivo de diagnóstico.
 
 **Ajuda** – fluxo, **manual**, **Restaurar uma cópia de segurança** (antes de cada operação que altera o projeto – reconhecer,
-gerenciar, fases, desmembramento, remembramento, vias, área edificada, pranchas… – o GeoPoint guarda uma cópia dos seus dados em
-`%AppData%\GeoPoint\copias`; as 40 mais recentes ficam guardadas; restaurar não altera o desenho do Revit e pode ser desfeito com
+gerenciar, fases, desmembramento, remembramento, vias, construção existente, hachuras, memorial, pranchas… – o GeoPoint guarda uma
+cópia compactada dos seus dados em `%AppData%\GeoPoint\copias` (uma cópia igual à anterior não é repetida); as 40 mais recentes ficam
+guardadas; restaurar não altera o desenho do Revit e pode ser desfeito com
 Desfazer), **Gerar arquivo de diagnóstico** (.zip na Área de Trabalho com registros, configurações sem chaves e os dados do projeto,
 para enviar ao suporte) e **Criar um projeto de exemplo** (três lotes, uma via, uma edificação e a referência, num projeto vazio).
 
@@ -401,6 +435,8 @@ Atalhos de teclado*; pesquise "GeoPoint" ou filtre por *Ferramentas externas*). 
 - **Errei uma operação** – use *Desfazer* do Revit ou *Ajuda › Restaurar uma cópia de segurança*.
 - **Registros de erro** – `%AppData%\GeoPoint\logs` (ou *Ajuda › Gerar arquivo de diagnóstico*).
 
+- **Testar uma versão nova** – siga o `ROTEIRO-DE-TESTE.md` do pacote num projeto de teste: são os passos e o resultado esperado de cada comando.
+
 ---
 
 ## 7. Responsabilidade técnica
@@ -408,3 +444,30 @@ Atalhos de teclado*; pesquise "GeoPoint" ou filtre por *Ferramentas externas*). 
 O GeoPoint é uma ferramenta de cálculo e documentação. O memorial descritivo é documento de responsabilidade do profissional
 habilitado (CAU/CREA), que deve conferir os dados, a origem e a precisão das coordenadas e as exigências do cartório, da prefeitura
 ou do INCRA/SIGEF.
+
+---
+
+## 8. Glossário
+
+| Termo | No GeoPoint |
+|---|---|
+| **Lote** | Área fechada reconhecida a partir das linhas do desenho. Tem nome, quadra, uso, confrontantes, proprietário e matrícula (vazios usam os *Dados do Imóvel*). |
+| **Vértice** | Ponto do contorno do lote (P-01, P-02…). A numeração pode ser própria de cada lote (padrão) ou única no projeto. |
+| **Divisa** | Trecho do contorno entre dois vértices: tem distância, azimute (ou rumo) e confrontante. |
+| **Confrontante** | Quem está do outro lado da divisa: um lote do projeto (aparece o **proprietário**), uma via ou um nome digitado. |
+| **Testada** | Divisa de frente, voltada para a via. |
+| **Mudança de confrontação** | Ponto numa linha reta onde o confrontante muda; vira vértice, com distância e azimute de cada trecho. |
+| **Remanescente** | No desmembramento, o lote que fica com a matrícula do lote original (hachura cruzada). |
+| **Desmembramento** | Divisão de um lote em vários; o original fica arquivado no histórico. |
+| **Remembramento** | União de lotes contíguos num só, só com os vértices do novo contorno; memorial sem histórico e sem matrícula. |
+| **Fase** | Etapa do projeto (ex.: situação atual, proposta) com os seus lotes; as operações criam fases. |
+| **Referência** | Coordenada conhecida de um vértice e a orientação do norte: liga o desenho às coordenadas (UTM, geográficas…). |
+| **Datum** | Sistema geodésico das coordenadas: SIRGAS 2000 (oficial), WGS 84 (≈ SIRGAS), SAD 69 e Córrego Alegre (antigos). |
+| **Ponto de referência do lote** | Vértice cuja coordenada aparece com chamada no mapa (P-01 por padrão; escolha outro nas Pranchas). |
+| **Modelo de prancha** | Papel, margens, blocos do carimbo, grade, norte, estilos de texto e logomarca; fica na biblioteca de modelos. |
+| **Prancha geral / prancha do lote** | Geral: vários lotes, sem números de vértice nem coordenadas. Do lote: numeração própria, azimutes e tabela de coordenadas. |
+| **Croqui** | Imagem de localização (satélite) com o lote desenhado por cima, no carimbo. |
+| **Recuos (área edificável)** | Onde se pode construir no lote, descontando o recuo de cada divisa. |
+| **Construção existente (área edificada)** | Edificações que já existem no lote: área de projeção, área construída, taxa de ocupação e distância até cada divisa. |
+| **Conferência** | Verificação feita antes de emitir memorial e pranchas (dados faltando, área diferente da matrícula, divisas sem confrontante). |
+| **Cópia de segurança** | Cópia dos dados do GeoPoint gravada antes de cada comando que altera o projeto (*Ajuda › Restaurar*). |

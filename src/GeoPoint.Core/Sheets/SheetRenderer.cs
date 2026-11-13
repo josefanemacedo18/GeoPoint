@@ -42,6 +42,10 @@ public sealed class SheetRenderInput
     public IReadOnlyList<(byte R, byte G, byte B)> Palette { get; init; } = new[] { ((byte)220, (byte)60, (byte)50) };
     /// <summary>Imagens disponíveis ("croqui", "logo").</summary>
     public ISet<string> Images { get; init; } = new HashSet<string>();
+    /// <summary>Largura/altura da logomarca (0 = desconhecida: ocupa o espaço todo).</summary>
+    public double LogoAspect { get; init; }
+    /// <summary>Prévia: mostra "(logomarca do escritório)" no espaço vazio. Na prancha do Revit o espaço fica em branco.</summary>
+    public bool Placeholders { get; init; }
 }
 
 /// <summary>Monta os elementos gráficos da prancha (moldura, blocos, grade, tabela, norte, escala, convenções).</summary>
@@ -148,12 +152,22 @@ public static class SheetRenderer
                 case SheetBlockKind.Titulo: Title(res, r, i, st); break;
                 case SheetBlockKind.Escritorio:
                 {
+                    // Espaço da logomarca: sozinha, ocupa o bloco (centralizada, com a proporção da imagem);
+                    // com o nome do escritório, fica à esquerda e o nome ao lado.
                     var inner = body.Inset(1.2);
                     bool logo = i.Images.Contains("logo");
-                    if (logo) res.Add(new PImage(new PaperRect(inner.X0, inner.Y0, inner.X0 + Math.Min(inner.Width * 0.4, inner.Height * 1.6), inner.Y1), "logo"));
-                    string name = string.IsNullOrWhiteSpace(t.OfficeName) ? b.Text : t.OfficeName + (b.Text.Length > 0 ? "\n" + b.Text : "");
-                    double x0 = logo ? inner.X0 + Math.Min(inner.Width * 0.4, inner.Height * 1.6) + 1.5 : inner.X0;
-                    if (name.Length > 0) FitText(res, new PaperRect(x0, inner.Y0, inner.X1, inner.Y1), name, st.ValorMm, true, PTextH.Left);
+                    string name = string.IsNullOrWhiteSpace(t.OfficeName) ? b.Text.Trim() : t.OfficeName.Trim() + (b.Text.Trim().Length > 0 ? "\n" + b.Text.Trim() : "");
+                    double x0 = inner.X0;
+                    if (logo)
+                    {
+                        var area = name.Length > 0 ? new PaperRect(inner.X0, inner.Y0, inner.X0 + inner.Width * 0.45, inner.Y1) : inner;
+                        var lr = FitAspect(area, i.LogoAspect, center: name.Length == 0);
+                        res.Add(new PImage(lr, "logo"));
+                        x0 = lr.X1 + 1.5;
+                    }
+                    if (name.Length > 0) FitText(res, new PaperRect(x0, inner.Y0, inner.X1, inner.Y1), name, st.ValorMm * 1.25, true, logo ? PTextH.Left : PTextH.Center, middle: true);
+                    else if (!logo && i.Placeholders)
+                        res.Add(new PText(inner.Center, "(logomarca do escritório)", st.RotuloMm, H: PTextH.Center, V: PTextV.Middle, R: 150, G: 150, B: 150));
                     break;
                 }
                 case SheetBlockKind.Observacoes:
@@ -165,6 +179,16 @@ public static class SheetRenderer
     }
 
     // ------------------------------------------------------------------ partes
+
+    /// <summary>Maior retângulo com a proporção <paramref name="aspect"/> (largura/altura) dentro de <paramref name="area"/>.</summary>
+    public static PaperRect FitAspect(PaperRect area, double aspect, bool center = true)
+    {
+        if (aspect <= 0 || area.Width <= 0 || area.Height <= 0) return area;
+        double w = area.Width, h = w / aspect;
+        if (h > area.Height) { h = area.Height; w = h * aspect; }
+        double x = center ? area.Center.X - w / 2 : area.X0, y = area.Center.Y - h / 2;
+        return new PaperRect(x, y, x + w, y + h);
+    }
 
     private static void Rect(List<SheetPrim> res, PaperRect r, PLineStyle s, bool paper = false)
     {
@@ -226,7 +250,7 @@ public static class SheetRenderer
     private static double LineH(double sizeMm) => sizeMm * 1.55;
 
     /// <summary>Texto que cabe no retângulo (quebra linhas e reduz até 1,3 mm).</summary>
-    private static void FitText(List<SheetPrim> res, PaperRect r, string text, double size, bool bold, PTextH h)
+    private static void FitText(List<SheetPrim> res, PaperRect r, string text, double size, bool bold, PTextH h, bool middle = false)
     {
         List<string> lines;
         while (true)
@@ -236,7 +260,9 @@ public static class SheetRenderer
             size = Math.Round(size - 0.1, 2);
         }
         double x = h switch { PTextH.Center => r.Center.X, PTextH.Right => r.X1, _ => r.X0 };
-        res.Add(new PText(new Vec2(x, r.Y1), string.Join("\n", lines), size, bold, h, PTextV.Top));
+        res.Add(middle
+            ? new PText(new Vec2(x, r.Center.Y), string.Join("\n", lines), size, bold, h, PTextV.Middle)
+            : new PText(new Vec2(x, r.Y1), string.Join("\n", lines), size, bold, h, PTextV.Top));
     }
 
     private static void Fields(List<SheetPrim> res, PaperRect body, IReadOnlyList<SheetField> fields, SheetTextStyles st)

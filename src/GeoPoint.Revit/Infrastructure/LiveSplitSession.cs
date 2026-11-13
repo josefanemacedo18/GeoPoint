@@ -61,6 +61,8 @@ public sealed class LiveSplitSession : IExternalEventHandler
         var ss = new LiveSplitSession(s, parent, state, cont);
         _current = ss;
         ss._app.DocumentChanged += ss.OnDocumentChanged;
+        // Fechar o projeto durante a sessão encerra a prévia (sem isso a janela ficaria aberta apontando para um documento fechado).
+        ss._app.DocumentClosing += ss.OnDocumentClosing;
         // Janela no canto direito da tela, para não cobrir o desenho.
         var wa = System.Windows.SystemParameters.WorkArea;
         ss._win.Left = wa.Right - ss._win.Width - 20;
@@ -78,6 +80,11 @@ public sealed class LiveSplitSession : IExternalEventHandler
             if (id is not null && uiapp.CanPostCommand(id)) uiapp.PostCommand(id);
         }
         catch (Exception ex) { Logger.Error("Ativar a ferramenta Linha", ex); }
+    }
+
+    private void OnDocumentClosing(object? sender, DocumentClosingEventArgs e)
+    {
+        try { if (e.Document is null || e.Document.Equals(_doc)) Stop(); } catch { Stop(); }
     }
 
     private void OnDocumentChanged(object? sender, DocumentChangedEventArgs e)
@@ -138,6 +145,7 @@ public sealed class LiveSplitSession : IExternalEventHandler
         var req = _pending;
         _pending = LiveSplitRequest.None;
         if (_stopped) return;
+        if (!_doc.IsValidObject) { Stop(); return; }
         try
         {
             switch (req)
@@ -158,6 +166,11 @@ public sealed class LiveSplitSession : IExternalEventHandler
                 }
                 case LiveSplitRequest.Finish:
                 {
+                    if (app.ActiveUIDocument?.Document is not { } active || !active.Equals(_doc))
+                    {
+                        Ui.Info("Desmembramento", $"Volte para o projeto \"{_doc.Title}\" para concluir a divisão.");
+                        break;
+                    }
                     var cuts = ReadCuts();
                     Stop();
                     _state.LineCuts = cuts;
@@ -182,6 +195,7 @@ public sealed class LiveSplitSession : IExternalEventHandler
         if (_stopped) return;
         _stopped = true;
         try { _app.DocumentChanged -= OnDocumentChanged; } catch { }
+        try { _app.DocumentClosing -= OnDocumentClosing; } catch { }
         try { _win.ClosingByCode = true; _win.Close(); } catch { }
         if (_current == this) _current = null;
     }

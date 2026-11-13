@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.IO;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using GeoPoint.Core.Geometry;
 using GeoPoint.Core.Sheets;
 
@@ -16,6 +18,8 @@ public sealed class SheetPreviewControl : FrameworkElement
     private double _w = 210, _h = 297;
     private List<(List<Vec2> Pts, Color Fill)> _shapes = new();
     private byte[] _grid = { 175, 175, 175 };
+    private ImageSource? _logo;
+    private string _logoKey = "";
 
     public void Show(SheetTemplate t, List<SheetPrim> prims, List<(List<Vec2> Pts, Color Fill)>? shapes = null)
     {
@@ -23,7 +27,30 @@ public sealed class SheetPreviewControl : FrameworkElement
         _prims = prims;
         _shapes = shapes ?? new();
         _grid = t.GridColor;
+        LoadLogo(t);
         InvalidateVisual();
+    }
+
+    /// <summary>Lê a logomarca do modelo (só quando muda) para desenhar a imagem real na prévia.</summary>
+    private void LoadLogo(SheetTemplate t)
+    {
+        string key = t.LogoData.Length > 0 ? t.LogoData.Length + ":" + t.LogoData.GetHashCode() : t.LogoPath;
+        if (key == _logoKey) return;
+        _logoKey = key;
+        _logo = null;
+        var bytes = t.LogoBytes();
+        if (bytes is null) return;
+        try
+        {
+            var bi = new BitmapImage();
+            bi.BeginInit();
+            bi.CacheOption = BitmapCacheOption.OnLoad;
+            bi.StreamSource = new MemoryStream(bytes);
+            bi.EndInit();
+            bi.Freeze();
+            _logo = bi;
+        }
+        catch { _logo = null; }
     }
 
     /// <summary>Monta a prévia de um modelo com conteúdo de exemplo (triângulo do modelo da Folha 02).</summary>
@@ -40,6 +67,7 @@ public sealed class SheetPreviewControl : FrameworkElement
             Template = t, Content = SheetContent.Sample(), Scale = fit.Scale, Folha = "02", SheetNumber = "GP-02",
             CrsAt = q => (235140 + (q.X - map.X0) / k, 9299280 + (q.Y - map.Y0) / k), Table = table is null ? null : table, TableRect = fit.Table,
             Palette = new[] { ((byte)220, (byte)60, (byte)50), ((byte)40, (byte)90, (byte)210), ((byte)30, (byte)150, (byte)80), ((byte)225, (byte)140, (byte)20) },
+            Images = t.HasLogo ? new HashSet<string> { "logo" } : new HashSet<string>(), LogoAspect = t.LogoAspect(), Placeholders = true,
         });
         Show(t, prims, new() { (tri, Color.FromRgb(248, 215, 176)) });
     }
@@ -109,7 +137,8 @@ public sealed class SheetPreviewControl : FrameworkElement
                 {
                     var a = P(new Vec2(im.Rect.X0, im.Rect.Y1));
                     var r = new Rect(a.X, a.Y, im.Rect.Width * s, im.Rect.Height * s);
-                    dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(90, 122, 74)), null, r);
+                    if (im.Key == "logo" && _logo is not null) dc.DrawImage(_logo, r);
+                    else dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(90, 122, 74)), null, r);
                     break;
                 }
                 case PText t:

@@ -3,10 +3,11 @@
 Plugin para **Revit 2027** (uso interno) de georreferenciamento de lotes urbanos e rurais: reconhece lotes a partir das linhas
 do desenho, calcula azimutes/rumos, distâncias, áreas e coordenadas (UTM, geográficas, SAD 69, Córrego Alegre, Plano Topográfico
 Local, RTM/LTM), faz desmembramento (inclusive desenhando com a ferramenta Linha, com prévia ao vivo), remembramento e simulação de parcelamento,
-calcula a área edificada e os afastamentos, e gera memorial descritivo em Word, pranchas por modelo (grade de coordenadas, tabela,
-coordenada de referência, croqui de satélite e carimbo), PDF, planilha Excel e arquivos KMZ/KML/GeoJSON para Google Earth e QGIS.
+calcula recuos, construções existentes e afastamentos, e gera memorial descritivo em Word, pranchas por modelo (grade de coordenadas, tabela,
+coordenada de referência, croqui de satélite, carimbo e logomarca do escritório), PDF, planilha Excel e arquivos KMZ/KML/GeoJSON para Google Earth e QGIS.
 
 - Manual do usuário: [`docs/MANUAL.md`](docs/MANUAL.md)
+- Roteiro de teste no Revit: [`docs/ROTEIRO-DE-TESTE.md`](docs/ROTEIRO-DE-TESTE.md)
 - Pacote de instalação: `dist/GeoPoint-<versão>.zip` (descompacte e execute `Instalar.bat`)
 
 ## Estrutura
@@ -23,7 +24,7 @@ src/GeoPoint.Revit    Add-in do Revit 2027 (.NET 10, WPF): faixa de opções, co
                       exportação de PDF, cópias de segurança e parâmetros GP_*.
 tests/                Testes automatizados do núcleo (xUnit), com valores de referência do PROJ/pyproj.
 tools/                Scripts de build e de instalação.
-docs/                 Manual.
+docs/                 Manual e roteiro de teste.
 ```
 
 ## Compilar
@@ -43,5 +44,6 @@ No Windows: `powershell -ExecutionPolicy Bypass -File tools/build.ps1`. O pacote
 ## Dados
 
 - Os lotes, a referência geodésica e as operações ficam gravados no `.rvt` (Extensible Storage, esquema `GeoPointData`).
-- Configurações do usuário, modelos de memorial e de prancha, cópias de segurança e registros: `%AppData%\GeoPoint\`.
+- Configurações do usuário, modelos de memorial e de prancha (com a logomarca embutida), cópias de segurança (compactadas) e registros: `%AppData%\GeoPoint\`.
+- Chave da Google Maps Static API: Gerenciador de Credenciais do Windows (`GeoPoint/GoogleMapsStaticKey`), nunca no arquivo de configurações.
 - Cache de imagens do croqui: `%LocalAppData%\GeoPoint\`.
