@@ -112,6 +112,7 @@ public static class Annotator
         Func<LotRecord, string>? ownerOf = null, IEnumerable<Obb>? obstacles = null, bool? perLotNames = null, Func<LotReport, RefCallout?>? refCallout = null)
     {
         LastConflicts = 0;
+        LastOversized = 0;
         foreach (var l in lots) Clear(doc, l, view);
         // O que outros lotes já anotaram nesta vista não é repetido.
         var existing = new HashSet<string>();
@@ -153,6 +154,7 @@ public static class Annotator
             return lot is not null && lot.SourceKind == "DetailLine" ? lot.ZFeet : zDefault;
         }
 
+        var createdTexts = new List<(TextNote Note, AnnoText Plan)>();
         foreach (var t in plan.Texts)
         {
             try
@@ -175,6 +177,7 @@ public static class Annotator
                 AlignText(doc, tn, t.Rotation, at);
                 if (t.BoldFirstLine) BoldFirstLine(tn, t.BoldLines);
                 byLot[t.Owner].Add(tn.UniqueId);
+                createdTexts.Add((tn, t));
             }
             catch (Exception ex) { Logger.Error("Texto de anotação", ex); }
         }
@@ -199,6 +202,7 @@ public static class Annotator
             }
             catch (Exception ex) { Logger.Error("Linha de confrontante", ex); }
         }
+        CheckRealTextSize(doc, view, createdTexts);
         int total = 0;
         foreach (var l in lots)
         {
@@ -211,6 +215,38 @@ public static class Annotator
 
     /// <summary>Textos sem posição livre na última anotação (aviso de legibilidade).</summary>
     public static int LastConflicts { get; private set; }
+
+    /// <summary>Textos que no Revit ficaram bem maiores que o previsto na última anotação (podem encostar em outros).</summary>
+    public static int LastOversized { get; private set; }
+
+    /// <summary>
+    /// Mede no Revit o tamanho real de cada texto criado e compara com o planejado (largura das letras Arial).
+    /// Só conta e registra: o resultado aparece no aviso da anotação/prancha.
+    /// </summary>
+    private static void CheckRealTextSize(Document doc, View view, List<(TextNote Note, AnnoText Plan)> texts)
+    {
+        if (texts.Count == 0) return;
+        try
+        {
+            doc.Regenerate();
+            var ratios = new List<double>();
+            foreach (var (tn, t) in texts)
+            {
+                var bb = tn.get_BoundingBox(view);
+                if (bb is null) continue;
+                var real = new BBox(bb.Min.X * RvtUnits.FtToM, bb.Min.Y * RvtUnits.FtToM, bb.Max.X * RvtUnits.FtToM, bb.Max.Y * RvtUnits.FtToM);
+                var (bigger, ratio) = TextFitCheck.Compare(t.Box, real);
+                if (bigger) LastOversized++;
+                if (ratio is double r) ratios.Add(r);
+            }
+            if (ratios.Count > 0)
+            {
+                ratios.Sort();
+                Logger.Info($"Anotação ({view.Name}): largura real / prevista dos textos – mediana {ratios[ratios.Count / 2]:0.00}, máx. {ratios[^1]:0.00} ({ratios.Count} textos); {LastOversized} maior(es) que o previsto.");
+            }
+        }
+        catch (Exception ex) { Logger.Error("Conferência do tamanho dos textos", ex); }
+    }
 
     /// <summary>Garante que a linha de base do texto siga a direção pedida (no desenho), girando em torno do ponto de inserção.</summary>
     public static void AlignText(Document doc, TextNote tn, double desired, XYZ at)

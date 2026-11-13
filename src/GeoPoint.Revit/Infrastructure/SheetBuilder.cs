@@ -26,6 +26,8 @@ public sealed class SheetBuildOptions
     public string LocationImage { get; set; } = "";
     /// <summary>Croqui automático (imagem de satélite com o lote): devolve o caminho da imagem ou null.</summary>
     public Func<SheetSpec, IReadOnlyList<LotRecord>, string?>? Croqui { get; set; }
+    /// <summary>Croqui desenhado (sem imagem), usado quando não há imagem de satélite nem imagem escolhida.</summary>
+    public Func<SheetSpec, IReadOnlyList<LotRecord>, string?>? VectorCroqui { get; set; }
     public string NumberPrefix { get; set; } = "GP";
     public string Font { get; set; } = "Arial";
 }
@@ -203,6 +205,12 @@ public sealed class SheetBuilder
         string? croqui = null;
         try { croqui = _o.Croqui?.Invoke(spec, lots); } catch (Exception ex) { Logger.Error("Croqui automático", ex); Warnings.Add($"{spec.Title}: croqui automático – {ex.Message}"); }
         if (string.IsNullOrWhiteSpace(croqui) || !File.Exists(croqui)) croqui = File.Exists(_o.LocationImage) ? _o.LocationImage : null;
+        // Sem foto e sem imagem escolhida: croqui desenhado (lotes, vias, norte e escala) – nunca um bloco vazio.
+        if (croqui is null && _o.VectorCroqui is not null)
+        {
+            try { croqui = _o.VectorCroqui(spec, lots); }
+            catch (Exception ex) { Logger.Error("Croqui desenhado", ex); }
+        }
         if (croqui is not null) images.Add("croqui");
         // Logomarca do escritório (embutida no modelo): gravada na pasta de cache para o Revit inserir.
         string? logo = null;
@@ -250,6 +258,8 @@ public sealed class SheetBuilder
             Warnings.AddRange(fails.Select(f => $"{spec.Title}: {f}"));
             if (Annotator.LastConflicts > 0)
                 Warnings.Add($"{spec.Title}: {Annotator.LastConflicts} texto(s) sem espaço livre (ficaram na posição de menor conflito) – confira e arraste se precisar.");
+            if (Annotator.LastOversized > 0)
+                Warnings.Add($"{spec.Title}: {Annotator.LastOversized} texto(s) ficaram maiores no Revit que o previsto (a fonte \"{_o.Font}\" pode ser mais larga que o Arial) – confira se encostam em outros.");
         }
         _doc.Regenerate();
 

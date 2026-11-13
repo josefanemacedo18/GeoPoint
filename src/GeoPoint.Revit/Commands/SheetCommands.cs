@@ -169,6 +169,7 @@ public sealed class CmdPranchas : CommandBase
             Template = template,
             Scale = st.AutoScale ? 0 : st.Scale,
             Croqui = st.CroquiAuto && CroquiService.EnsureTerms(s) ? CroquiService.ForSheets(s, template) : null,
+            VectorCroqui = st.CroquiAuto ? CroquiService.VectorForSheets(s, template) : null,
             Anotacoes = st.Anotacoes, Vias = st.Vias, NorteParaCima = st.NorteParaCima,
             LocationImage = s.Project.Info.ImagemLocalizacao, NumberPrefix = st.NumberPrefix, Font = s.Settings.Annotation.Font,
         });

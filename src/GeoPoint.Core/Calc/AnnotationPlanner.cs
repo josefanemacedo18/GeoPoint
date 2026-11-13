@@ -823,3 +823,34 @@ public static class AnnotationPlanner
         return string.Equals(a.Confrontante.Trim(), b.Confrontante.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 }
+
+/// <summary>
+/// Conferência de um texto já criado no Revit: a caixa real (retângulo alinhado aos eixos do desenho, em metros)
+/// comparada com a caixa planejada. Texto bem maior que o previsto pode encostar em outro (ex.: fonte mais larga que o Arial).
+/// </summary>
+public static class TextFitCheck
+{
+    /// <summary>Retângulo alinhado aos eixos que contém a caixa planejada.</summary>
+    public static BBox Bounds(Obb b)
+    {
+        var u = b.U * b.Hw; var v = b.V * b.Hh;
+        return BBox.Of(new[] { b.C + u + v, b.C + u - v, b.C - u + v, b.C - u - v });
+    }
+
+    /// <param name="real">Caixa real do texto no Revit (metros, eixos do desenho).</param>
+    /// <returns>
+    /// Bigger: a caixa real passa da planejada mais que meia altura de linha em algum lado.
+    /// WidthRatio: largura real / largura planejada (só para textos na horizontal ou na vertical do desenho).
+    /// </returns>
+    public static (bool Bigger, double? WidthRatio) Compare(Obb planned, BBox real)
+    {
+        var p = Bounds(planned);
+        double tol = planned.Hh * 0.5;
+        bool bigger = real.MinX < p.MinX - tol || real.MaxX > p.MaxX + tol || real.MinY < p.MinY - tol || real.MaxY > p.MaxY + tol;
+        double? ratio = null;
+        double c = Math.Abs(planned.U.X), s = Math.Abs(planned.U.Y);
+        if (s < 0.02 && planned.Hw > 1e-9) ratio = real.Width / (2 * planned.Hw);
+        else if (c < 0.02 && planned.Hw > 1e-9) ratio = real.Height / (2 * planned.Hw);
+        return (bigger, ratio);
+    }
+}

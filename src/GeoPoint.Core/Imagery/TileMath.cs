@@ -3,7 +3,12 @@ using GeoPoint.Core.Geometry;
 namespace GeoPoint.Core.Imagery;
 
 /// <summary>Fornecedores de imagem de satélite para o croqui de localização.</summary>
-public enum ImageryProvider { Esri = 0, Google = 1, Personalizado = 2, Nenhum = 3 }
+public enum ImageryProvider
+{
+    Esri = 0, Google = 1, Personalizado = 2, Nenhum = 3,
+    /// <summary>Croqui desenhado pelo GeoPoint (lotes, vias, norte e escala), sem imagem: não depende de internet nem de licença.</summary>
+    Desenho = 4,
+}
 
 /// <summary>Configuração do croqui automático.</summary>
 public sealed class ImagerySettings
@@ -29,7 +34,11 @@ public sealed class ImagerySettings
     /// <summary>Resolução do croqui na folha (pontos por polegada).</summary>
     public int Dpi { get; set; } = 220;
 
-    public static string EsriUrl => "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+    /// <summary>
+    /// Tiles da Esri. <c>blankTile=false</c>: onde não há imagem nesse zoom o servidor responde 404 (em vez da imagem cinza
+    /// "Map data not yet available"), e o GeoPoint desce para o zoom em que há imagem.
+    /// </summary>
+    public static string EsriUrl => "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?blankTile=false";
     public static string EsriAttribution => "Imagem: Esri, Maxar, Earthstar Geographics";
 
     public string Attribution => Provider switch
@@ -45,8 +54,43 @@ public sealed class ImagerySettings
         ImageryProvider.Esri => "Esri World Imagery: uso sujeito aos termos da Esri (para uso comercial pode ser exigida conta/licença ArcGIS). A atribuição é impressa no croqui.",
         ImageryProvider.Google => "Google Maps Static API: exige chave de API, faturamento ativo e o cumprimento dos termos do Google Maps Platform (o logotipo/atribuição do Google fica na imagem).",
         ImageryProvider.Personalizado => "Servidor de tiles próprio ou de terceiros: confira se a licença permite imprimir as imagens em documentos.",
+        ImageryProvider.Desenho => "Desenho do GeoPoint (lotes, vias, norte e escala gráfica), sem imagem de satélite: não depende de internet nem de licença.",
         _ => "",
     };
+}
+
+/// <summary>Conferência de tiles: servidores que devolvem uma imagem lisa ("sem dados") no lugar da foto.</summary>
+public static class TileQuality
+{
+    /// <summary>
+    /// true = a imagem é praticamente de uma cor só (ex.: o cinza com "Map data not yet available" da Esri: 98% dos pixels).
+    /// Fotos de satélite reais ficam abaixo de 40%. Pixels em BGRA (4 bytes por pixel).
+    /// </summary>
+    public static bool LooksBlank(byte[] bgra, int width, int height, int stride, double threshold = 0.85)
+    {
+        if (width <= 0 || height <= 0 || bgra.Length < stride * height) return false;
+        var counts = new Dictionary<int, int>();
+        int total = 0;
+        for (int y = 0; y < height; y += 2)
+            for (int x = 0; x < width; x += 2)
+            {
+                int i = y * stride + x * 4;
+                int key = (bgra[i + 2] >> 3) << 10 | (bgra[i + 1] >> 3) << 5 | (bgra[i] >> 3);
+                counts[key] = counts.TryGetValue(key, out int c) ? c + 1 : 1;
+                total++;
+            }
+        if (total == 0) return false;
+        int dom = counts.OrderByDescending(kv => kv.Value).First().Key;
+        int r = ((dom >> 10) & 31) * 8 + 4, g = ((dom >> 5) & 31) * 8 + 4, b = (dom & 31) * 8 + 4;
+        int near = 0;
+        for (int y = 0; y < height; y += 2)
+            for (int x = 0; x < width; x += 2)
+            {
+                int i = y * stride + x * 4;
+                if (Math.Abs(bgra[i + 2] - r) <= 10 && Math.Abs(bgra[i + 1] - g) <= 10 && Math.Abs(bgra[i] - b) <= 10) near++;
+            }
+        return near >= total * threshold;
+    }
 }
 
 /// <summary>Contas de tiles Web Mercator (EPSG:3857, tiles de 256 px).</summary>
@@ -103,6 +147,9 @@ public sealed class CroquiFrame
     public double Resample { get; init; } = 1;
     public List<(int X, int Y)> Tiles { get; } = new();
 
+    /// <summary>Largura mostrada no terreno (m).</summary>
+    public double SpanM(double latDeg) => WidthPx / Resample * 156543.03392 * Math.Cos(latDeg * Math.PI / 180) / Math.Pow(2, Zoom);
+
     /// <summary>Posição (pixels da imagem final) de uma longitude/latitude.</summary>
     public Vec2 ImagePixel(double lon, double lat) => (TileMath.ToPixel(lon, lat, Zoom) - Origin) * Resample;
 
@@ -110,7 +157,12 @@ public sealed class CroquiFrame
     /// Escolhe o zoom e a janela para mostrar o polígono (lon/lat) com folga (<paramref name="context"/> × o tamanho do imóvel),
     /// na proporção do bloco (<paramref name="aspect"/> = largura/altura) e com <paramref name="widthPx"/> pixels de largura.
     /// </summary>
-    public static CroquiFrame Fit(IReadOnlyList<(double Lon, double Lat)> poly, double aspect, int widthPx, double context = 3, int maxZoom = 19, double minSpanM = 120)
+    /// <param name="maxResample">
+    /// Ampliação máxima da imagem do zoom escolhido. Quando o zoom máximo (ou o zoom em que há imagem) limita, a janela aumenta
+    /// (mostra mais vizinhança) em vez de ampliar a foto além disso – a imagem fica nítida e o lote é destacado.
+    /// </param>
+    public static CroquiFrame Fit(IReadOnlyList<(double Lon, double Lat)> poly, double aspect, int widthPx, double context = 3, int maxZoom = 19,
+        double minSpanM = 120, double maxResample = double.PositiveInfinity)
     {
         if (poly.Count == 0) throw new ArgumentException("Polígono vazio.");
         aspect = Math.Clamp(aspect, 0.2, 5);
@@ -127,6 +179,7 @@ public sealed class CroquiFrame
         z = Math.Clamp(z, 1, maxZoom);
         double mppZ = 156543.03392 * Math.Cos(latC * Math.PI / 180) / Math.Pow(2, z);
         double resample = mppZ / mppWanted;          // >= 1 quando o zoom máximo limita
+        if (resample > maxResample) resample = Math.Max(1, maxResample);
         var center = TileMath.ToPixel(poly.Average(p => p.Lon), latC, z);
         double wZ = widthPx / resample, hZ = heightPx / resample;
         var origin = new Vec2(center.X - wZ / 2, center.Y - hZ / 2);

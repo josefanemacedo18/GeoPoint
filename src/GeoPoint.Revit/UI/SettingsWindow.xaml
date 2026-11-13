@@ -223,7 +223,7 @@
             <TabItem Header="Croqui (satélite)">
                 <StackPanel Margin="10">
                     <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap"
-                               Text="O croqui de localização das pranchas é montado automaticamente: o GeoPoint baixa a imagem de satélite da região do imóvel e desenha o lote por cima. Escolha o fornecedor e confira a licença de uso das imagens."/>
+                               Text="O croqui de localização das pranchas é montado automaticamente: o GeoPoint baixa a imagem de satélite da região do imóvel (no zoom mais detalhado que existir ali) e desenha o lote por cima. Sem internet ou sem imagem na região, o croqui sai desenhado (lotes, ruas, norte e escala). Escolha o fornecedor e confira a licença de uso das imagens."/>
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="230"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                         <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
@@ -233,6 +233,7 @@
                             <ComboBoxItem Content="Google Maps Static API (precisa de chave)"/>
                             <ComboBoxItem Content="Servidor de tiles personalizado (XYZ)"/>
                             <ComboBoxItem Content="Nenhum (usar imagem escolhida)"/>
+                            <ComboBoxItem Content="Desenho do projeto (sem imagem – não depende de internet)"/>
                         </ComboBox>
                         <Label Grid.Row="1" Content="Chave Google (Static Maps):"/>
                         <PasswordBox Grid.Row="1" Grid.Column="1" x:Name="ImgGoogleKey" Margin="4,3"/>

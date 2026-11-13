@@ -23,6 +23,18 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 
 ---
 
+## Ajustes da versão 1.5.5
+
+- **Croqui de satélite legível**: o GeoPoint usa o zoom mais detalhado que **existe** na região (onde a Esri não tem o zoom 18/19,
+  ele desce sozinho até o zoom com foto, em vez de pôr a imagem cinza "Map data not yet available" na prancha) e nunca amplia a foto
+  mais de 2× – quando o zoom disponível é baixo, o croqui mostra mais vizinhança e o lote ganha um **anel laranja** em volta.
+- **Croqui desenhado** (sem imagem): lotes do projeto em volta, o lote da prancha em laranja, as ruas com o nome, o norte e a escala
+  gráfica. Entra sozinho quando não há internet, quando a região não tem imagem ou quando o projeto não tem referência – e pode ser
+  escolhido como fornecedor (*Desenho do projeto*), sem depender de internet nem de licença.
+- **Conferência dos textos no Revit**: depois de anotar (vista ou prancha), o GeoPoint mede o tamanho real de cada texto e avisa se
+  algum ficou maior que o previsto (ex.: fonte mais larga que o Arial) e pode encostar em outro.
+- Retirado o roteiro de teste do pacote.
+
 ## Novidades da versão 1.5.4
 
 - **Desenhar Perímetro** (antes *Desenhar por Azimutes*): a mesma ferramenta agora desenha o lote **por azimutes e distâncias** ou
@@ -53,7 +65,7 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
   certo se outro estiver ativo.
 - Rótulo do lote igual na vista, na prancha e nas prévias; prévia do *Anotar Lotes* com exatamente as mesmas regras da anotação;
   KML/GeoJSON com o proprietário e a matrícula efetivos (lote do desmembramento sem matrícula própria não herda a do imóvel).
-- **Roteiro de teste** (`ROTEIRO-DE-TESTE.md`, no pacote) e **glossário** no fim deste manual.
+- **Glossário** no fim deste manual.
 
 ## Ajustes da versão 1.5.2
 
@@ -291,6 +303,8 @@ As edificações aparecem no **memorial** (seção *ÁREA EDIFICADA* com as dist
 - **nenhum texto sobre outro ou sobre as linhas**, todos **alinhados à vista** (nunca tortos ou de cabeça para baixo), com a largura real
   das letras Arial;
 - **prévia** à direita, com os textos na escala da vista, atualizada a cada opção;
+- depois de criar, o GeoPoint **mede no Revit** o tamanho real de cada texto e avisa se algum ficou maior que o previsto (fonte mais larga
+  que o Arial, por exemplo) e pode encostar em outro;
 - se a **escala da vista mudou** depois da anotação, o GeoPoint avisa e já marca os lotes para anotar de novo no tamanho certo.
 
 **Hachuras** – uma cor por lote (remanescente com hachura cruzada). Opção **Preencher parâmetros GP_*** (`GP_Lote`, `GP_Quadra`,
@@ -340,9 +354,11 @@ As edificações aparecem no **memorial** (seção *ÁREA EDIFICADA* com as dist
   projeção, fuso, meridiano central, EPSG, **escala** e **escala gráfica**), *Croqui de localização*, o espaço da **logomarca do
   escritório** e o **título** com a **FOLHA**;
 - **folhas numeradas por projeto** (FOLHA 01, 02, 03…; uma prancha substituída mantém o número);
-- **croqui de localização automático**: o GeoPoint baixa a imagem de satélite da região e desenha o lote por cima (fornecedor em
-  *Configurações › Croqui*). Na primeira vez ele mostra a licença do fornecedor e pede a sua confirmação. Sem internet, ou com o croqui
-  automático desligado, usa a imagem escolhida em *Croqui (arquivo)*;
+- **croqui de localização automático**: o GeoPoint baixa a imagem de satélite da região, no zoom mais detalhado que existir ali, e
+  desenha o lote por cima (fornecedor em *Configurações › Croqui*). A foto nunca é ampliada mais de 2×: com pouco detalhe na região,
+  o croqui mostra mais vizinhança e um anel laranja marca o lote. Na primeira vez ele mostra a licença do fornecedor e pede a sua
+  confirmação. Sem imagem (sem internet, região sem foto ou projeto sem referência) usa a imagem escolhida em *Croqui (arquivo)* e,
+  sem ela, o **croqui desenhado** (lotes, ruas, norte e escala);
 - **prévia** da prancha selecionada (mesmo encaixe, carimbo e anotações), com avisos de legibilidade;
 - **pranchas já geradas**: a tabela mostra se você **editou** a prancha e você escolhe *Substituir*, *Manter a atual* ou *Nova versão ao lado*;
 - **conferência antes de emitir** e avisos de legibilidade (textos sem espaço, tabela reduzida, desenho apertado);
@@ -389,8 +405,10 @@ sistemas de coordenadas (o **primeiro** é o usado nas pranchas, na grade e nas 
 | **Esri World Imagery** (padrão) | não | uso sujeito aos termos da Esri; para uso comercial pode ser exigida conta/licença ArcGIS. A atribuição é impressa no croqui. |
 | **Google Maps Static API** | sim (com faturamento ativo) | termos do Google Maps Platform; o logotipo/atribuição do Google fica na imagem. |
 | **Servidor personalizado** (XYZ `{z}/{x}/{y}` ou `{q}`) | depende | ex.: imagens da prefeitura; confira se a licença permite imprimir. |
-| **Nenhum** | – | usa a imagem escolhida por você. |
-Também: vizinhança (quantas vezes o tamanho do imóvel) e resolução (dpi). As imagens baixadas ficam em cache em
+| **Nenhum** | – | usa a imagem escolhida por você (sem ela, o croqui desenhado). |
+| **Desenho do projeto** | não | sem imagem: lotes, ruas com nome, norte e escala gráfica. Não depende de internet nem de licença. |
+Também: vizinhança (quantas vezes o tamanho do imóvel) e resolução (dpi). Onde o fornecedor não tem foto no zoom pedido (a Esri
+responde "sem dados"), o GeoPoint desce para o zoom em que há foto. As imagens baixadas ficam em cache em
 `%LocalAppData%\GeoPoint`. A chave do Google fica no **Gerenciador de Credenciais do Windows** (*Painel de Controle › Gerenciador de
 Credenciais › Credenciais do Windows*, item `GeoPoint/GoogleMapsStaticKey`): não fica em texto no arquivo de configurações nem vai no
 arquivo de diagnóstico.
@@ -472,7 +490,6 @@ Atalhos de teclado*; pesquise "GeoPoint" ou filtre por *Ferramentas externas*). 
 - **Errei uma operação** – use *Desfazer* do Revit ou *Ajuda › Restaurar uma cópia de segurança*.
 - **Registros de erro** – `%AppData%\GeoPoint\logs` (ou *Ajuda › Gerar arquivo de diagnóstico*).
 
-- **Testar uma versão nova** – siga o `ROTEIRO-DE-TESTE.md` do pacote num projeto de teste: são os passos e o resultado esperado de cada comando.
 
 ---
 

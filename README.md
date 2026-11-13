@@ -4,10 +4,9 @@ Plugin para **Revit 2027** (uso interno) de georreferenciamento de lotes urbanos
 do desenho, calcula azimutes/rumos, distâncias, áreas e coordenadas (UTM, geográficas, SAD 69, Córrego Alegre, Plano Topográfico
 Local, RTM/LTM), desenha lotes por azimutes ou pelas coordenadas de um memorial/SIGEF/planilha (com conferência), faz desmembramento (inclusive desenhando com a ferramenta Linha, com prévia ao vivo), remembramento e simulação de parcelamento,
 calcula recuos, construções existentes e afastamentos, e gera memorial descritivo em Word, pranchas por modelo (grade de coordenadas, tabela,
-coordenada de referência, croqui de satélite, carimbo e logomarca do escritório), PDF, planilha Excel e arquivos KMZ/KML/GeoJSON para Google Earth e QGIS.
+coordenada de referência, croqui de satélite ou desenhado, carimbo e logomarca do escritório), PDF, planilha Excel e arquivos KMZ/KML/GeoJSON para Google Earth e QGIS.
 
 - Manual do usuário: [`docs/MANUAL.md`](docs/MANUAL.md)
-- Roteiro de teste no Revit: [`docs/ROTEIRO-DE-TESTE.md`](docs/ROTEIRO-DE-TESTE.md)
 - Pacote de instalação: `dist/GeoPoint-<versão>.zip` (descompacte e execute `Instalar.bat`)
 
 ## Estrutura
@@ -24,7 +23,7 @@ src/GeoPoint.Revit    Add-in do Revit 2027 (.NET 10, WPF): faixa de opções, co
                       exportação de PDF, cópias de segurança e parâmetros GP_*.
 tests/                Testes automatizados do núcleo (xUnit), com valores de referência do PROJ/pyproj.
 tools/                Scripts de build e de instalação.
-docs/                 Manual e roteiro de teste.
+docs/                 Manual.
 ```
 
 ## Compilar

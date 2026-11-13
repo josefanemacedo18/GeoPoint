@@ -162,6 +162,10 @@ public sealed class CmdAnotar : CommandBase
             t.Commit();
         }
         if (failed.Count > 0) Ui.Warn("Anotação concluída com falhas", $"{total} texto(s) criado(s).\n\n" + string.Join("\n", failed));
+        else if (Annotator.LastOversized > 0)
+            Ui.Warn("Anotação – confira os textos",
+                $"{Annotator.LastOversized} texto(s) ficaram maiores no Revit que o previsto e podem encostar em outros (a fonte \"{a.Font}\" pode ser mais larga que o Arial).\n\n" +
+                "Aumente a escala da vista (ex.: 1:200 → 1:250), reduza o texto ou use a fonte Arial nas Configurações, e anote de novo.");
         return Result.Succeeded;
     }
 }
