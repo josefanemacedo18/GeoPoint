@@ -33,13 +33,44 @@ public static class Annotator
         public double OffsetMm { get; set; } = 1.5;
         public double DotMm { get; set; } = 1.2;
         public string Font { get; set; } = "Arial";
+        /// <summary>Rótulo do lote: proprietário, matrícula e perímetro além do nome e da área.</summary>
+        public bool LabelOwner { get; set; } = true;
+        public bool LabelMatricula { get; set; } = true;
+        public bool LabelPerimeter { get; set; } = true;
 
         public static Options From(AnnotationSettings a) => new()
         {
             Vertices = a.Vertices, Edges = a.Edges, Area = a.AreaLabel, EdgeAngle = a.EdgeAzimuth, Dots = a.VertexDots,
             Outside = a.TextOutside, Confrontantes = a.Confrontantes, Opaque = a.OpaqueText, TextMm = a.TextSizeMm, OffsetMm = a.OffsetMm,
-            DotMm = a.DotMm, Font = a.Font,
+            DotMm = a.DotMm, Font = a.Font, LabelOwner = a.LabelOwner, LabelMatricula = a.LabelMatricula, LabelPerimeter = a.LabelPerimeter,
         };
+    }
+
+    /// <summary>Ângulo (rad) da horizontal da vista no desenho (vistas giradas: norte verdadeiro, recorte girado).</summary>
+    public static double ViewAngle(View v)
+    {
+        try { var r = v.RightDirection; return Math.Atan2(r.Y, r.X); } catch { return 0; }
+    }
+
+    /// <summary>Rótulo do lote: nome; proprietário; matrícula; área; perímetro (sem CPF).</summary>
+    public static string LotLabel(LotReport rep, ProjectContext ctx, ValueFormatter fmt, Options o)
+    {
+        var lot = rep.Lot;
+        var info = ctx.Project.Info;
+        var lines = new List<string> { lot.IsRemanescente ? lot.DisplayName.ToUpperInvariant() : lot.DisplayName };
+        if (o.LabelOwner)
+        {
+            string owner = string.IsNullOrWhiteSpace(lot.Proprietario) ? info.Proprietario : lot.Proprietario;
+            if (!string.IsNullOrWhiteSpace(owner)) lines.Add(owner.Trim().ToUpperInvariant());
+        }
+        if (o.LabelMatricula)
+        {
+            string m = string.IsNullOrWhiteSpace(lot.Matricula) ? info.Matricula : lot.Matricula;
+            if (!string.IsNullOrWhiteSpace(m)) lines.Add("MATRÍCULA: " + m.Trim());
+        }
+        lines.Add("ÁREA = " + fmt.Area(rep.AreaLocal));
+        if (o.LabelPerimeter) lines.Add("PERÍMETRO = " + fmt.Distance(rep.PerimeterLocal));
+        return string.Join("\n", lines);
     }
 
     /// <summary>Remove anotações anteriores do lote nesta vista. Dentro de transação.</summary>
@@ -69,7 +100,7 @@ public static class Annotator
 
     /// <summary>Anota um conjunto de lotes de uma vez (divisas e vértices compartilhados uma vez só). Dentro de transação.</summary>
     public static int Annotate(Document doc, View view, IReadOnlyList<LotRecord> lots, ProjectContext ctx, ValueFormatter fmt, Options o, IList<string>? failures = null,
-        Func<LotRecord, string>? ownerOf = null, IEnumerable<Obb>? obstacles = null)
+        Func<LotRecord, string>? ownerOf = null, IEnumerable<Obb>? obstacles = null, bool? perLotNames = null)
     {
         foreach (var l in lots) Clear(doc, l, view);
         // O que outros lotes já anotaram nesta vista não é repetido.
@@ -89,17 +120,24 @@ public static class Annotator
         }
         double scale = Math.Max(1, view.Scale);
         double textM = o.TextMm / 1000.0 * scale;
+        double viewAngle = ViewAngle(view);
         var plan = AnnotationPlanner.Plan(reports, fmt, new AnnotationPlanOptions
         {
             Edges = o.Edges, EdgeAngle = o.EdgeAngle, Vertices = o.Vertices, Area = o.Area, Dots = o.Dots, Outside = o.Outside,
             Confrontantes = o.Confrontantes, TextM = textM, OffsetM = o.OffsetMm / 1000.0 * scale, DotRadiusM = o.DotMm / 2000.0 * scale,
             PadM = RevitStyles.TextPadMm / 1000.0 * scale, LineFactor = RevitStyles.LineFactor,
             OwnerOf = ownerOf, Obstacles = obstacles?.ToList() ?? new List<Obb>(),
+            ViewAngle = viewAngle,
+            LabelOf = r => LotLabel(r, ctx, fmt, o),
+            // Numeração por lote com vários lotes: cada lote mostra os seus números (dentro dele).
+            PerLotVertexNames = perLotNames ?? (ctx.Settings.Naming.Numbering == VertexNumbering.Lote && lots.Count > 1),
+            // Rua desenhada nesta vista: o nome da via já aparece na rua.
+            SkipViaNames = ctx.Project.StreetDrawings.Any(d => d.ViewId == view.UniqueId && ElementUtil.ExistingIds(doc, d.ElementIds).Count > 0),
         }, existing);
         if (plan.Conflicts > 0) Logger.Info($"Anotação: {plan.Conflicts} texto(s) sem espaço livre na vista {view.Name} (posição de menor conflito).");
 
         var normal = RevitStyles.TextType(doc, o.TextMm, o.Font, o.Opaque);
-        var label = RevitStyles.TextType(doc, Math.Round(o.TextMm * 1.25, 2), o.Font, o.Opaque, bold: true);
+        var label = RevitStyles.TextType(doc, Math.Round(o.TextMm * 1.1, 2), o.Font, o.Opaque);
         var red = RevitStyles.TextType(doc, o.TextMm, o.Font, o.Opaque, color: Red);
         var dotType = plan.Dots.Count > 0 ? RevitStyles.FillType(doc, LotUse.Lote, "GeoPoint - Ponto de vértice", (0, 0, 0)) : ElementId.InvalidElementId;
         GraphicsStyle? tickStyle = null, dimStyle = null, leaderStyle = null;
@@ -123,14 +161,18 @@ public static class Annotator
             try
             {
                 var type = t.Kind switch { AnnoTextKind.LotLabel => label, AnnoTextKind.Confrontante or AnnoTextKind.Measure => red, _ => normal };
-                // O Revit posiciona o texto centralizado pelo meio da borda SUPERIOR da caixa; a rotação já vem legível.
+                // O Revit posiciona o texto centralizado pelo meio da borda SUPERIOR da caixa; a rotação já vem legível
+                // e é dada em relação à vista. Depois de criado, a direção real do texto é conferida e corrigida.
                 var opts = new TextNoteOptions(type)
                 {
                     HorizontalAlignment = HorizontalTextAlignment.Center,
-                    Rotation = t.Rotation,
+                    Rotation = AngleUtil.NormPi(t.Rotation - viewAngle),
                     KeepRotatedTextReadable = false,
                 };
-                var tn = TextNote.Create(doc, view.Id, RvtUnits.ToXyz(t.TopCenter, Z(t.Owner)), t.Text.Replace("\n", "\r"), opts);
+                var at = RvtUnits.ToXyz(t.TopCenter, Z(t.Owner));
+                var tn = TextNote.Create(doc, view.Id, at, t.Text.Replace("\n", "\r"), opts);
+                AlignText(doc, tn, t.Rotation, at);
+                if (t.BoldFirstLine) BoldFirstLine(tn);
                 byLot[t.Owner].Add(tn.UniqueId);
             }
             catch (Exception ex) { Logger.Error("Texto de anotação", ex); }
@@ -161,10 +203,42 @@ public static class Annotator
         {
             var ids = byLot[l.Id];
             total += ids.Count;
-            if (ids.Count > 0) l.Annotations.Add(new AnnotationRecord { ViewId = view.UniqueId, ElementIds = ids, Keys = plan.KeysOf(l.Id).ToList() });
+            if (ids.Count > 0) l.Annotations.Add(new AnnotationRecord { ViewId = view.UniqueId, ElementIds = ids, Keys = plan.KeysOf(l.Id).ToList(), Scale = view.Scale });
         }
         return total;
     }
+
+    /// <summary>Garante que a linha de base do texto siga a direção pedida (no desenho), girando em torno do ponto de inserção.</summary>
+    public static void AlignText(Document doc, TextNote tn, double desired, XYZ at)
+    {
+        try
+        {
+            var bd = tn.BaseDirection;
+            double diff = AngleUtil.NormPi(desired - Math.Atan2(bd.Y, bd.X));
+            if (Math.Abs(diff) > 1e-4)
+                ElementTransformUtils.RotateElement(doc, tn.Id, Line.CreateBound(at, at + XYZ.BasisZ), diff);
+        }
+        catch (Exception ex) { Logger.Error("Alinhar texto", ex); }
+    }
+
+    /// <summary>Primeira linha em negrito (nome do lote).</summary>
+    public static void BoldFirstLine(TextNote tn)
+    {
+        try
+        {
+            var ft = tn.GetFormattedText();
+            string text = ft.GetPlainText();
+            int n = text.IndexOf('\r');
+            if (n < 0) n = text.Length;
+            ft.SetBoldStatus(new TextRange(0, n), true);
+            tn.SetFormattedText(ft);
+        }
+        catch (Exception ex) { Logger.Error("Negrito do rótulo", ex); }
+    }
+
+    /// <summary>Lotes anotados nesta vista com outra escala (a escala da vista mudou depois da anotação).</summary>
+    public static List<LotRecord> ScaleChanged(GpSession s, View view) =>
+        s.Project.PhaseLots.Where(l => l.Annotations.Any(a => a.ViewId == view.UniqueId && a.Scale > 0 && a.Scale != view.Scale)).ToList();
 
     /// <summary>Círculo preenchido (ponto do vértice).</summary>
     public static FilledRegion? Dot(Document doc, View view, Vec2 at, double radiusM, double z, ElementId typeId)
@@ -198,7 +272,7 @@ public static class Hatcher
     }
 
     /// <summary>Cria as hachuras. <paramref name="colorIndex"/> define a cor de cada lote. Dentro de transação.</summary>
-    public static int Apply(Document doc, View view, IReadOnlyList<LotRecord> lots, Func<LotRecord, int> colorIndex, double spacingMm = 1.6, bool invisibleBoundary = true)
+    public static int Apply(Document doc, View view, IReadOnlyList<LotRecord> lots, Func<LotRecord, int> colorIndex, double spacingMm = 1.6, bool invisibleBoundary = true, Action<FilledRegion, LotRecord>? after = null)
     {
         var simple = RevitStyles.HatchPattern(doc, $"GeoPoint hachura 45° {spacingMm:0.0} mm", 45, spacingMm, false);
         var cross = RevitStyles.HatchPattern(doc, $"GeoPoint hachura cruzada {spacingMm:0.0} mm", 45, spacingMm * 1.4, true);
@@ -223,6 +297,7 @@ public static class Hatcher
                 if (invisible != ElementId.InvalidElementId && FilledRegion.IsValidLineStyleIdForFilledRegion(doc, invisible)) fr.SetLineStyleId(invisible);
                 lot.Hatches.Add(new AnnotationRecord { ViewId = view.UniqueId, ElementIds = { fr.UniqueId } });
                 n++;
+                try { after?.Invoke(fr, lot); } catch (Exception ex) { Logger.Error("Parâmetros da hachura de " + lot.DisplayName, ex); }
             }
             catch (Exception ex) { Logger.Error("Hachura de " + lot.DisplayName, ex); }
         }
@@ -299,13 +374,16 @@ public static class StreetDrawer
         {
             try
             {
-                double ang = AnnotationPlanner.Readable(l.AngleRad);
+                double va = Annotator.ViewAngle(view);
+                double ang = va + AnnotationPlanner.Readable(l.AngleRad - va);
                 double hh = RevitStyles.HalfHeightMm(st.NomeMm) / 1000.0 * Math.Max(1, view.Scale);
                 var top = l.Position + Vec2.FromAngle(ang).PerpLeft * hh;
-                var tn = TextNote.Create(doc, view.Id, RvtUnits.ToXyz(top, z), l.Text.ToUpperInvariant(), new TextNoteOptions(textType)
+                var at = RvtUnits.ToXyz(top, z);
+                var tn = TextNote.Create(doc, view.Id, at, l.Text.ToUpperInvariant(), new TextNoteOptions(textType)
                 {
-                    HorizontalAlignment = HorizontalTextAlignment.Center, Rotation = ang, KeepRotatedTextReadable = false,
+                    HorizontalAlignment = HorizontalTextAlignment.Center, Rotation = AngleUtil.NormPi(ang - va), KeepRotatedTextReadable = false,
                 });
+                Annotator.AlignText(doc, tn, ang, at);
                 ids.Add(tn.UniqueId);
             }
             catch { }

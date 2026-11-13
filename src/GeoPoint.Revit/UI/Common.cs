@@ -134,3 +134,48 @@ public static class Prompt
         return w.ShowDialog() == true ? box.Text : null;
     }
 }
+
+/// <summary>Texto cinza dentro da caixa vazia (mostra o valor herdado dos Dados do Imóvel).</summary>
+public static class Watermark
+{
+    public static void Set(TextBox box, string text)
+    {
+        box.Tag = text;
+        if (box.IsLoaded) Attach(box);
+        else box.Loaded += (_, _) => Attach(box);
+        box.TextChanged -= Changed;
+        box.TextChanged += Changed;
+        System.Windows.Documents.AdornerLayer.GetAdornerLayer(box)?.Update(box);
+        foreach (var a in System.Windows.Documents.AdornerLayer.GetAdornerLayer(box)?.GetAdorners(box) ?? Array.Empty<System.Windows.Documents.Adorner>()) a.InvalidateVisual();
+    }
+
+    private static void Changed(object sender, TextChangedEventArgs e)
+    {
+        if (sender is TextBox b)
+            foreach (var a in System.Windows.Documents.AdornerLayer.GetAdornerLayer(b)?.GetAdorners(b) ?? Array.Empty<System.Windows.Documents.Adorner>()) a.InvalidateVisual();
+    }
+
+    private static void Attach(TextBox box)
+    {
+        var layer = System.Windows.Documents.AdornerLayer.GetAdornerLayer(box);
+        if (layer is null) return;
+        if (layer.GetAdorners(box)?.OfType<WatermarkAdorner>().Any() == true) return;
+        layer.Add(new WatermarkAdorner(box));
+    }
+
+    private sealed class WatermarkAdorner : System.Windows.Documents.Adorner
+    {
+        private readonly TextBox _box;
+        public WatermarkAdorner(TextBox box) : base(box) { _box = box; IsHitTestVisible = false; }
+
+        protected override void OnRender(System.Windows.Media.DrawingContext dc)
+        {
+            if (_box.Text.Length > 0 || _box.Tag is not string t || string.IsNullOrWhiteSpace(t)) return;
+            var ft = new System.Windows.Media.FormattedText(t, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
+                new System.Windows.Media.Typeface(_box.FontFamily, FontStyles.Italic, FontWeights.Normal, FontStretches.Normal), _box.FontSize,
+                System.Windows.Media.Brushes.Gray, System.Windows.Media.VisualTreeHelper.GetDpi(this).PixelsPerDip)
+            { MaxTextWidth = Math.Max(10, _box.ActualWidth - 10), MaxLineCount = 1, Trimming = TextTrimming.CharacterEllipsis };
+            dc.DrawText(ft, new Point(_box.Padding.Left + 4, Math.Max(0, (_box.ActualHeight - ft.Height) / 2)));
+        }
+    }
+}

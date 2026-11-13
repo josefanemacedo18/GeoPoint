@@ -145,7 +145,7 @@
                     <GroupBox Header="Conteúdo e arquivo">
                         <StackPanel>
                             <CheckBox x:Name="Tables" Content="Quadros de coordenadas e de segmentos"/>
-                            <CheckBox x:Name="Notes" Content="Notas técnicas (sistema de referência, convenções, origem da coordenada)"/>
+                            <CheckBox x:Name="Notes" Visibility="Collapsed"/>
                             <CheckBox x:Name="Altitudes" Content="Altitudes dos vértices (quando calculadas pelo Toposolid)"/>
                             <CheckBox x:Name="OnePerLot" Content="Um arquivo por lote (tipo Lote(s))"/>
                             <CheckBox x:Name="OpenAfter" Content="Abrir no Word depois de gerar"/>

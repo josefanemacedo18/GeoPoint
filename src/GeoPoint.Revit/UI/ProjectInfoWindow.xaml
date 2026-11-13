@@ -47,7 +47,11 @@
                 <Label Grid.Row="4" Grid.Column="3" Content="Município:"/>
                 <TextBox Grid.Row="4" Grid.Column="4" x:Name="Municipio"/>
                 <Label Grid.Row="5" Content="UF:"/>
-                <TextBox Grid.Row="5" Grid.Column="1" x:Name="UF" MaxLength="2" Width="60" HorizontalAlignment="Left"/>
+                <StackPanel Grid.Row="5" Grid.Column="1" Orientation="Horizontal">
+                    <TextBox x:Name="UF" MaxLength="2" Width="60"/>
+                    <Label Content="   CEP:"/>
+                    <TextBox x:Name="Cep" Width="110" MaxLength="10"/>
+                </StackPanel>
                 <Label Grid.Row="5" Grid.Column="3" Content="Comarca:"/>
                 <TextBox Grid.Row="5" Grid.Column="4" x:Name="Comarca"/>
                 <Label Grid.Row="6" Content="Cartório (CRI):"/>

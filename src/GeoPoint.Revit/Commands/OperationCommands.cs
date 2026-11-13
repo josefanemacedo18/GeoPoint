@@ -181,6 +181,7 @@ public sealed class CmdDesmembramento : CommandBase
                 Created = DateTime.Now.AddSeconds(1),
             };
             result.EdgeInfos = ConfrontanteInheritance.Inherit(new[] { piece, target }, result, Array.Empty<LotRecord>(), ctx);
+            CollinearMerge.Apply(result, ctx);
             result.History.Add(new HistoryEntry { Description = $"Remembramento de {target.DisplayName} com parte de {parent.DisplayName}", Area = u.Area });
             var mop = new OperationRecord { Type = OperationType.Remembramento, ParentIds = { piece.Id, target.Id }, ChildIds = { result.Id }, Notes = $"Anexação de parte do desmembramento de {parent.DisplayName}" };
             merges.Add((piece, target, result, mop));
@@ -253,11 +254,9 @@ public sealed class CmdRemembramento : CommandBase
         };
         if (w.ResultOwnerText.Length > 0) result.Proprietario = w.ResultOwnerText;
         foreach (var l in lots) OpHelpers.InheritOwner(result, l);
-        foreach (var l in lots)
-            foreach (var x in l.ExtraVertices)
-                if (result.Outer.Any(e => e.ToCurve().DistanceTo(x.ToVec()) <= EdgeSplitter.Tolerance)) result.ExtraVertices.Add(x);
-        EdgeSplitter.Apply(result);
         result.EdgeInfos = ConfrontanteInheritance.Inherit(lots, result, Array.Empty<LotRecord>(), ctx);
+        // O lote unido tem os seus próprios vértices: os pontos dos lotes antigos no meio das divisas saem.
+        CollinearMerge.Apply(result, ctx);
         result.History.Add(new HistoryEntry { Description = "Criado por remembramento de " + string.Join(", ", lots.Select(l => l.DisplayName)), Area = u.Area, Perimeter = result.ToRegion().Outer.Perimeter });
         foreach (var l in lots)
         {

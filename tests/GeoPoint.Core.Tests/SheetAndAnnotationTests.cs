@@ -18,13 +18,12 @@ public class SheetAndAnnotationTests
         var ctx = TestProjects.Context(TestProjects.Project(lot));
         var rep = ctx.Report(lot);
         var plan = AnnotationPlanner.Plan(new[] { rep }, new ValueFormatter(ctx.Settings.Format), Opts());
-        var edgeTexts = plan.Texts.Where(t => t.Kind is AnnoTextKind.Distance or AnnoTextKind.Azimuth).ToList();
-        Assert.Equal(8, edgeTexts.Count);
+        var edgeTexts = plan.Texts.Where(t => t.Kind == AnnoTextKind.Distance).ToList();
+        Assert.Equal(4, edgeTexts.Count);
         Assert.All(edgeTexts, t => Assert.False(rep.Region.Contains(t.At)));
-        // A distância fica mais perto da linha que o azimute.
-        var d = edgeTexts.First(t => t.Kind == AnnoTextKind.Distance);
-        var a = edgeTexts.First(t => t.Kind == AnnoTextKind.Azimuth && t.Key.StartsWith(d.Key));
-        Assert.True(rep.Region.Outer.Edges.Min(e => e.DistanceTo(d.At)) < rep.Region.Outer.Edges.Min(e => e.DistanceTo(a.At)));
+        // Distância e azimute na mesma linha nas divisas longas; nas curtas (o texto não cabe), só a distância.
+        Assert.Equal(2, edgeTexts.Count(t => t.Text.StartsWith("30,00 m   AZ= ")));
+        Assert.Equal(2, edgeTexts.Count(t => t.Text == "10,00 m"));
         Assert.Equal(4, plan.Dots.Count);
         Assert.All(plan.Texts.Where(t => t.Kind == AnnoTextKind.Vertex), t => Assert.False(rep.Region.Contains(t.At)));
     }
@@ -66,15 +65,15 @@ public class SheetAndAnnotationTests
         Assert.Equal(6, rep.Segments.Count);
         var plan = AnnotationPlanner.Plan(new[] { rep }, new ValueFormatter(ctx.Settings.Format), Opts());
         var names = plan.Texts.Where(t => t.Kind == AnnoTextKind.Confrontante).Select(t => t.Text).ToList();
-        Assert.Contains("Lote 16", names);
-        Assert.Contains("Lote 17", names);
-        Assert.Contains("Lote 18", names);
+        Assert.Contains("LOTE 16", names);
+        Assert.Contains("LOTE 17", names);
+        Assert.Contains("LOTE 18", names);
         // Marcas tracejadas nas 4 pontas dos trechos (2 cantos + 2 divisões) e 3 cotas.
         Assert.Equal(4, plan.Lines.Count(l => l.Kind == AnnoLineKind.ConfrontanteTick));
         Assert.Equal(3, plan.Lines.Count(l => l.Kind == AnnoLineKind.ConfrontanteDimension));
         Assert.All(plan.Lines, l => Assert.True(l.A.Y >= 30 - 1e-9 && l.B.Y > 30));
         // Nomes fora do lote, além das distâncias.
-        Assert.All(plan.Texts.Where(t => t.Kind == AnnoTextKind.Confrontante && t.Text.StartsWith("Lote 1")), t => Assert.True(t.At.Y > 30 + 2));
+        Assert.All(plan.Texts.Where(t => t.Kind == AnnoTextKind.Confrontante && t.Text.StartsWith("LOTE 1")), t => Assert.True(t.At.Y > 30 + 2));
     }
 
     /// <summary>Lote da imagem enviada pelo usuário (736,92 m²), desmembrado em dois por uma divisa interna.</summary>
@@ -111,7 +110,7 @@ public class SheetAndAnnotationTests
             Assert.DoesNotContain(edges, e => t.Box.Intersects(e.Start, e.End));
         // Rotação sempre legível e textos das divisas alinhados com a divisa.
         Assert.All(plan.Texts, t => Assert.InRange(t.Rotation, -Math.PI / 2 - 1e-9, Math.PI / 2 + 1e-9));
-        Assert.Contains(plan.Texts, t => t.Kind == AnnoTextKind.Confrontante && t.Text == "Coité");
+        Assert.Contains(plan.Texts, t => t.Kind == AnnoTextKind.Confrontante && t.Text == "COITÉ");
     }
 
     [Fact]

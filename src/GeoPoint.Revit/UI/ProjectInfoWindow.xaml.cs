@@ -21,6 +21,7 @@ public partial class ProjectInfoWindow : Window
         Bairro.Text = info.Bairro;
         Municipio.Text = info.Municipio;
         UF.Text = info.UF;
+        Cep.Text = info.Cep;
         Comarca.Text = info.Comarca;
         Cartorio.Text = info.Cartorio;
         Matricula.Text = info.Matricula;
@@ -47,6 +48,7 @@ public partial class ProjectInfoWindow : Window
         _info.Bairro = Bairro.Text.Trim();
         _info.Municipio = Municipio.Text.Trim();
         _info.UF = UF.Text.Trim().ToUpperInvariant();
+        _info.Cep = Cep.Text.Trim();
         _info.Comarca = Comarca.Text.Trim();
         _info.Cartorio = Cartorio.Text.Trim();
         _info.Matricula = Matricula.Text.Trim();

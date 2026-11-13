@@ -3,6 +3,7 @@ using GeoPoint.Core.Geometry;
 using GeoPoint.Core.Memorial;
 using GeoPoint.Core.Model;
 using GeoPoint.Core.Operations;
+using GeoPoint.Core.Settings;
 
 namespace GeoPoint.Core.Tests;
 
@@ -23,7 +24,7 @@ public class V11Tests
         var a = Rect(0, 0, 10, 30, "01", t0.AddDays(1));
         var b = Rect(10, 0, 10, 30, "02", t0.AddDays(1));
         var p = TestProjects.Project(parent);
-        var ctx = TestProjects.Context(p);
+        var ctx = TestProjects.Context(p, st => st.Naming.Numbering = VertexNumbering.Projeto);
         var namesParent = ctx.Report(parent).Vertices.ToDictionary(v => (v.Internal.X, v.Internal.Y), v => v.Name);
         Assert.Equal(new[] { "P-01", "P-02", "P-03", "P-04" }, namesParent.Values.OrderBy(n => n));
 

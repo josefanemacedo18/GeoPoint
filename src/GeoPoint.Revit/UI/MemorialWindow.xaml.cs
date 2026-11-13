@@ -163,7 +163,7 @@ public partial class MemorialWindow : Window
         _settings.Naming.VertexDigits = digits;
         _settings.Naming.Numbering = (VertexNumbering)Math.Max(0, Numbering.SelectedIndex);
         m.IncludeVertexTable = Tables.IsChecked == true;
-        m.IncludeSystemDeclaration = Notes.IsChecked == true;
+        m.IncludeSystemDeclaration = false;
         m.IncludeAltitude = Altitudes.IsChecked == true;
         m.OneFilePerLot = OnePerLot.IsChecked == true;
         m.OpenAfterGenerate = OpenAfter.IsChecked == true;

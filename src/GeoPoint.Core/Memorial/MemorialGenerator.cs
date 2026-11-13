@@ -227,11 +227,7 @@ public sealed class MemorialGenerator
             }
         }
 
-        if (_ms.IncludeSystemDeclaration)
-        {
-            corpo.Add(Heading("NOTAS TÉCNICAS"));
-            foreach (var t in SystemDeclaration(main)) corpo.Add(Wml.Paragraph(Body, new RunSpec(t)));
-        }
+        // As "notas técnicas" do final do memorial foram retiradas (o sistema de referência consta no quadro de coordenadas).
 
         blocks["CORPO"] = corpo;
 
@@ -474,6 +470,9 @@ public sealed class MemorialGenerator
             ["PERIMETRO"] = _fmt.Distance(r.Perimeter(_ms.DistanceType)),
         };
         sb.Append(MemorialPhrases.Apply(_ph.Fechamento, close));
+        // Uma única frase do referencial (as antigas "notas técnicas" foram retiradas).
+        if (!string.IsNullOrWhiteSpace(_ph.Referencial) && ReferenceSystemText() is { Length: > 0 } sys)
+            sb.Append(MemorialPhrases.Apply(_ph.Referencial, new Dictionary<string, string> { ["SISTEMA"] = sys }));
         return sb.ToString();
     }
 
@@ -639,6 +638,24 @@ public sealed class MemorialGenerator
         var res = new List<XElement> { Wml.Table(rows, widths, fontPt: 9) };
         foreach (var p in q.Problemas) res.Add(Wml.Paragraph(new ParaSpec { SpaceBeforePt = 2 }, new RunSpec("Atenção: " + p, Italic: true, SizePt: 9)));
         return res;
+    }
+
+    /// <summary>Texto curto do sistema das coordenadas (ex.: "datum SIRGAS 2000, projeção UTM, fuso 23, hemisfério Sul, meridiano central 45° WGr"). Vazio sem georreferência.</summary>
+    public string ReferenceSystemText()
+    {
+        var c = _ctx.Coords;
+        if (!c.HasGeoreference) return "";
+        var d = TableCrs().FirstOrDefault();
+        if (d is null) return "";
+        var datum = Datum.Get(d.Datum);
+        return d.Kind switch
+        {
+            CrsKind.Utm => $"datum {datum.Name}, projeção UTM, {_fmt.ZoneText(c.ResolveZone(d), c.Origin.LatDeg)}, meridiano central {ValueFormatter.CentralMeridianText(c.ResolveZone(d).CentralMeridianDeg)}",
+            CrsKind.Geographic => $"em coordenadas geográficas, datum {datum.Name}",
+            CrsKind.CustomTm => $"datum {datum.Name}, projeção {d.CustomName} (meridiano central {ValueFormatter.CentralMeridianText(d.CustomCentralMeridian)})",
+            CrsKind.LocalTopographic => $"datum {datum.Name}, em Plano Topográfico Local (NBR 14166)",
+            _ => "",
+        };
     }
 
     /// <summary>Notas técnicas: sistema de referência, convenções e origem das coordenadas.</summary>

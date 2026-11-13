@@ -162,6 +162,7 @@ public sealed class CmdHachuras : CommandBase
         {
             new("clear", "Somente remover as hachuras do GeoPoint dos lotes marcados", false),
             new("space", "Espaçamento da hachura no papel (mm)", 1.6),
+            new("par", "Preencher parâmetros GP_* (lote, quadra, uso, matrícula, área, perímetro…) nas hachuras, para tabelas e etiquetas do Revit", true),
         };
         var w = new LotPickerWindow("Hachuras dos lotes", "Cada lote recebe uma cor; o lote remanescente recebe hachura cruzada. As bordas da hachura são invisíveis (as divisas continuam sendo as suas linhas).",
             PickerRows.Build(s, false), opts, "Aplicar");
@@ -175,7 +176,15 @@ public sealed class CmdHachuras : CommandBase
             else
             {
                 var order = ProjectContext.SortLots(lots).ToList();
-                n = Hatcher.Apply(s.Doc, view, order, l => order.IndexOf(l), Math.Clamp(w.Number("space"), 0.5, 10));
+                Action<FilledRegion, LotRecord>? fill = null;
+                if (w.Option("par"))
+                {
+                    // Parâmetros compartilhados GP_* na categoria Componentes de detalhe (regiões preenchidas).
+                    foreach (var warn in NativeElements.EnsureParameters(s.Doc, new[] { BuiltInCategory.OST_DetailComponents })) Logger.Info("Parâmetros GP_*: " + warn);
+                    var ctx = s.NewContext();
+                    fill = (fr, l) => NativeElements.SetParameters(fr, l, ctx.Report(l));
+                }
+                n = Hatcher.Apply(s.Doc, view, order, l => order.IndexOf(l), Math.Clamp(w.Number("space"), 0.5, 10), after: fill);
             }
             ProjectStore.Save(s.Doc, s.Project);
             t.Commit();

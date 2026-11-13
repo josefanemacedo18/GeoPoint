@@ -46,7 +46,7 @@
             <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" x:Name="Detail">
                 <StackPanel>
                     <TextBlock x:Name="LotTitle" Style="{StaticResource H1}"/>
-                    <GroupBox Header="Identificação">
+                    <GroupBox Header="Identificação (campos vazios usam os Dados do Imóvel – mostrados em cinza)">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="110"/>

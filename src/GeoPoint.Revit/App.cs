@@ -44,10 +44,9 @@ public sealed class App : IExternalApplication
 
             var anot = app.CreateRibbonPanel(TabName, "Anotação");
             Add(anot, "Anotar\nLotes", typeof(Commands.CmdAnotar), "Distâncias e azimutes fora do lote, vértices com ponto preenchido, área e extensão de cada confrontante, na vista atual.", IconKind.Annotate);
-            Add(anot, "Hachuras", typeof(Commands.CmdHachuras), "Hachura cada lote com uma cor (remanescente com hachura cruzada), na vista atual.", IconKind.Hatch);
+            Add(anot, "Hachuras", typeof(Commands.CmdHachuras), "Hachura cada lote com uma cor (remanescente com hachura cruzada), na vista atual. As hachuras recebem os parâmetros GP_* (lote, quadra, uso, área…) para tabelas e etiquetas nativas do Revit.", IconKind.Hatch);
             Add(anot, "Vias", typeof(Commands.CmdVias), "Cadastro de vias, testadas e cruzamentos (2, 3 ou 4 vias) e desenho esquemático da rua (meio-fio, calçada e nome).", IconKind.Street);
             Add(anot, "Tabela de\nCoordenadas", typeof(Commands.CmdTabelaCoordenadas), "Cria uma vista de desenho com o quadro de coordenadas para colocar na prancha.", IconKind.Table);
-            Add(anot, "Elementos\nNativos", typeof(Commands.CmdElementosNativos), "Cria Linhas de Propriedade nativas (e regiões preenchidas) com parâmetros para tabelas do Revit.", IconKind.Native);
 
             var docs = app.CreateRibbonPanel(TabName, "Documentos");
             Add(docs, "Memorial\nDescritivo", typeof(Commands.CmdMemorial), "Gera o memorial descritivo em Word (lote, desmembramento, remembramento ou loteamento).", IconKind.Memorial);
@@ -55,11 +54,9 @@ public sealed class App : IExternalApplication
             Add(docs, "Pranchas\nA4", typeof(Commands.CmdPranchas), "Pranchas A4 por situação (atual, proposta, cada lote e total), com carimbo, quadro de áreas e norte.", IconKind.Sheet);
             Add(docs, "Google Earth\n/ QGIS", typeof(Commands.CmdExportarSig), "Exporta KMZ/KML (Google Earth) e GeoJSON (QGIS) para conferir sobre imagem de satélite.", IconKind.Globe);
             Add(docs, "Planilha\nExcel", typeof(Commands.CmdExportarExcel), "Exporta lotes, coordenadas e segmentos para Excel.", IconKind.Excel);
-            Add(docs, "Quadro de\nÁreas", typeof(Commands.CmdQuadroAreas), "Quadro de áreas por uso, percentuais e verificação dos parâmetros urbanísticos.", IconKind.Chart);
 
             var chk = app.CreateRibbonPanel(TabName, "Verificação");
             Add(chk, "Verificar\nProjeto", typeof(Commands.CmdVerificar), "Confere geometria, confrontantes, sobreposições, títulos e parâmetros.", IconKind.Check);
-            Add(chk, "Área sobre\nToposolid", typeof(Commands.CmdAreaTopo), "Área real sobre o terreno e altitudes dos vértices a partir de um Toposolid.", IconKind.Topo);
 
             var cfg = app.CreateRibbonPanel(TabName, "GeoPoint");
             Add(cfg, "Configu-\nrações", typeof(Commands.CmdConfiguracoes), "Tolerâncias, formatos, sistemas de coordenadas, modelo do memorial, responsável técnico e perfis urbanísticos.", IconKind.Settings);

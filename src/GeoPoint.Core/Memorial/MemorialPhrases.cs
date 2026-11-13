@@ -16,6 +16,8 @@ public sealed class MemorialPhrases
     public string Arco { get; set; } = "; deste, segue em curva circular[ {LADO},][ confrontando com {CONFRONTANTE},] com raio de {RAIO}, ângulo central de {ANGULO_CENTRAL} e desenvolvimento de {DESENVOLVIMENTO} (corda de {CORDA}, com {DIRECAO}), até o vértice {VERTICE_SEGUINTE}, de coordenadas {COORDENADAS_SEGUINTE}";
     public string ArcoFinal { get; set; } = "; deste, segue em curva circular[ {LADO},][ confrontando com {CONFRONTANTE},] com raio de {RAIO}, ângulo central de {ANGULO_CENTRAL} e desenvolvimento de {DESENVOLVIMENTO} (corda de {CORDA}, com {DIRECAO}), até o vértice {VERTICE_SEGUINTE}, ponto inicial da descrição deste perímetro";
     public string Fechamento { get; set; } = ", fechando assim o polígono acima descrito, com área de {AREA} e perímetro de {PERIMETRO}.";
+    /// <summary>Frase única do referencial (padrão de cartório/INCRA). Deixe vazia para não usar. {SISTEMA} = sistema das coordenadas.</summary>
+    public string Referencial { get; set; } = " Todas as coordenadas aqui descritas estão georreferenciadas ao Sistema Geodésico Brasileiro, {SISTEMA}.";
     public string FuroInicio { get; set; } = "Excluída a área interna ({NOME_FURO}), com área de {AREA_FURO}, assim descrita: ";
     public string ConfrontanteVazio { get; set; } = "";
 
@@ -51,6 +53,7 @@ public sealed class MemorialPhrases
         ArcoFinal = string.IsNullOrWhiteSpace(ArcoFinal) ? d.ArcoFinal : ArcoFinal;
         Fechamento ??= d.Fechamento;
         FuroInicio ??= d.FuroInicio;
+        Referencial ??= d.Referencial;
         ConfrontanteVazio ??= "";
         return this;
     }

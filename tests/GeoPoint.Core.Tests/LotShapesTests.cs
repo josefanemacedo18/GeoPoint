@@ -85,3 +85,32 @@ public class LotShapesTests
         Assert.Equal(200, new Ring(placed).Area, 9);
     }
 }
+
+public class CollinearMergeTests
+{
+    [Fact]
+    public void Remembramento_ThreeRectangles_FourCorners_CombinedConfrontantes()
+    {
+        var a = TestProjects.Rect(0, 0, 10, 30, "01");
+        var b = TestProjects.Rect(10, 0, 10, 30, "02");
+        var c = TestProjects.Rect(20, 0, 10, 30, "03");
+        var u = GeoPoint.Core.Operations.ParcelOperations.Union(new[] { a, b, c });
+        Assert.True(u.Ok);
+        var lot = new GeoPoint.Core.Model.LotRecord { Nome = "R", Outer = u.Outer, Holes = u.Holes };
+        Assert.True(lot.Outer.Count > 4);   // a união guarda os pontos dos lotes antigos
+        // Fundos com 3 confrontantes diferentes e frente com a mesma rua.
+        lot.EdgeInfos.Add(new GeoPoint.Core.Model.EdgeInfo { MX = 5, MY = 30, Confrontante = "Lote 16" });
+        lot.EdgeInfos.Add(new GeoPoint.Core.Model.EdgeInfo { MX = 15, MY = 30, Confrontante = "Lote 17" });
+        lot.EdgeInfos.Add(new GeoPoint.Core.Model.EdgeInfo { MX = 25, MY = 30, Confrontante = "Lote 18" });
+        foreach (var x in new[] { 5.0, 15, 25 }) lot.EdgeInfos.Add(new GeoPoint.Core.Model.EdgeInfo { MX = x, MY = 0, Confrontante = "Rua 1", Testada = true });
+        int removed = GeoPoint.Core.Operations.CollinearMerge.Apply(lot);
+        Assert.Equal(4, removed);
+        Assert.Equal(4, lot.Outer.Count);
+        Assert.Equal(900, lot.ToRegion().Area, 6);
+        var back = GeoPoint.Core.Calc.ProjectContext.FindInfo(lot, new GeoPoint.Core.Geometry.Vec2(15, 30));
+        Assert.Contains(back!.Confrontante, new[] { "Lote 16, Lote 17 e Lote 18", "Lote 18, Lote 17 e Lote 16" });
+        var front = GeoPoint.Core.Calc.ProjectContext.FindInfo(lot, new GeoPoint.Core.Geometry.Vec2(15, 0));
+        Assert.Equal("Rua 1", front!.Confrontante);
+        Assert.True(front.Testada);
+    }
+}

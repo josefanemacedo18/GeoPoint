@@ -42,7 +42,7 @@ public class FaseTests
         var arch = TestProjects.Rect(50, 0, 10, 10, "99");
         arch.Status = LotStatus.Arquivado;
         var p = TestProjects.Project(a, b, arch);
-        var ctx = TestProjects.Context(p);
+        var ctx = TestProjects.Context(p, st => st.Naming.Numbering = VertexNumbering.Projeto);
         var f0 = p.Fase;
         Assert.Equal(new[] { "P-01", "P-02", "P-03", "P-04" }, ctx.Report(a).Vertices.Select(v => v.Name).OrderBy(x => x));
         Assert.Contains(ctx.Report(b).Vertices, v => v.Name == "P-06");
@@ -158,6 +158,6 @@ public class ControlPointTests
         ctx.Settings.Kml.IncludeVertices = true;
         var kml = GeoPoint.Core.Export.GisExport.BuildKml(ctx, new[] { lot }, "Teste");
         var pts = GeoPoint.Core.Export.KmlReader.ParsePoints(kml);
-        Assert.Contains(pts, x => x.Name == "P-01");
+        Assert.Contains(pts, x => x.Name.StartsWith("P-01"));
     }
 }

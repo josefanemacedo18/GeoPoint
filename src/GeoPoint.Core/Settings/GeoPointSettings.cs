@@ -76,7 +76,7 @@ public sealed class NamingSettings
     public string VertexPrefix { get; set; } = "P-";
     public int VertexDigits { get; set; } = 2;
     /// <summary>Numeração dos vértices: projeto inteiro (registro único), por quadra ou por lote.</summary>
-    public VertexNumbering Numbering { get; set; } = VertexNumbering.Projeto;
+    public VertexNumbering Numbering { get; set; } = VertexNumbering.Lote;
     /// <summary>Descrição no sentido horário.</summary>
     public bool Clockwise { get; set; } = true;
     public StartVertexRule StartRule { get; set; } = StartVertexRule.Testada;
@@ -108,7 +108,8 @@ public sealed class MemorialSettings
     public DistanceType DistanceType { get; set; } = DistanceType.Horizontal;
     public AreaType AreaType { get; set; } = AreaType.Local;
     public bool IncludeVertexTable { get; set; } = true;
-    public bool IncludeSystemDeclaration { get; set; } = true;
+    /// <summary>Sem uso (as notas técnicas foram retiradas do memorial). Mantido para ler configurações antigas.</summary>
+    public bool IncludeSystemDeclaration { get; set; }
     public bool IncludeAltitude { get; set; }
     /// <summary>Inclui o lado do lote na descrição ("pela frente", "pela lateral direita"...).</summary>
     public bool IncludeSide { get; set; } = true;
@@ -153,13 +154,18 @@ public sealed class AnnotationSettings
     public bool OpaqueText { get; set; } = true;
     /// <summary>Nome do confrontante e extensão de cada confrontante ao longo da divisa.</summary>
     public bool Confrontantes { get; set; } = true;
+    /// <summary>Rótulo do lote com proprietário, matrícula e perímetro.</summary>
+    public bool LabelOwner { get; set; } = true;
+    public bool LabelMatricula { get; set; } = true;
+    public bool LabelPerimeter { get; set; } = true;
 }
 
 public sealed class StreetSettings
 {
-    public double Largura { get; set; } = 12;
-    public double Calcada { get; set; } = 2.5;
-    public double RaioEsquina { get; set; } = 3;
+    /// <summary>Pista (leito) de meio-fio a meio-fio (m).</summary>
+    public double Largura { get; set; } = 7;
+    public double Calcada { get; set; } = 2;
+    public double RaioEsquina { get; set; } = 2;
     /// <summary>Altura do texto do nome da via no papel (mm).</summary>
     public double NomeMm { get; set; } = 3.0;
 }
@@ -199,7 +205,7 @@ public sealed class KmlSettings
 
 public sealed class GeoPointSettings
 {
-    public int Version { get; set; } = 2;
+    public int Version { get; set; } = 3;
     public RecognitionSettings Recognition { get; set; } = new();
     public NamingSettings Naming { get; set; } = new();
     public FormatSettings Format { get; set; } = new();
@@ -313,6 +319,15 @@ public static class SettingsStore
         {
             if (s.Annotation.DotMm <= 1.21) s.Annotation.DotMm = 2.2;
             s.Version = 2;
+        }
+        // Versão 3: numeração própria de cada lote, vias 2 m + 7 m com esquina de 2 m.
+        if (s.Version < 3)
+        {
+            s.Naming.Numbering = VertexNumbering.Lote;
+            if (Math.Abs(s.Streets.Largura - 12) < 1e-9) s.Streets.Largura = 7;
+            if (Math.Abs(s.Streets.Calcada - 2.5) < 1e-9) s.Streets.Calcada = 2;
+            if (Math.Abs(s.Streets.RaioEsquina - 3) < 1e-9) s.Streets.RaioEsquina = 2;
+            s.Version = 3;
         }
         s.Annotation.DotMm = Math.Clamp(s.Annotation.DotMm, 0.2, 10);
         s.RuleProfiles ??= RuleProfile.Defaults();

@@ -43,14 +43,37 @@
     </Style>
 
     <Style TargetType="TextBox">
-        <Setter Property="Padding" Value="3,2"/>
+        <Setter Property="MinHeight" Value="26"/>
+        <Setter Property="Padding" Value="4,3"/>
         <Setter Property="Margin" Value="0,2,0,2"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
 
     <Style TargetType="ComboBox">
         <Setter Property="Margin" Value="0,2,0,2"/>
-        <Setter Property="Padding" Value="4,3"/>
+        <Setter Property="Padding" Value="5,4"/>
+        <Setter Property="MinHeight" Value="26"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+
+    <!-- Células com espaço para caixas de seleção e textos (nada cortado). -->
+    <Style TargetType="DataGridCell">
+        <Setter Property="Padding" Value="2,1"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DataGridCell">
+                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                        <ContentPresenter VerticalAlignment="Center" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="DataGridColumnHeader">
+        <Setter Property="Padding" Value="6,3"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
 
     <Style TargetType="CheckBox">
@@ -80,7 +103,8 @@
         <Setter Property="GridLinesVisibility" Value="Horizontal"/>
         <Setter Property="HorizontalGridLinesBrush" Value="#E3E8EE"/>
         <Setter Property="AlternatingRowBackground" Value="#F8FAFC"/>
-        <Setter Property="RowHeight" Value="24"/>
+        <Setter Property="MinRowHeight" Value="30"/>
+        <Setter Property="ColumnHeaderHeight" Value="28"/>
         <Setter Property="CanUserAddRows" Value="False"/>
         <Setter Property="CanUserDeleteRows" Value="False"/>
         <Setter Property="SelectionMode" Value="Extended"/>

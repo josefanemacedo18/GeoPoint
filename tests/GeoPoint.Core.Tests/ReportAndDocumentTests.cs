@@ -224,7 +224,7 @@ public class ReportAndDocumentTests
     {
         var a = TestProjects.Rect(0, 0, 10, 30, "01");
         var app = TestProjects.Rect(0, 25, 10, 5, "APP", uso: LotUse.App);
-        var ctx = TestProjects.Context(TestProjects.Project(a, app), s => { s.Kml.IncludeEdges = true; });
+        var ctx = TestProjects.Context(TestProjects.Project(a, app), s => { s.Kml.IncludeEdges = true; s.Naming.Numbering = VertexNumbering.Projeto; });
         var lots = ctx.Project.ActiveLots.ToList();
         var kml = GisExport.BuildKml(ctx, lots, "Teste");
         var x = XDocument.Parse(kml);

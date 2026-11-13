@@ -57,7 +57,10 @@ public sealed class CmdAnotar : CommandBase
             new("out", "Textos das divisas do lado de fora do lote", a.TextOutside),
             new("vert", "Nomes dos vértices", a.Vertices),
             new("dots", "Ponto preenchido em cada vértice", a.VertexDots),
-            new("conf", "Confrontantes: nome e extensão (cota vermelha com marcas tracejadas)", a.Confrontantes),
+            new("conf", "Confrontantes: nome acima da linha \"distância  AZ= azimute\" e extensão de cada confrontante", a.Confrontantes),
+            new("lowner", "Rótulo do lote: proprietário", a.LabelOwner),
+            new("lmat", "Rótulo do lote: matrícula", a.LabelMatricula),
+            new("lper", "Rótulo do lote: perímetro", a.LabelPerimeter),
             new("area", "Nome e área no centro do lote", a.AreaLabel),
             new("opaque", "Fundo opaco nos textos (legíveis sobre hachuras)", a.OpaqueText),
             new("size", "Altura do texto no papel (mm)", a.TextSizeMm),
@@ -65,11 +68,21 @@ public sealed class CmdAnotar : CommandBase
             new("dot", "Diâmetro do ponto no papel (mm)", a.DotMm),
             new("clear", "Somente remover as anotações do GeoPoint dos lotes marcados nesta vista", false),
         };
-        var w = new LotPickerWindow("Anotar lotes na vista atual", $"Vista: {view.Name} (escala 1:{view.Scale}). Anotações anteriores do GeoPoint nesta vista são substituídas. Divisas e vértices compartilhados entre os lotes marcados são anotados uma vez só.",
-            PickerRows.Build(s, true), opts, "Anotar");
+        var changed = Annotator.ScaleChanged(s, view);
+        var rowsA = PickerRows.Build(s, true);
+        string scaleNote = "";
+        if (changed.Count > 0)
+        {
+            foreach (var r in rowsA) r.Selected = changed.Any(c => c.Id == r.Lot.Id);
+            int old = changed.SelectMany(c => c.Annotations).Where(x => x.ViewId == view.UniqueId).Select(x => x.Scale).FirstOrDefault();
+            scaleNote = $" A escala desta vista mudou (de 1:{old} para 1:{view.Scale}): os {changed.Count} lote(s) marcados serão anotados de novo para a nova escala.";
+        }
+        var w = new LotPickerWindow("Anotar lotes na vista atual", $"Vista: {view.Name} (escala 1:{view.Scale}). Anotações anteriores do GeoPoint nesta vista são substituídas. O tamanho dos textos e os afastamentos são calculados para esta escala." + scaleNote,
+            rowsA, opts, "Anotar");
         if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
         a.Edges = w.Option("edges"); a.EdgeAzimuth = w.Option("angle"); a.TextOutside = w.Option("out"); a.Vertices = w.Option("vert");
         a.VertexDots = w.Option("dots"); a.Confrontantes = w.Option("conf"); a.AreaLabel = w.Option("area"); a.OpaqueText = w.Option("opaque");
+        a.LabelOwner = w.Option("lowner"); a.LabelMatricula = w.Option("lmat"); a.LabelPerimeter = w.Option("lper");
         a.TextSizeMm = Math.Clamp(w.Number("size"), 0.5, 20);
         a.OffsetMm = Math.Clamp(w.Number("offset"), 0, 50);
         a.DotMm = Math.Clamp(w.Number("dot"), 0.2, 10);
@@ -132,97 +145,6 @@ public sealed class CmdTabelaCoordenadas : CommandBase
         }
         Ui.Info("Tabelas criadas", $"{w.SelectedLots.Count} vista(s) de desenho \"GeoPoint - Coordenadas - …\" criada(s)/atualizada(s). Coloque-as na prancha arrastando do Navegador de projeto.");
         return Result.Succeeded;
-    }
-}
-
-[Transaction(TransactionMode.Manual)]
-public sealed class CmdElementosNativos : CommandBase
-{
-    protected override string Title => "Elementos nativos";
-
-    protected override Result Run(GpSession s)
-    {
-        if (!s.Project.ActiveLots.Any()) { Ui.Info("Nenhum lote ativo", "Use 'Reconhecer Lotes' primeiro."); return Result.Cancelled; }
-        bool viewOk = ElementUtil.IsPlanLike(s.ActiveView);
-        var opts = new List<OptionItem>
-        {
-            new("pl", "Linha de propriedade (Property Line) nativa – área calculada pelo Revit, etiquetas e tabelas nativas", true),
-            new("fr", "Região preenchida colorida por uso na vista atual" + (viewOk ? "" : " (abra uma planta)"), false),
-            new("par", "Preencher parâmetros GP_* (lote, quadra, uso, área, perímetro…) para tabelas do Revit", true),
-        };
-        var w = new LotPickerWindow("Elementos nativos do Revit", "Cria elementos do próprio Revit a partir dos lotes, para usar etiquetas, tabelas e filtros nativos. A área calculada pelo Revit é comparada com a do GeoPoint.",
-            PickerRows.Build(s, true), opts, "Criar / atualizar");
-        if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
-        bool pl = w.Option("pl"), fr = w.Option("fr") && viewOk, par = w.Option("par");
-        if (!pl && !fr) { Ui.Info("Nada a fazer", "Marque Property Line e/ou Região preenchida."); return Result.Cancelled; }
-
-        var ctx = s.NewContext();
-        var rows = new List<ReportRow>();
-        using (var t = new Transaction(s.Doc, "GeoPoint: elementos nativos"))
-        {
-            t.Start();
-            if (par)
-            {
-                var cats = new List<BuiltInCategory>();
-                if (pl) cats.Add(BuiltInCategory.OST_SiteProperty);
-                if (fr) cats.Add(BuiltInCategory.OST_DetailComponents);
-                foreach (var warn in NativeElements.EnsureParameters(s.Doc, cats)) rows.Add(new ReportRow { Nivel = "Aviso", Categoria = "Parâmetros", Mensagem = warn });
-            }
-            foreach (var lot in w.SelectedLots)
-            {
-                LotReport rep;
-                try { rep = ctx.Report(lot); }
-                catch (Exception ex) { rows.Add(new ReportRow { Nivel = "Erro", Lote = lot.DisplayName, Mensagem = ex.Message }); continue; }
-                if (pl)
-                {
-                    try
-                    {
-                        var area = NativeElements.UpsertPropertyLine(s.Doc, lot, rep.Region, out var el);
-                        if (par && el is not null) NativeElements.SetParameters(el, lot, rep);
-                        rows.Add(Compare(lot, "Property Line", rep.AreaLocal, area));
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error("Property Line " + lot.DisplayName, ex);
-                        rows.Add(new ReportRow { Nivel = "Erro", Categoria = "Property Line", Lote = lot.DisplayName, Mensagem = ex.Message, LotId = lot.Id });
-                    }
-                }
-                if (fr)
-                {
-                    try
-                    {
-                        var area = NativeElements.CreateFilledRegion(s.Doc, s.ActiveView, lot, rep.Region, out var el);
-                        if (par) NativeElements.SetParameters(el, lot, rep);
-                        rows.Add(Compare(lot, "Região preenchida", rep.AreaLocal, area));
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error("Região " + lot.DisplayName, ex);
-                        rows.Add(new ReportRow { Nivel = "Erro", Categoria = "Região preenchida", Lote = lot.DisplayName, Mensagem = ex.Message, LotId = lot.Id });
-                    }
-                }
-            }
-            ProjectStore.Save(s.Doc, s.Project);
-            t.Commit();
-        }
-        var rw = new ReportWindow("Elementos nativos criados", "Comparação entre a área calculada pelo Revit e pelo GeoPoint (diferenças acima de 0,01 m² indicam aproximação de arcos ou geometria inválida).", rows);
-        if (Ui.ShowDialog(rw, s.MainWindow) == true && rw.Action == ReportAction.Select)
-            LotServices.SelectSources(s, rw.SelectedRows.Where(r => r.LotId is not null).Select(r => s.Project.FindLot(r.LotId!)).OfType<LotRecord>());
-        return Result.Succeeded;
-    }
-
-    private static ReportRow Compare(LotRecord lot, string what, double gp, double? revit)
-    {
-        if (revit is null) return new ReportRow { Nivel = "Aviso", Categoria = what, Lote = lot.DisplayName, Mensagem = "Criado, mas o Revit não informou a área.", LotId = lot.Id };
-        double d = revit.Value - gp;
-        return new ReportRow
-        {
-            Nivel = Math.Abs(d) <= 0.01 ? "OK" : "Atenção",
-            Categoria = what,
-            Lote = lot.DisplayName,
-            Mensagem = $"Área GeoPoint {Fmt.N(gp, 4)} m² × Revit {Fmt.N(revit.Value, 4)} m² (diferença {Fmt.N(d, 4)} m²)",
-            LotId = lot.Id,
-        };
     }
 }
 
@@ -290,62 +212,6 @@ public sealed class CmdVerificar : CommandBase
         var w = new ReportWindow("Verificação do projeto", $"{s.Project.ActiveLots.Count()} lote(s) ativo(s) – {err} erro(s), {warn} atenção(ões).", rows);
         if (Ui.ShowDialog(w, s.MainWindow) == true && w.Action == ReportAction.Select)
             LotServices.SelectSources(s, w.SelectedRows.Where(r => r.LotId is not null).Select(r => s.Project.FindLot(r.LotId!)).OfType<LotRecord>());
-        return Result.Succeeded;
-    }
-}
-
-[Transaction(TransactionMode.Manual)]
-public sealed class CmdAreaTopo : CommandBase
-{
-    protected override string Title => "Área sobre Toposolid";
-
-    protected override Result Run(GpSession s)
-    {
-        if (!s.Project.ActiveLots.Any()) { Ui.Info("Nenhum lote ativo", "Use 'Reconhecer Lotes' primeiro."); return Result.Cancelled; }
-        var topos = new FilteredElementCollector(s.Doc).OfClass(typeof(Toposolid)).Cast<Toposolid>().ToList();
-        if (topos.Count == 0) { Ui.Info("Nenhum Toposolid", "O modelo não possui Toposolid (terreno)."); return Result.Cancelled; }
-        Toposolid topo;
-        if (topos.Count == 1) topo = topos[0];
-        else
-        {
-            var r = s.UiDoc.Selection.PickObject(ObjectType.Element, new ToposolidFilter(), "GeoPoint: clique no Toposolid (terreno)");
-            topo = (Toposolid)s.Doc.GetElement(r);
-        }
-        var w = new LotPickerWindow("Área real sobre o terreno", "Calcula a área inclinada (superficial) de cada lote sobre o Toposolid e a altitude de cada vértice (coordenadas compartilhadas do projeto).",
-            PickerRows.Build(s, true), null, "Calcular");
-        if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
-
-        var tris = TopoService.TopTriangles(topo);
-        if (tris.Count == 0) { Ui.Warn("Superfície não encontrada", "Não foi possível ler a superfície superior do Toposolid."); return Result.Failed; }
-        double elevOffset = s.Project.Frame.OriginElevation;
-        var rows = new List<ReportRow>();
-        foreach (var lot in w.SelectedLots)
-        {
-            var region = lot.ToRegion();
-            double surf = TopoService.SurfaceArea(region, tris);
-            int missing = 0;
-            lot.VertexElevations.Clear();
-            foreach (var v in region.AllRings().SelectMany(r => r.Vertices))
-            {
-                var z = TopoService.ElevationAt(v, tris);
-                if (z is double zf) lot.VertexElevations[LotRecord.VertexKey(v)] = zf * RvtUnits.FtToM + elevOffset;
-                else missing++;
-            }
-            double plan = region.Area;
-            double coverage = 0;
-            if (surf > 0) lot.AreaSuperficial = surf; else lot.AreaSuperficial = null;
-            coverage = surf > 0 ? surf / plan : 0;
-            rows.Add(new ReportRow
-            {
-                Nivel = surf <= 0 ? "Atenção" : missing > 0 ? "Atenção" : "OK",
-                Lote = lot.DisplayName,
-                Mensagem = surf <= 0 ? "O lote não está sobre o Toposolid."
-                    : $"Área em planta {Fmt.N(plan, 2)} m² • área superficial {Fmt.N(surf, 2)} m² (+{Fmt.N((coverage - 1) * 100, 2)}%)" + (missing > 0 ? $" • {missing} vértice(s) fora do terreno" : ""),
-                LotId = lot.Id,
-            });
-        }
-        s.SaveProject("GeoPoint: área sobre Toposolid");
-        Ui.ShowDialog(new ReportWindow("Área sobre o terreno", "As altitudes dos vértices ficam disponíveis no memorial (opção 'Altitudes') e na planilha.", rows, null, false), s.MainWindow);
         return Result.Succeeded;
     }
 }

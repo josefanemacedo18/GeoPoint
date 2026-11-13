@@ -241,6 +241,12 @@ public partial class LotManagerWindow : Window
             Endereco.Text = lot.Endereco;
             AreaTitulo.Text = lot.AreaTitulo is double t ? Fmt.Raw(t, 4) : "";
             Observacoes.Text = lot.Observacoes;
+            // Vazio = dado do imóvel (um lugar só); o valor herdado aparece em cinza.
+            var info = _project.Info;
+            Watermark.Set(Proprietario, string.IsNullOrWhiteSpace(info.Proprietario) ? "" : "do imóvel: " + info.Proprietario);
+            Watermark.Set(Documento, string.IsNullOrWhiteSpace(info.Documento) ? "" : "do imóvel: " + info.Documento);
+            Watermark.Set(Endereco, string.IsNullOrWhiteSpace(info.Endereco) ? "" : "do imóvel: " + info.Endereco);
+            Watermark.Set(Matricula, string.IsNullOrWhiteSpace(info.Matricula) ? "" : "do imóvel: " + info.Matricula);
             Sentido.SelectedIndex = lot.Clockwise is null ? 0 : lot.Clockwise == true ? 1 : 2;
             History.Text = string.Join(Environment.NewLine, lot.History.OrderByDescending(h => h.Date).Take(12)
                 .Select(h => $"{h.Date:dd/MM/yyyy HH:mm} – {h.Description} (área {Fmt.N(h.Area, 2)} m²)"));
@@ -379,10 +385,12 @@ public partial class LotManagerWindow : Window
         l.Numero = l.Nome;
         l.Quadra = Quadra.Text.Trim();
         if (Uso.SelectedValue is LotUse u) l.Uso = u;
-        l.Matricula = Matricula.Text.Trim();
-        l.Proprietario = Proprietario.Text.Trim();
-        l.Documento = Documento.Text.Trim();
-        l.Endereco = Endereco.Text.Trim();
+        // Igual ao dado do imóvel = herda (fica vazio no lote; muda junto se o imóvel mudar).
+        string Own(string v, string projectValue) => v.Trim() == (projectValue ?? "").Trim() ? "" : v.Trim();
+        l.Matricula = Own(Matricula.Text, _project.Info.Matricula);
+        l.Proprietario = Own(Proprietario.Text, _project.Info.Proprietario);
+        l.Documento = Own(Documento.Text, _project.Info.Documento);
+        l.Endereco = Own(Endereco.Text, _project.Info.Endereco);
         l.AreaTitulo = area;
         l.Observacoes = Observacoes.Text.Trim();
         l.Modified = DateTime.Now;

@@ -275,28 +275,3 @@ public sealed class CmdExportarExcel : CommandBase
     }
 }
 
-[Transaction(TransactionMode.Manual)]
-public sealed class CmdQuadroAreas : CommandBase
-{
-    protected override string Title => "Quadro de áreas";
-
-    protected override Result Run(GpSession s)
-    {
-        if (!s.Project.ActiveLots.Any()) { Ui.Info("Nenhum lote ativo", "Use 'Reconhecer Lotes' primeiro."); return Result.Cancelled; }
-        var ctx = s.NewContext();
-        var w = new QuadroWindow(ctx);
-        Ui.ShowDialog(w, s.MainWindow);
-        if (w.ProfileChanged) s.SaveProject("GeoPoint: perfil urbanístico");
-        if (w.ExportRequested)
-        {
-            var path = Ui.SaveFile("Salvar planilha", "Excel (*.xlsx)|*.xlsx", Folders.ProjectName(s) + " - Quadro de areas.xlsx", Folders.Default(s, null));
-            if (path is null) return Result.Succeeded;
-            if (Ui.TryWrite(path, ExcelReport.Build(s.NewContext(), s.Project.ActiveLots.ToList())))
-            {
-                Folders.Remember(s, path);
-                Ui.OpenFile(path);
-            }
-        }
-        return Result.Succeeded;
-    }
-}

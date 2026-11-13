@@ -74,6 +74,8 @@ public sealed class AnnoText
     public double HalfW { get; init; }
     public double HalfH { get; init; }
     public int Lines { get; init; } = 1;
+    /// <summary>Primeira linha em negrito (rótulo do lote).</summary>
+    public bool BoldFirstLine { get; init; }
     public Obb Box => Obb.Of(At, Rotation, HalfW, HalfH);
     /// <summary>Ponto de inserção do Revit para texto centralizado: meio da borda superior da caixa.</summary>
     public Vec2 TopCenter => At + Vec2.FromAngle(Rotation).PerpLeft * HalfH;
@@ -137,6 +139,14 @@ public sealed class AnnotationPlanOptions
     public Func<LotRecord, string>? OwnerOf { get; set; }
     /// <summary>Áreas já ocupadas (ex.: marcador do ponto de referência) que os textos devem evitar.</summary>
     public List<Obb> Obstacles { get; set; } = new();
+    /// <summary>Ângulo (rad) da horizontal da vista no desenho: textos "retos" e legíveis em relação à tela.</summary>
+    public double ViewAngle { get; set; }
+    /// <summary>Texto completo do rótulo do lote (1ª linha em negrito). Null = nome e área.</summary>
+    public Func<LotReport, string>? LabelOf { get; set; }
+    /// <summary>Numeração própria de cada lote: o nome do vértice fica dentro de cada lote (vértices comuns têm um nome em cada lote).</summary>
+    public bool PerLotVertexNames { get; set; }
+    /// <summary>Não escreve o nome da via nas divisas de frente (a rua já está desenhada com o nome).</summary>
+    public bool SkipViaNames { get; set; }
 }
 
 /// <summary>
@@ -155,6 +165,9 @@ public static class AnnotationPlanner
         string a = VertexKey(c.Start), b = VertexKey(c.End), m = VertexKey(c.Mid);
         return string.CompareOrdinal(a, b) <= 0 ? $"e:{a}|{b}|{m}" : $"e:{b}|{a}|{m}";
     }
+
+    /// <summary>Ângulo de leitura em relação à vista (texto nunca de cabeça para baixo na tela).</summary>
+    private static double RV(AnnotationPlanOptions o, double a) => o.ViewAngle + Readable(a - o.ViewAngle);
 
     /// <summary>Ângulo de leitura (texto nunca de cabeça para baixo): resultado em (-90°, +90°].</summary>
     public static double Readable(double a)
@@ -248,24 +261,29 @@ public static class AnnotationPlanner
                 string vk = VertexKey(v.Internal);
                 if (o.Dots && used.Add("d" + vk))
                     plan.Dots.Add(new AnnoDot { Owner = rep.Lot.Id, Key = "d" + vk, At = v.Internal, Radius = o.DotRadiusM });
-                cx.Placed.Add(Obb.Of(v.Internal, 0, o.DotRadiusM * 1.3, o.DotRadiusM * 1.3));
+                cx.Placed.Add(Obb.Of(v.Internal, o.ViewAngle, o.DotRadiusM * 1.3, o.DotRadiusM * 1.3));
             }
 
         // 2) Nome e área no interior (ponto com mais folga).
         if (o.Area)
             foreach (var rep in reports)
             {
-                string label = $"{(rep.Lot.IsRemanescente ? rep.Lot.DisplayName.ToUpperInvariant() : rep.Lot.DisplayName)}\n{fmt.Area(rep.AreaLocal)}";
-                string owner = o.OwnerOf?.Invoke(rep.Lot)?.Trim() ?? "";
-                if (owner.Length > 0) label += "\nProp.: " + (owner.Length > 42 ? owner[..41] + "…" : owner);
+                string label;
+                if (o.LabelOf is not null) label = o.LabelOf(rep).Trim();
+                else
+                {
+                    label = $"{(rep.Lot.IsRemanescente ? rep.Lot.DisplayName.ToUpperInvariant() : rep.Lot.DisplayName)}\n{fmt.Area(rep.AreaLocal)}";
+                    string owner = o.OwnerOf?.Invoke(rep.Lot)?.Trim() ?? "";
+                    if (owner.Length > 0) label += "\nProp.: " + (owner.Length > 42 ? owner[..41] + "…" : owner);
+                }
                 var lines = label.Split('\n');
-                double h = o.TextM * 1.25;
-                double hw = lines.Max(l => TextWidth(l, h, true)) / 2 + o.PadM;
+                double h = o.TextM * 1.1;
+                double hw = lines.Select((l, i) => TextWidth(l, h, i == 0)).Max() / 2 + o.PadM;
                 double lh = lines.Length * h * o.LineFactor / 2 + o.PadM;
-                var at = BestInterior(rep.Region, hw, lh, cx);
-                var box = Obb.Of(at, 0, hw, lh);
+                var at = BestInterior(rep.Region, hw, lh, cx, o.ViewAngle);
+                var box = Obb.Of(at, o.ViewAngle, hw, lh);
                 cx.Placed.Add(box);
-                plan.Texts.Add(new AnnoText { Owner = rep.Lot.Id, Key = "a:" + rep.Lot.Id, Kind = AnnoTextKind.LotLabel, At = at, Text = label, HalfW = hw, HalfH = lh, Lines = lines.Length });
+                plan.Texts.Add(new AnnoText { Owner = rep.Lot.Id, Key = "a:" + rep.Lot.Id, Kind = AnnoTextKind.LotLabel, At = at, Text = label, Rotation = o.ViewAngle, HalfW = hw, HalfH = lh, Lines = lines.Length, BoldFirstLine = true });
             }
 
         // 3) Divisas: distância (junto da linha) e azimute (logo depois), do lado de fora.
@@ -292,25 +310,27 @@ public static class AnnotationPlanner
                 for (int i = 0; i < n; i++)
                 {
                     var v = rep.Vertices[i];
-                    string vk = "n" + VertexKey(v.Internal);
+                    string vk = "n" + (o.PerLotVertexNames ? rep.Lot.Id + ":" : "") + VertexKey(v.Internal);
                     if (!used.Add(vk)) continue;
                     var tIn = rep.Segments[(i - 1 + n) % n].Curve.TangentAt(1);
                     var tOut = rep.Segments[i].Curve.TangentAt(0);
                     var bis = tOut - tIn;
                     if (bis.LengthSquared < 1e-12) bis = rep.Clockwise ? tOut.PerpLeft : tOut.PerpRight;
                     bis = bis.Normalized();
-                    if (cx.InsideAny(v.Internal + bis * o.TextM)) bis = -bis;
+                    bool inside = rep.Region.Contains(v.Internal + bis * o.TextM);
+                    // Numeração por lote: o nome fica dentro do próprio lote; numeração única: fora dos lotes.
+                    if (o.PerLotVertexNames ? !inside : cx.InsideAny(v.Internal + bis * o.TextM)) bis = -bis;
                     double hw = TextWidth(v.Name, o.TextM) / 2 + o.PadM;
-                    var (box, ok) = PlaceVertex(cx, v.Internal, bis, hw, hh, o.DotRadiusM + gap);
+                    var (box, ok) = PlaceVertex(cx, v.Internal, bis, hw, hh, o.DotRadiusM + gap, o.ViewAngle, o.PerLotVertexNames ? rep.Region : null);
                     if (!ok) plan.Conflicts++;
                     cx.Placed.Add(box);
-                    plan.Texts.Add(new AnnoText { Owner = rep.Lot.Id, Key = vk, Kind = AnnoTextKind.Vertex, At = box.C, Text = v.Name, HalfW = hw, HalfH = hh });
+                    plan.Texts.Add(new AnnoText { Owner = rep.Lot.Id, Key = vk, Kind = AnnoTextKind.Vertex, At = box.C, Text = v.Name, Rotation = o.ViewAngle, HalfW = hw, HalfH = hh });
                 }
             }
         return plan;
     }
 
-    private static Vec2 BestInterior(Region r, double hw, double hh, Ctx cx)
+    private static Vec2 BestInterior(Region r, double hw, double hh, Ctx cx, double angle)
     {
         var bb = r.Bounds;
         var cands = new List<Vec2> { r.InteriorPoint() };
@@ -325,7 +345,7 @@ public static class AnnotationPlanner
         foreach (var p in cands)
         {
             if (!r.Contains(p)) continue;
-            var box = Obb.Of(p, 0, hw, hh);
+            var box = Obb.Of(p, angle, hw, hh);
             double clear = edges.Min(e => e.DistanceTo(p));
             bool fits = cx.Free(box);
             double score = (fits ? 1000 : 0) + Math.Min(clear, Math.Max(hw, hh) * 3) - 0.05 * p.DistanceTo(centroid);
@@ -339,18 +359,18 @@ public static class AnnotationPlanner
     {
         string owner = rep.Lot.Id;
         string dist = s.IsArc ? $"D={fmt.Distance(s.LengthHorizontal)} R={fmt.Distance(s.Radius ?? 0)}" : fmt.Distance(s.LengthHorizontal);
-        string az = fmt.Angle(s.AzimuthTrue);
-        double wD = TextWidth(dist, o.TextM) / 2 + o.PadM;
-        double wA = TextWidth(az, o.TextM) / 2 + o.PadM;
+        string full = o.EdgeAngle ? $"{dist}   AZ= {fmt.Angle(s.AzimuthTrue)}" : dist;
         double len = s.Curve.Length;
-        bool shortEdge = len < 2 * Math.Max(wD, o.EdgeAngle ? wA : 0) * 1.05;
-        bool withAz = o.EdgeAngle && !shortEdge;
+        // Divisa curta: só a distância (o azimute continua no memorial e no quadro de coordenadas).
+        string text = TextWidth(full, o.TextM) + 2 * o.PadM <= len * 0.95 ? full : dist;
+        double w = TextWidth(text, o.TextM) / 2 + o.PadM;
+        bool shortEdge = 2 * w > len * 0.95;
         var outward = Normal(s, rep);
         var sides = o.Outside ? new[] { 1.0, -1.0 } : new[] { -1.0, 1.0 };
         var ts = new[] { 0.5, 0.42, 0.58, 0.34, 0.66, 0.26, 0.74 };
         var extras = shortEdge ? new[] { 0.0, 2.0, 4.0, 6.5 } : new[] { 0.0, 0.8, 2.0 };
 
-        (Obb d, Obb? a, double side, Vec2 p, double extra)? best = null;
+        (Obb d, double side, Vec2 p, double extra)? best = null;
         double bestCost = double.MaxValue;
         foreach (double extra in extras)
         {
@@ -362,29 +382,23 @@ public static class AnnotationPlanner
                     var tan = s.Curve.TangentAt(t);
                     var n = s.IsArc ? NormalAt(s.Curve, t, outward) : outward;
                     n *= side;
-                    double ang = Readable(Math.Atan2(tan.Y, tan.X));
+                    double ang = RV(o, Math.Atan2(tan.Y, tan.X));
                     double off = o.OffsetM + extra * hh;
-                    var dBox = Obb.Of(p + n * (off + hh), ang, wD, hh);
-                    Obb? aBox = withAz ? Obb.Of(p + n * (off + 3 * hh + gap * 0.3), ang, wA, hh) : null;
-                    double cost = cx.Cost(dBox) + (aBox is { } ab ? cx.Cost(ab) : 0);
+                    var dBox = Obb.Of(p + n * (off + hh), ang, w, hh);
+                    double cost = cx.Cost(dBox);
                     // Preferências: lado de fora, centro da divisa, perto da linha.
                     cost += (side < 0 ? 0.6 : 0) + Math.Abs(t - 0.5) * 0.8 + extra * 0.3;
-                    if (cost < bestCost) { bestCost = cost; best = (dBox, aBox, side, p, extra); }
+                    if (cost < bestCost) { bestCost = cost; best = (dBox, side, p, extra); }
                 }
                 if (bestCost < 1) break;
             }
             if (bestCost < 1) break;
         }
-        var (db, abx, sd, pt, ex) = best!.Value;
+        var (db, sd, pt, ex) = best!.Value;
         if (bestCost >= 6) plan.Conflicts++;
         blockSide[key] = sd;
         cx.Placed.Add(db);
-        plan.Texts.Add(new AnnoText { Owner = owner, Key = key, Kind = AnnoTextKind.Distance, At = db.C, Text = dist, Rotation = Math.Atan2(db.U.Y, db.U.X), HalfW = db.Hw, HalfH = db.Hh });
-        if (abx is { } a)
-        {
-            cx.Placed.Add(a);
-            plan.Texts.Add(new AnnoText { Owner = owner, Key = key + ":az", Kind = AnnoTextKind.Azimuth, At = a.C, Text = az, Rotation = Math.Atan2(a.U.Y, a.U.X), HalfW = a.Hw, HalfH = a.Hh });
-        }
+        plan.Texts.Add(new AnnoText { Owner = owner, Key = key, Kind = AnnoTextKind.Distance, At = db.C, Text = text, Rotation = Math.Atan2(db.U.Y, db.U.X), HalfW = db.Hw, HalfH = db.Hh });
         // Texto afastado da linha: linha de chamada até a divisa.
         if (ex > 1.5)
         {
@@ -393,18 +407,22 @@ public static class AnnotationPlanner
         }
     }
 
-    private static (Obb box, bool ok) PlaceVertex(Ctx cx, Vec2 v, Vec2 preferred, double hw, double hh, double clearance)
+    private static (Obb box, bool ok) PlaceVertex(Ctx cx, Vec2 v, Vec2 preferred, double hw, double hh, double clearance, double angle, Region? own)
     {
         Obb best = default;
         double bestCost = double.MaxValue;
+        var u = Vec2.FromAngle(angle); var w = u.PerpLeft;
         foreach (double mult in new[] { 1.0, 1.8, 2.8 })
             for (int k = 0; k < 24; k++)
             {
                 var d = k == 0 ? preferred : Vec2.FromAngle(k * Math.PI / 12);
-                double support = Math.Abs(d.X) * hw + Math.Abs(d.Y) * hh;
+                double support = Math.Abs(d.Dot(u)) * hw + Math.Abs(d.Dot(w)) * hh;
                 var c = v + d * (clearance * mult + support);
-                var box = Obb.Of(c, 0, hw, hh);
-                double cost = cx.Cost(box) + (cx.InsideAny(c) ? 4 : 0) + (1 - d.Dot(preferred)) * 0.4 + (mult - 1) * 0.8;
+                var box = Obb.Of(c, angle, hw, hh);
+                double place = own is null
+                    ? (cx.InsideAny(c) ? 4 : 0)
+                    : (own.Contains(c) ? 0 : cx.InsideAny(c) ? 6 : 1.5);   // por lote: dentro do próprio lote
+                double cost = cx.Cost(box) + place + (1 - d.Dot(preferred)) * 0.4 + (mult - 1) * 0.8;
                 if (cost < bestCost) { bestCost = cost; best = box; }
             }
         return (best, bestCost < 4);
@@ -430,7 +448,8 @@ public static class AnnotationPlanner
             if (k == 0 || !Collinear(i)) groups.Add(new List<SegmentReport>());
             groups[^1].Add(rep.Segments[i]);
         }
-        double block = o.OffsetM + (o.Edges ? (o.EdgeAngle ? 4 * hh + gap * 0.3 : 2 * hh) : 0) + gap;
+        // Nome do confrontante logo além da linha "distância  AZ= azimute".
+        double block = o.OffsetM + (o.Edges ? 2 * hh : 0) + gap * 0.4;
         foreach (var g in groups)
         {
             bool Shared(SegmentReport s) => edgeCount.TryGetValue(EdgeKey(s.Curve), out int c) && c > 1;
@@ -467,7 +486,7 @@ public static class AnnotationPlanner
                 }
                 // Ponto médio do trecho (pelo comprimento).
                 var (mid, tan, nrmMid) = PointAlongRun(run, runLen / 2, rep);
-                double ang = Readable(Math.Atan2(tan.Y, tan.X));
+                double ang = RV(o, Math.Atan2(tan.Y, tan.X));
                 double baseOff = split ? dimOff : block;
                 if (split && run.Count > 1)
                 {
@@ -478,8 +497,9 @@ public static class AnnotationPlanner
                     plan.Texts.Add(new AnnoText { Owner = owner, Key = key + ":len", Kind = AnnoTextKind.Measure, At = mb.C, Text = meas, Rotation = ang, HalfW = mw, HalfH = hh });
                     baseOff += 2 * hh + gap;
                 }
-                string name = run[0].Confrontante;
+                string name = (run[0].Confrontante ?? "").Trim().ToUpperInvariant();
                 if (string.IsNullOrWhiteSpace(name)) continue;
+                if (o.SkipViaNames && run.All(x => x.ConfrontanteViaId.Length > 0)) continue;
                 double w = TextWidth(name, o.TextM) / 2 + o.PadM;
                 Obb best = default;
                 double bestCost = double.MaxValue;
@@ -487,8 +507,8 @@ public static class AnnotationPlanner
                     foreach (double frac in new[] { 0.5, 0.35, 0.65, 0.2, 0.8 })
                     {
                         var (p, t, nm) = PointAlongRun(run, runLen * frac, rep);
-                        double an = Readable(Math.Atan2(t.Y, t.X));
-                        var box = Obb.Of(p + nm * (baseOff + gap + hh + extra * hh), an, w, hh);
+                        double an = RV(o, Math.Atan2(t.Y, t.X));
+                        var box = Obb.Of(p + nm * (baseOff + (split ? gap : 0) + hh + extra * hh), an, w, hh);
                         double cost = cx.Cost(box) + extra * 0.4 + Math.Abs(frac - 0.5);
                         if (cost < bestCost) { bestCost = cost; best = box; }
                     }

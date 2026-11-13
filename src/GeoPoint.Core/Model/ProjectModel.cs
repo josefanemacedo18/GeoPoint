@@ -259,10 +259,10 @@ public sealed class ViaRecord
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Nome { get; set; } = "Rua";
-    /// <summary>Largura do leito carroçável (m).</summary>
-    public double Largura { get; set; } = 12;
+    /// <summary>Pista: largura do leito de meio-fio a meio-fio (m).</summary>
+    public double Largura { get; set; } = 7;
     /// <summary>Largura de cada calçada (m).</summary>
-    public double Calcada { get; set; } = 2.5;
+    public double Calcada { get; set; } = 2;
     /// <summary>Prolongamento das pontas além da última testada (m), quando não há cruzamento.</summary>
     public double Prolongamento { get; set; }
     /// <summary>
@@ -281,7 +281,7 @@ public sealed class CruzamentoRecord
     /// <summary>Vias que atravessam o cruzamento (seguem do outro lado).</summary>
     public List<string> Atravessam { get; set; } = new();
     /// <summary>Raio de concordância do meio-fio nas esquinas (m).</summary>
-    public double RaioEsquina { get; set; } = 3;
+    public double RaioEsquina { get; set; } = 2;
     /// <summary>Comprimento desenhado além do cruzamento para as vias que atravessam (m).</summary>
     public double Continuacao { get; set; } = 15;
 }
@@ -292,6 +292,8 @@ public sealed class AnnotationRecord
     public List<string> ElementIds { get; set; } = new();
     /// <summary>Chaves das anotações (divisas/vértices) para não repetir entre lotes vizinhos.</summary>
     public List<string> Keys { get; set; } = new();
+    /// <summary>Escala da vista quando a anotação foi feita (para refazer se a escala mudar).</summary>
+    public int Scale { get; set; }
 }
 
 public sealed class HistoryEntry
@@ -472,6 +474,7 @@ public sealed class ProjectInfo
     public string RuleProfileName { get; set; } = "";
     /// <summary>Situação do processo (Regularização, Desmembramento, Remembramento...).</summary>
     public string Situacao { get; set; } = "Regularização";
+    public string Cep { get; set; } = "";
     /// <summary>Imagem de localização usada no carimbo das pranchas.</summary>
     public string ImagemLocalizacao { get; set; } = "";
 
