@@ -37,7 +37,7 @@ public sealed class App : IExternalApplication
             var geo = app.CreateRibbonPanel(TabName, "Georreferência");
             Add(geo, "Definir\nReferência", typeof(Commands.CmdReferencia), "Informe a coordenada (Google Maps/Earth, QGIS, GPS ou UTM) de um vértice. As demais coordenadas são calculadas pelos azimutes e distâncias do desenho.", IconKind.Reference);
             Add(geo, "Importar\nPontos", typeof(Commands.CmdImportarKml), "Importa pontos do Google Earth/QGIS (KML/KMZ), de planilha (CSV/TXT) ou coordenadas copiadas do Excel/SIGEF (UTM ou latitude/longitude). Os pontos aparecem no desenho para traçar as divisas com snap; opcionalmente já ligados em polígono.", IconKind.Import);
-            Add(geo, "Desenhar por\nAzimutes", typeof(Commands.CmdCaminhamento), "Desenha linhas a partir de azimutes/rumos e distâncias (ex.: colados de um memorial antigo), com erro de fechamento.", IconKind.Traverse);
+            Add(geo, "Desenhar\nPerímetro", typeof(Commands.CmdCaminhamento), "Desenha o contorno de um lote por azimutes/rumos e distâncias ou pelas coordenadas dos vértices (UTM, latitude/longitude ou locais) – digitados, colados de um memorial, do SIGEF ou de uma planilha. Mostra o erro de fechamento e confere as coordenadas com os azimutes e distâncias do texto.", IconKind.Traverse);
 
             var ops = app.CreateRibbonPanel(TabName, "Operações");
             Add(ops, "Desmem-\nbramento", typeof(Commands.CmdDesmembramento), "Divide um lote: automático (partes iguais, áreas ou testadas definidas), pelas linhas que você desenhou ou por lotes já reconhecidos. Com prévia, lote remanescente, proprietários e anexação a lotes vizinhos.", IconKind.Split);

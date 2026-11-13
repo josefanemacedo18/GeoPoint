@@ -23,6 +23,15 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 
 ---
 
+## Novidades da versão 1.5.4
+
+- **Desenhar Perímetro** (antes *Desenhar por Azimutes*): a mesma ferramenta agora desenha o lote **por azimutes e distâncias** ou
+  **pelas coordenadas dos vértices** – UTM (E, N), latitude/longitude (graus decimais ou °'") ou coordenadas locais (X, Y de estação
+  total). Cole o texto de um memorial, do SIGEF ou as linhas de uma planilha: o GeoPoint encontra os vértices, o sistema e o datum,
+  desenha a prévia e **confere as coordenadas com os azimutes e as distâncias escritos no texto** (trechos que não batem ficam em
+  vermelho). O lote pode ser desenhado **na posição exata das coordenadas** (projeto com referência) ou a partir de um clique – e, num
+  projeto ainda sem referência, o primeiro vértice pode virar o **ponto de referência do projeto**.
+
 ## Ajustes da versão 1.5.3
 
 - **Espaço para a logomarca do escritório** em todas as pranchas: bloco entre o croqui e o título (retrato e paisagem, A4 a A1).
@@ -89,7 +98,7 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 - **Croqui de satélite automático** com o lote desenhado por cima (Esri, Google ou servidor próprio).
 - **Área Edificada** (hoje *Construção Existente*): edificações desenhadas com linhas, taxa de ocupação e **distância até cada divisa** (desenho, memorial e pranchas).
 - **Desmembramento desenhando com a ferramenta Linha do Revit**, com prévia que se atualiza a cada linha, e **corte em leque**.
-- **Prévias** nas pranchas, no Anotar Lotes, nas Vias, no Desenhar por Azimutes e nos modelos de prancha.
+- **Prévias** nas pranchas, no Anotar Lotes, nas Vias, no Desenhar por Azimutes (hoje *Desenhar Perímetro*) e nos modelos de prancha.
 - **Importar Pontos** de planilha (CSV/TXT) ou coordenadas coladas do Excel/SIGEF; **Exportar PDF**; **cópias de segurança**;
   **conferência antes de emitir**; **arquivo de diagnóstico**; **projeto de exemplo**.
 - Correções: textos das divisas organizados como no seu modelo (confrontante em cima, `53,55 m   AZ= 60°11'09"` embaixo),
@@ -106,6 +115,7 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 ## 2. Fluxo de trabalho recomendado
 
 1. **Desenhe as divisas** com linhas nativas do Revit (linhas de modelo ou de detalhe) usando snap nos encontros – ou
+   **Desenhar Perímetro** (azimutes e distâncias ou coordenadas, digitados ou colados de um memorial/SIGEF/planilha), ou
    **Importar Pontos** (KML/KMZ, planilha ou coordenadas coladas) e ligue os pontos, ou **Gerar Lote** pelo formato.
    Também é possível usar linhas de um **CAD vinculado/importado** (DWG/DXF) ou um **PDF** importado como base para traçar.
 2. **Reconhecer Lotes** – selecione as linhas e clique dentro de cada lote (ou crie todos de uma vez).
@@ -193,13 +203,40 @@ se quiser, **Ligar os pontos com linhas** (polígono fechado na ordem da lista) 
 Cada ponto aparece como cruz laranja com o nome; desenhe as divisas com o snap de interseção. *Verificar Projeto* e a planilha
 mostram a distância de cada ponto ao vértice mais próximo.
 
-**Desenhar por Azimutes**
+**Desenhar Perímetro** – desenha o contorno de um lote em duas formas (abas):
+
+*Azimutes e distâncias*
 - A janela abre com um **modelo de texto pronto** (*"Inicia-se no vértice P-01; deste, segue com azimute de 90°00'00" e distância de
   30,00 m até o vértice P-02; …"*): troque os valores ou cole o texto de um memorial antigo.
 - O texto é **interpretado enquanto você digita**: azimutes (ou rumos) e distâncias aparecem na tabela e o **desenho aparece na prévia**,
   com o **erro de fechamento** em vermelho e a precisão (1:x). Distribuição do erro (Bowditch) opcional.
 - Entrada em **azimute**; a coluna *No formato do projeto* mostra cada trecho como sairá (azimute ou rumo, casas decimais configuradas).
-- Arcos: informe o raio (a distância é a corda). Desenha a partir de um ponto clicado ou do ponto de referência.
+- Arcos: informe o raio (a distância é a corda).
+- Se o texto também trouxer as **coordenadas dos vértices**, aparece o aviso *Desenhar pelas coordenadas* (mais preciso, com conferência).
+  Com só a coordenada do primeiro vértice, dá para **começar nela** (projeto com referência).
+
+*Coordenadas*
+- Cole ou digite: **memorial** (*"vértice P-01, de coordenadas N 9.299.292,99 m e E 235.142,50 m"*, também `E=… N=…`, `X/Y`,
+  `Este/Norte`), **SIGEF** (*"Longitude: -47°23'39,086", Latitude: -6°20'01,164""*, com S/W/O) ou **linhas de planilha**
+  (`P-01; 235142,50; 9299292,99`, com tabulação, ponto e vírgula ou espaços; cabeçalho `N;E` ou `Longitude;Latitude` inverte as colunas).
+- O GeoPoint reconhece o **sistema** – **UTM**, **geográficas** ou **locais** (X para leste e Y para norte, ex.: estação total com
+  1000/1000) – e o **datum** escrito no texto (SIRGAS 2000, WGS 84, SAD 69, Córrego Alegre ou EPSG). Confira e troque se preciso;
+  o **fuso** vem da referência do projeto (ou das Configurações).
+- Tabela de vértices: nome, coordenadas, **raio até o próximo** (arcos) e lado do arco, o **azimute e a distância até o próximo** no
+  formato do projeto e a **conferência com o texto**: cada trecho é comparado com o azimute e a distância escritos no memorial
+  (✓ confere, dizendo se bateu com o azimute **plano UTM** ou o **verdadeiro**; ⚠ com a diferença, em vermelho na tabela e na prévia).
+  A tolerância é de 30" (ou o ângulo de 2 cm nos trechos curtos) e 5 cm.
+- *Fechar o polígono* liga o último vértice ao primeiro; o vértice inicial repetido no fim do texto é ignorado. *Inverter sentido*
+  percorre os vértices ao contrário.
+- O desenho fica no plano topográfico local do projeto (distâncias horizontais reais), como o resto do GeoPoint.
+
+*Posição do desenho*
+- **Na posição das coordenadas** – com a referência do projeto definida, o lote cai exatamente onde as coordenadas indicam, junto dos
+  outros lotes georreferenciados;
+- **Clicar onde fica o primeiro vértice** – e, se o projeto ainda não tem referência, *Usar o primeiro vértice como ponto de
+  referência do projeto* (o topo da vista é o norte): o projeto fica georreferenciado por essas coordenadas;
+- **Começar no ponto de referência do projeto** (aba de azimutes).
+As linhas criadas ficam selecionadas, prontas para *Reconhecer Lotes*. Tudo é desfeito com um *Desfazer*.
 
 ### Painel Operações
 
@@ -461,6 +498,7 @@ ou do INCRA/SIGEF.
 | **Desmembramento** | Divisão de um lote em vários; o original fica arquivado no histórico. |
 | **Remembramento** | União de lotes contíguos num só, só com os vértices do novo contorno; memorial sem histórico e sem matrícula. |
 | **Fase** | Etapa do projeto (ex.: situação atual, proposta) com os seus lotes; as operações criam fases. |
+| **Desenhar Perímetro** | Desenha o contorno de um lote por azimutes e distâncias ou pelas coordenadas dos vértices, com conferência do texto. |
 | **Referência** | Coordenada conhecida de um vértice e a orientação do norte: liga o desenho às coordenadas (UTM, geográficas…). |
 | **Datum** | Sistema geodésico das coordenadas: SIRGAS 2000 (oficial), WGS 84 (≈ SIRGAS), SAD 69 e Córrego Alegre (antigos). |
 | **Ponto de referência do lote** | Vértice cuja coordenada aparece com chamada no mapa (P-01 por padrão; escolha outro nas Pranchas). |

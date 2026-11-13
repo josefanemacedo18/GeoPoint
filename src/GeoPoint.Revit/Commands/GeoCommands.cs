@@ -202,51 +202,81 @@ public sealed class CmdReferencia : CommandBase
 [Transaction(TransactionMode.Manual)]
 public sealed class CmdCaminhamento : CommandBase
 {
-    protected override string Title => "Desenhar por azimutes";
-    protected override string? BackupReason => "desenhar por azimutes";
+    protected override string Title => "Desenhar perímetro";
+    protected override string? BackupReason => "desenhar perimetro";
 
     protected override Result Run(GpSession s)
     {
-        var w = new TraverseWindow(s.Project.Reference.IsSet, new GeoPoint.Core.Memorial.ValueFormatter(s.Settings.Format));
+        var ctx0 = s.NewContext();
+        // Fuso padrão: o da referência do projeto; sem referência, o do primeiro sistema UTM das Configurações (ou 23 S).
+        var zone = ctx0.Coords.AutoZone;
+        int zn = zone?.Number ?? (s.Settings.Memorial.CoordinateSystems.FirstOrDefault(c => c.Kind == CrsKind.Utm && c.UtmZone > 0)?.UtmZone ?? 23);
+        var w = new PerimeterWindow(s.Project.Reference.IsSet, new GeoPoint.Core.Memorial.ValueFormatter(s.Settings.Format), zn, zone?.South ?? true,
+            s.Project.Reference.IsSet ? s.Project.Reference.Height : 0);
         if (Ui.ShowDialog(w, s.MainWindow) != true || w.ResultData is null) return Result.Cancelled;
-        var res = w.ResultData;
-        var ctx = s.NewContext();
+        var d = w.ResultData;
+        var view = s.ActiveView;
 
         Vec2 start;
         double z;
-        if (w.StartAtReference)
+        XYZ? picked = null;
+        switch (d.Placement)
         {
-            start = ctx.Coords.Anchor;
-            z = s.Project.Reference.AnchorZFeet;
-        }
-        else
-        {
-            XYZ p;
-            try
-            {
-                p = s.UiDoc.Selection.PickPoint(ObjectSnapTypes.Endpoints | ObjectSnapTypes.Intersections | ObjectSnapTypes.Nearest | ObjectSnapTypes.Points,
-                    "GeoPoint: clique no ponto inicial do caminhamento");
-            }
-            catch (Autodesk.Revit.Exceptions.InvalidOperationException)
-            {
-                Ui.Warn("Vista sem plano de trabalho", "Abra uma vista de planta para clicar no ponto inicial.");
-                return Result.Cancelled;
-            }
-            start = RvtUnits.ToVec(p);
-            z = p.Z;
+            case PerimeterPlacement.ProjectReference:
+                start = ctx0.Coords.Anchor;
+                z = s.Project.Reference.AnchorZFeet;
+                break;
+            case PerimeterPlacement.Coordinates:
+                start = ctx0.Coords.FromGeodetic(d.FirstGeodetic!.Value) ?? throw new InvalidOperationException("O projeto não tem ponto de referência.");
+                z = s.Project.Reference.AnchorZFeet;
+                break;
+            default:
+                try
+                {
+                    picked = s.UiDoc.Selection.PickPoint(ObjectSnapTypes.Endpoints | ObjectSnapTypes.Intersections | ObjectSnapTypes.Nearest | ObjectSnapTypes.Points,
+                        $"GeoPoint: clique onde fica o vértice {d.StartName}");
+                }
+                catch (Autodesk.Revit.Exceptions.InvalidOperationException)
+                {
+                    Ui.Warn("Vista sem plano de trabalho", "Abra uma vista de planta para clicar no ponto inicial.");
+                    return Result.Cancelled;
+                }
+                start = RvtUnits.ToVec(picked);
+                z = picked.Z;
+                break;
         }
 
-        // Curvas no plano local (leste/norte) → desenho (rotação inversa do norte verdadeiro).
+        using var t = new Transaction(s.Doc, "GeoPoint: desenhar perímetro");
+        t.Start();
+        bool refChanged = false;
+        if (d.SetReference && picked is not null && d.FirstGeodetic is GeodeticCoord g)
+        {
+            // O ponto clicado passa a ser o ponto de referência, com a coordenada do primeiro vértice (topo da vista = norte).
+            var old = s.Project.Reference;
+            s.Project.Reference = new GeoReferenceRecord
+            {
+                IsSet = true, AnchorX = start.X, AnchorY = start.Y, AnchorZFeet = picked.Z, AnchorLabel = d.StartName,
+                Lat = g.LatDeg, Lon = g.LonDeg, Height = old.IsSet ? old.Height : 0,
+                InputText = "Desenhar perímetro – " + d.StartText, InputKind = d.InputKind, InputDatum = d.InputDatum,
+                Precision = PrecisionClass.Desconhecida,
+                Mode = OrientationMode.ViewUp, RotationRad = NorthGuard.ViewRotation(view), NorthConfirmed = true, SetAt = DateTime.Now,
+            };
+            refChanged = true;
+        }
+        var ctx = s.NewContext();
+        // Trechos no plano local (leste/norte, primeiro vértice na origem) → desenho (rotação do norte do projeto).
         Vec2 Map(Vec2 enu) => start + ctx.Coords.VectorFromEnu(enu);
-        var curves = res.Curves.Select(c => c is ArcCurve
+        var curves = d.Curves.Select(c => c is ArcCurve
             ? CurveFactory.FromThreePoints(Map(c.Start), Map(c.Mid), Map(c.End))
             : (Curve2)new LineCurve(Map(c.Start), Map(c.End))).ToList();
-
-        using var t = new Transaction(s.Doc, "GeoPoint: desenhar caminhamento");
-        t.Start();
-        var target = CurveTarget.ForActiveView(s.Doc, s.ActiveView, w.UseDetailLines, w.UseDetailLines ? null : z);
+        var target = CurveTarget.ForActiveView(s.Doc, view, w.UseDetailLines, w.UseDetailLines ? null : z);
         // Linhas com o estilo padrão: elas servem de base para o reconhecimento dos lotes.
         var created = target.Create(s.Doc, curves, null);
+        if (refChanged)
+        {
+            ControlPointDrawer.RedrawAll(s);
+            ProjectStore.Save(s.Doc, s.Project);
+        }
         t.Commit();
         var ids = created.Select(c => c.Id).ToList();
         if (ids.Count > 0)
@@ -254,7 +284,16 @@ public sealed class CmdCaminhamento : CommandBase
             s.UiDoc.Selection.SetElementIds(ids);
             try { s.UiDoc.ShowElements(ids); } catch { }
         }
-        Ui.Info("Caminhamento desenhado", $"{ids.Count} linha(s) criada(s) e selecionada(s). Use 'Reconhecer Lotes' para transformar o contorno em lote.");
+        string where = d.Placement switch
+        {
+            PerimeterPlacement.Coordinates => "na posição das coordenadas",
+            PerimeterPlacement.ProjectReference => "a partir do ponto de referência do projeto",
+            _ => $"a partir do ponto clicado ({d.StartName})",
+        };
+        Ui.Info("Perímetro desenhado",
+            $"{ids.Count} linha(s) criada(s) {where} e selecionada(s).\n\n{d.Summary}" +
+            (refChanged ? $"\n\nO vértice {d.StartName} passou a ser o ponto de referência do projeto (o topo da vista é o norte)." : "") +
+            "\n\nUse 'Reconhecer Lotes' para transformar o contorno em lote.");
         return Result.Succeeded;
     }
 }

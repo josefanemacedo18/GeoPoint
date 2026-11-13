@@ -70,26 +70,8 @@ public static class CoordinateTableReader
         var detected = datum ?? DetectDatum(string.Join("\n", lines.Where(l => !Regex.IsMatch(l, @"^[\s\d.,;\-+°º'""′″NSEWLO\t|]*$", RegexOptions.IgnoreCase))));
         res.Datum = detected ?? DatumId.Sirgas2000;
         res.DatumFromFile = detected is not null;
-        char sep = DetectSeparator(lines);
-        int auto = 1;
-        var rows = new List<(string Name, string A, string B, string? C, int Line)>();
-        for (int i = 0; i < lines.Count; i++)
-        {
-            var cells = Split(lines[i], sep);
-            // Colunas numéricas (ou ângulos): as duas primeiras são as coordenadas; a primeira não numérica é o nome.
-            var coordIdx = cells.Select((c, k) => (c, k)).Where(x => IsCoord(x.c)).Select(x => x.k).ToList();
-            if (coordIdx.Count < 2) { if (i > 0) res.Warnings.Add($"Linha {i + 1} ignorada: \"{lines[i]}\"."); continue; }
-            string name = cells.Where((c, k) => !coordIdx.Contains(k) && c.Trim().Length > 0).FirstOrDefault()?.Trim() ?? "";
-            // Nome numérico (ex.: "1;235142,50;9299292,99"): três números, o primeiro é o nome.
-            if (name.Length == 0 && coordIdx.Count >= 3 && int.TryParse(cells[coordIdx[0]].Trim(), out _))
-            {
-                name = cells[coordIdx[0]].Trim();
-                coordIdx.RemoveAt(0);
-            }
-            if (name.Length == 0) name = $"P-{auto:00}";
-            auto++;
-            rows.Add((name, cells[coordIdx[0]], cells[coordIdx[1]], coordIdx.Count > 2 ? cells[coordIdx[2]] : null, i + 1));
-        }
+        var (rows, warnings) = ReadRows(lines);
+        res.Warnings.AddRange(warnings);
         if (rows.Count == 0) return res;
         // UTM: valores grandes (E 100.000–900.000, N até 10.000.000). Geográficas: |valor| ≤ 180 ou com °.
         bool geo = rows.All(r => LooksAngle(r.A) && LooksAngle(r.B));
@@ -127,6 +109,46 @@ public static class CoordinateTableReader
         return res;
     }
 
+    /// <summary>Linha de planilha: nome e as coordenadas como texto (ainda sem interpretar).</summary>
+    public sealed record Row(string Name, string A, string B, string? C, int Line);
+
+    /// <summary>Linhas com nome e duas (ou três) coordenadas; as demais (cabeçalho, títulos) ficam de fora.</summary>
+    public static (List<Row> Rows, List<string> Warnings) ReadRows(string text) =>
+        ReadRows(text.Replace("\r", "").Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList());
+
+    private static (List<Row> Rows, List<string> Warnings) ReadRows(List<string> lines)
+    {
+        var rows = new List<Row>();
+        var warnings = new List<string>();
+        if (lines.Count == 0) return (rows, warnings);
+        char sep = DetectSeparator(lines);
+        int auto = 1;
+        for (int i = 0; i < lines.Count; i++)
+        {
+            var cells = Split(lines[i], sep);
+            // Colunas numéricas (ou ângulos): as duas primeiras são as coordenadas; a primeira não numérica é o nome.
+            var coordIdx = cells.Select((c, k) => (c, k)).Where(x => IsCoord(x.c)).Select(x => x.k).ToList();
+            if (coordIdx.Count < 2) { if (i > 0) warnings.Add($"Linha {i + 1} ignorada: \"{lines[i]}\"."); continue; }
+            string name = cells.Where((c, k) => !coordIdx.Contains(k) && c.Trim().Length > 0).FirstOrDefault()?.Trim() ?? "";
+            // Nome numérico (ex.: "1;235142,50;9299292,99"): três números, o primeiro é o nome.
+            if (name.Length == 0 && coordIdx.Count >= 3 && int.TryParse(cells[coordIdx[0]].Trim(), out _))
+            {
+                name = cells[coordIdx[0]].Trim();
+                coordIdx.RemoveAt(0);
+            }
+            if (name.Length == 0) name = $"P-{auto:00}";
+            auto++;
+            rows.Add(new Row(name, cells[coordIdx[0]], cells[coordIdx[1]], coordIdx.Count > 2 ? cells[coordIdx[2]] : null, i + 1));
+        }
+        return (rows, warnings);
+    }
+
+    /// <summary>Ângulo em graus decimais ou graus/minutos/segundos (com S/W/O = negativo); null = inválido.</summary>
+    public static double? ParseAngle(string s)
+    {
+        try { return Angle(s); } catch { return null; }
+    }
+
     private static char DetectSeparator(List<string> lines)
     {
         var cands = new[] { '\t', ';', ',', '|' };
@@ -140,7 +162,7 @@ public static class CoordinateTableReader
 
     private static bool IsCoord(string s) => Num(s) is not null || Dms.IsMatch(s.Trim()) && s.Contains('°');
 
-    private static bool LooksAngle(string s) => s.Contains('°') || (Num(s) is double v && Math.Abs(v) <= 180);
+    public static bool LooksAngle(string s) => s.Contains('°') || (Num(s) is double v && Math.Abs(v) <= 180);
 
     /// <summary>Número com vírgula ou ponto decimal (aceita separador de milhar).</summary>
     public static double? Num(string s)

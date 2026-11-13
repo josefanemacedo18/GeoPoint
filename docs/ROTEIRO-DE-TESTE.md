@@ -46,6 +46,23 @@ Tempo estimado: 40 a 60 minutos.
 - [ ] Repita sem a linha `Datum: SAD 69`. **Esperado:** aviso "Datum não informado… considerado SIRGAS 2000"; os pontos ficam
       algumas dezenas de metros deslocados em relação aos anteriores (diferença entre os datums).
 
+### Desenhar Perímetro
+
+- [ ] **Desenhar Perímetro**, aba *Azimutes e distâncias*: o modelo de texto aparece; troque um azimute e veja a prévia mudar.
+      **Esperado:** erro de fechamento e área; *Desenhar* → clique na planta → 4 linhas selecionadas.
+- [ ] Aba *Coordenadas*: o modelo (memorial com coordenadas UTM) já vem lido.
+      **Esperado:** 4 vértices, sistema UTM, datum SIRGAS 2000 (do texto), coluna *Conferência* com "✓ confere (plano UTM)" nos 4 trechos.
+- [ ] No texto, troque `distância de 12,00 m até o vértice P-03` por `12,40 m`.
+      **Esperado:** a linha do P-02 fica vermelha ("⚠ texto: … dif. … 0,40 m") e o trecho em vermelho na prévia; ao Desenhar, o GeoPoint pergunta.
+- [ ] Projeto **com** referência: *Na posição das coordenadas* vem marcado. Desenhe.
+      **Esperado:** o lote cai no lugar das coordenadas (confira com *Importar Pontos* das mesmas coordenadas: as cruzes caem nos cantos).
+- [ ] Projeto **sem** referência (novo): *Clicar onde fica o primeiro vértice* + *Usar o primeiro vértice como ponto de referência* marcados.
+      **Esperado:** depois de clicar, a mensagem diz que o P-01 virou o ponto de referência; *Verificar Projeto* não acusa falta de referência.
+- [ ] Cole uma planilha local (`1 1000 1000` / `2 1030 1000` / `3 1030 988` / `4 1000 988`, uma por linha).
+      **Esperado:** sistema *Locais*, área 360,00 m², datum e fuso desligados.
+- [ ] Cole um trecho do SIGEF com `Longitude: … Latitude: …`. **Esperado:** sistema *Geográficas* e os nomes dos vértices do SIGEF.
+- [ ] **Desfazer (Ctrl+Z)** depois de desenhar. **Esperado:** as linhas somem e, se a referência foi definida, ela volta ao que era.
+
 ## 4. Anotação
 
 - [ ] **Anotar Lotes** na planta, todos os lotes. Mude a altura do texto na janela e veja a **prévia** mudar.

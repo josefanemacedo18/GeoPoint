@@ -32,6 +32,21 @@ public sealed class TraverseResult
 
 public static class Traverse
 {
+    /// <summary>Trecho entre dois pontos: reta, ou arco com o raio dado (a–b é a corda; arco à direita = flecha à direita do percurso).</summary>
+    public static Curve2 Segment(Vec2 a, Vec2 b, double? radius, bool arcToRight)
+    {
+        double chord = a.DistanceTo(b);
+        if (radius is double r && r > 0 && r * 2 >= chord && chord > 1e-9)
+        {
+            double sagitta = r - Math.Sqrt(Math.Max(0, r * r - chord * chord / 4));
+            var mid = Vec2.Lerp(a, b, 0.5);
+            var dir = (b - a).Normalized();
+            var off = arcToRight ? dir.PerpRight : dir.PerpLeft;
+            return CurveFactory.FromThreePoints(a, mid + off * sagitta, b);
+        }
+        return new LineCurve(a, b);
+    }
+
     public static TraverseResult Compute(IReadOnlyList<Course> courses, bool adjust)
     {
         var res = new TraverseResult();
@@ -67,18 +82,7 @@ public static class Traverse
             var a0 = pts[i]; var b0 = pts[i + 1];
             if (a0.DistanceTo(b0) < 1e-9) continue;
             var c = courses[i];
-            Curve2 curve;
-            if (c.Radius is double r && r > 0 && r * 2 >= a0.DistanceTo(b0))
-            {
-                double chord = a0.DistanceTo(b0);
-                double sagitta = r - Math.Sqrt(Math.Max(0, r * r - chord * chord / 4));
-                var mid = Vec2.Lerp(a0, b0, 0.5);
-                var dir = (b0 - a0).Normalized();
-                // Arco à direita: flecha do lado direito do percurso.
-                var off = c.ArcToRight ? dir.PerpRight : dir.PerpLeft;
-                curve = CurveFactory.FromThreePoints(a0, mid + off * sagitta, b0);
-            }
-            else curve = new LineCurve(a0, b0);
+            var curve = Segment(a0, b0, c.Radius, c.ArcToRight);
             res.Curves.Add(curve);
             perim += curve.Length;
         }
