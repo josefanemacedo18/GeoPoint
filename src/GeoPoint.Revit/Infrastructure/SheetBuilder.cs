@@ -241,7 +241,9 @@ public sealed class SheetBuilder
             if (spec.Detailed) { ao.Vertices = true; ao.EdgeAngle = true; ao.Dots = true; }
             else { ao.Vertices = false; ao.EdgeAngle = false; ao.Dots = false; }
             var callCtx = ctx;
-            Annotator.Annotate(_doc, view, lots, ctx, _fmt, ao, fails, null, obstacles, refCallout: r => Callout(r, callCtx, _fmt, def));
+            // Prancha geral (vários lotes): visão do conjunto, sem coordenadas de referência.
+            Func<LotReport, RefCallout?>? refc = spec.Detailed ? r => Callout(r, callCtx, _fmt, def) : null;
+            Annotator.Annotate(_doc, view, lots, ctx, _fmt, ao, fails, null, obstacles, refCallout: refc);
             Warnings.AddRange(fails.Select(f => $"{spec.Title}: {f}"));
             if (Annotator.LastConflicts > 0)
                 Warnings.Add($"{spec.Title}: {Annotator.LastConflicts} texto(s) sem espaço livre (ficaram na posição de menor conflito) – confira e arraste se precisar.");

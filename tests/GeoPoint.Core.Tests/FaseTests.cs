@@ -110,7 +110,7 @@ public class FaseTests
 public class IndividualMemorialTests
 {
     [Fact]
-    public void IndividualMemorial_HasOriginAndLocalNumbering()
+    public void IndividualMemorial_OnlyOwnLot_AndLocalNumbering()
     {
         var parent = TestProjects.Rect(0, 0, 20, 30, "03");
         parent.Matricula = "12.345";
@@ -127,11 +127,24 @@ public class IndividualMemorialTests
         {
             Kind = GeoPoint.Core.Memorial.MemorialKind.Lotes, Lots = new() { b }, Operation = op,
         }), out _);
-        Assert.Contains("DESMEMBRAMENTO – LOTE RESULTANTE", text);
-        Assert.Contains("ORIGEM", text);
-        Assert.Contains("resultante do desmembramento do Lote 03 – Quadra A, matrícula nº 12.345", text);
-        Assert.Contains("Trata-se do lote remanescente", text);
-        Assert.Contains("Lote 03-A – Quadra A", text);
+        // Memorial focado só no próprio lote: sem origem e sem os demais lotes; o remanescente fica com a matrícula do original.
+        GeoPoint.Core.Operations.ParcelOperations.AssignDesmembramentoMatriculas(p, parent, new[] { a, b });
+        text = ReportAndDocumentTests.DocText(gen.Generate(new GeoPoint.Core.Memorial.MemorialRequest
+        {
+            Kind = GeoPoint.Core.Memorial.MemorialKind.Lotes, Lots = new() { b }, Operation = op,
+        }), out _);
+        Assert.Contains("DESMEMBRAMENTO – LOTE REMANESCENTE", text);
+        Assert.DoesNotContain("ORIGEM", text);
+        Assert.DoesNotContain("Lote 03-A", text.Replace("Lote 03-A – Quadra A (", ""));
+        Assert.Contains("12.345", text);
+        // O outro lote resultante não tem matrícula (não herda a do imóvel nem a do original).
+        var textA = ReportAndDocumentTests.DocText(gen.Generate(new GeoPoint.Core.Memorial.MemorialRequest
+        {
+            Kind = GeoPoint.Core.Memorial.MemorialKind.Lotes, Lots = new() { a }, Operation = op,
+        }), out _);
+        Assert.Contains("DESMEMBRAMENTO", textA);
+        Assert.DoesNotContain("12.345", textA);
+        Assert.Equal("", p.EffectiveMatricula(a));
         // Numeração própria: P-01 a P-04, nenhum P-05 (que seria a numeração do projeto).
         Assert.Contains("P-01", text);
         Assert.DoesNotContain("P-05", text);

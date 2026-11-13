@@ -349,8 +349,7 @@ public static class AnnotationPlanner
 
         // 4) Confrontantes (nome e extensão).
         if (o.Confrontantes)
-            foreach (var rep in reports)
-                PlanConfrontantes(plan, cx, rep, o, used, edgeCount, hh, gap);
+            PlanConfrontantes(plan, cx, reports, o, used, edgeCount, hh, gap);
 
         // 4b) Coordenada do ponto de referência de cada lote (o nome do vértice vai na chamada).
         if (o.RefCallout is not null)
@@ -536,7 +535,7 @@ public static class AnnotationPlanner
     {
         string owner = rep.Lot.Id;
         string dist = s.IsArc ? $"D={fmt.Distance(s.LengthHorizontal)} R={fmt.Distance(s.Radius ?? 0)}" : fmt.Distance(s.LengthHorizontal);
-        string full = o.EdgeAngle ? $"{dist}   AZ= {fmt.Angle(s.AzimuthTrue)}" : dist;
+        string full = o.EdgeAngle ? $"{dist} / AZ= {fmt.Angle(s.AzimuthTrue)}" : dist;
         double len = s.Curve.Length;
         // Divisa curta: só a distância (o azimute continua no memorial e no quadro de coordenadas).
         string text = TextWidth(full, o.TextM) + 2 * o.PadM <= len * 0.95 ? full : dist;
@@ -605,94 +604,141 @@ public static class AnnotationPlanner
         return (best, bestCost < 4);
     }
 
-    private static void PlanConfrontantes(AnnotationPlan plan, Ctx cx, LotReport rep, AnnotationPlanOptions o, HashSet<string> used,
+    /// <summary>Trecho de divisas seguidas, alinhadas e com o mesmo confrontante (num lote).</summary>
+    private sealed class ConfRun
+    {
+        public LotReport Rep = null!;
+        public List<SegmentReport> Segs = new();
+        public string Name = "";
+        public Vec2 A => Segs[0].Curve.Start;
+        public Vec2 B => Segs[^1].Curve.End;
+        public bool Straight => Segs.All(s => !s.IsArc);
+    }
+
+    /// <summary>
+    /// Nome de cada confrontante uma vez, acima da linha "distância / AZ= azimute". Trechos alinhados e encostados de lotes
+    /// diferentes com o mesmo confrontante (ex.: fundos de três lotes com o mesmo vizinho) recebem um único nome, no meio do conjunto.
+    /// Onde o confrontante muda numa mesma linha fica uma marca no ponto (cada trecho já tem a sua distância e azimute).
+    /// </summary>
+    private static void PlanConfrontantes(AnnotationPlan plan, Ctx cx, IReadOnlyList<LotReport> reports, AnnotationPlanOptions o, HashSet<string> used,
         Dictionary<string, int> edgeCount, double hh, double gap)
     {
-        string owner = rep.Lot.Id;
-        int n = rep.Segments.Count;
-        if (n == 0) return;
-        bool Collinear(int i)
-        {
-            var a = rep.Segments[(i - 1 + n) % n].Curve.TangentAt(1);
-            var b = rep.Segments[i].Curve.TangentAt(0);
-            return a.Dot(b) > Math.Cos(Math.PI / 90); // < 2°
-        }
-        int start = Enumerable.Range(0, n).FirstOrDefault(i => !Collinear(i));
-        var groups = new List<List<SegmentReport>>();
-        for (int k = 0; k < n; k++)
-        {
-            int i = (start + k) % n;
-            if (k == 0 || !Collinear(i)) groups.Add(new List<SegmentReport>());
-            groups[^1].Add(rep.Segments[i]);
-        }
-        // Nome do confrontante logo além da linha "distância  AZ= azimute".
         double block = o.OffsetM + (o.Edges ? 2 * hh : 0) + gap * 0.4;
-        foreach (var g in groups)
+        bool Shared(SegmentReport s) => edgeCount.TryGetValue(EdgeKey(s.Curve), out int c) && c > 1;
+        var runs = new List<ConfRun>();
+        foreach (var rep in reports)
         {
-            bool Shared(SegmentReport s) => edgeCount.TryGetValue(EdgeKey(s.Curve), out int c) && c > 1;
-            if (g.All(Shared)) continue;
-            var runs = new List<List<SegmentReport>>();
-            foreach (var s in g)
+            int n = rep.Segments.Count;
+            if (n == 0) continue;
+            bool Collinear(int i)
             {
-                if (runs.Count == 0 || !SameConfrontante(runs[^1][^1], s)) runs.Add(new List<SegmentReport>());
-                runs[^1].Add(s);
+                var a = rep.Segments[(i - 1 + n) % n].Curve.TangentAt(1);
+                var b = rep.Segments[i].Curve.TangentAt(0);
+                return a.Dot(b) > Math.Cos(Math.PI / 90); // < 2°
             }
-            bool split = runs.Count > 1;
-            double dimOff = block + gap;
-            foreach (var run in runs)
+            int start = Enumerable.Range(0, n).FirstOrDefault(i => !Collinear(i));
+            var groups = new List<List<SegmentReport>>();
+            for (int k = 0; k < n; k++)
             {
-                if (run.All(Shared)) continue;
-                string key = "c:" + string.Join("+", run.Select(s => EdgeKey(s.Curve)));
-                if (!used.Add(key)) continue;
-                var a = run[0].Curve.Start;
-                var b = run[^1].Curve.End;
-                var na = Normal(run[0], rep);
-                var nb = Normal(run[^1], rep);
-                double runLen = run.Sum(s => s.LengthHorizontal);
-                if (split)
+                int i = (start + k) % n;
+                if (k == 0 || !Collinear(i)) groups.Add(new List<SegmentReport>());
+                groups[^1].Add(rep.Segments[i]);
+            }
+            foreach (var g in groups)
+            {
+                if (g.All(Shared)) continue;
+                var rs = new List<List<SegmentReport>>();
+                foreach (var sg in g)
                 {
-                    if (run.All(s => !s.IsArc))
-                        plan.Lines.Add(new AnnoLine { Owner = owner, Key = key + ":dim", Kind = AnnoLineKind.ConfrontanteDimension, A = a + na * dimOff, B = b + nb * dimOff });
-                    double tick = o.TextM * 0.6;
-                    foreach (var (p, nrm) in new[] { (a, na), (b, nb) })
-                    {
-                        string tk = "t" + VertexKey(p);
-                        if (used.Add(tk))
-                            plan.Lines.Add(new AnnoLine { Owner = owner, Key = tk, Kind = AnnoLineKind.ConfrontanteTick, A = p + nrm * (o.DotRadiusM * 1.5), B = p + nrm * (dimOff + tick) });
-                    }
+                    if (rs.Count == 0 || !SameConfrontante(rs[^1][^1], sg)) rs.Add(new List<SegmentReport>());
+                    rs[^1].Add(sg);
                 }
-                // Ponto médio do trecho (pelo comprimento).
-                var (mid, tan, nrmMid) = PointAlongRun(run, runLen / 2, rep);
-                double ang = RV(o, Math.Atan2(tan.Y, tan.X));
-                double baseOff = split ? dimOff : block;
-                if (split && run.Count > 1)
+                // Mudança de confrontante na mesma linha: marca tracejada no ponto.
+                for (int k = 1; k < rs.Count; k++)
                 {
-                    string meas = AngleText.FormatNumber(runLen, 2, true) + " m";
-                    double mw = TextWidth(meas, o.TextM) / 2 + o.PadM;
-                    var mb = Obb.Of(mid + nrmMid * (baseOff + gap + hh), ang, mw, hh);
-                    cx.Placed.Add(mb);
-                    plan.Texts.Add(new AnnoText { Owner = owner, Key = key + ":len", Kind = AnnoTextKind.Measure, At = mb.C, Text = meas, Rotation = ang, HalfW = mw, HalfH = hh });
-                    baseOff += 2 * hh + gap;
+                    var pt = rs[k][0].Curve.Start;
+                    var nrm = Normal(rs[k][0], rep);
+                    string tk = "t" + VertexKey(pt);
+                    if (used.Add(tk))
+                        plan.Lines.Add(new AnnoLine { Owner = rep.Lot.Id, Key = tk, Kind = AnnoLineKind.ConfrontanteTick, A = pt + nrm * (o.DotRadiusM * 1.5), B = pt + nrm * (block + o.TextM * 0.6) });
                 }
-                string name = (run[0].Confrontante ?? "").Trim().ToUpperInvariant();
-                if (string.IsNullOrWhiteSpace(name)) continue;
-                if (o.SkipViaNames && run.All(x => x.ConfrontanteViaId.Length > 0)) continue;
-                double w = TextWidth(name, o.TextM) / 2 + o.PadM;
-                Obb best = default;
-                double bestCost = double.MaxValue;
+                foreach (var r in rs)
+                {
+                    if (r.All(Shared)) continue;
+                    string name = (r[0].Confrontante ?? "").Trim();
+                    if (name.Length == 0) continue;
+                    if (o.SkipViaNames && r.All(x => x.ConfrontanteViaId.Length > 0)) continue;
+                    runs.Add(new ConfRun { Rep = rep, Segs = r, Name = name.ToUpperInvariant() });
+                }
+            }
+        }
+
+        // Agrupa trechos de lotes diferentes: retos, alinhados, encostados, do mesmo lado e com o mesmo nome.
+        int m = runs.Count;
+        var parent = Enumerable.Range(0, m).ToArray();
+        int Find(int x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; }
+        const double tol = 0.02;
+        for (int i = 0; i < m; i++)
+            for (int j = i + 1; j < m; j++)
+            {
+                var a = runs[i]; var b = runs[j];
+                if (a.Rep == b.Rep || a.Name != b.Name || !a.Straight || !b.Straight) continue;
+                var da = (a.B - a.A); var db = (b.B - b.A);
+                if (da.Length < 1e-6 || db.Length < 1e-6) continue;
+                da = da.Normalized(); db = db.Normalized();
+                if (Math.Abs(da.Cross(db)) > 0.02) continue;
+                if (Normal(a.Segs[0], a.Rep).Dot(Normal(b.Segs[0], b.Rep)) < 0.9) continue;
+                if (Math.Abs(da.Cross(b.A - a.A)) > tol) continue;           // na mesma reta
+                bool touch = new[] { a.A, a.B }.Any(p => new[] { b.A, b.B }.Any(q => p.DistanceTo(q) < tol));
+                if (touch) parent[Find(i)] = Find(j);
+            }
+        var clusters = Enumerable.Range(0, m).GroupBy(Find).Select(g => g.Select(k => runs[k]).ToList()).ToList();
+
+        foreach (var cl in clusters)
+        {
+            string key = "c:" + string.Join("+", cl.SelectMany(r => r.Segs).Select(sg => EdgeKey(sg.Curve)).OrderBy(x => x, StringComparer.Ordinal));
+            if (!used.Add(key)) continue;
+            var first = cl[0];
+            string owner = first.Rep.Lot.Id;
+            string name = first.Name;
+            double w = TextWidth(name, o.TextM) / 2 + o.PadM;
+            Obb best = default;
+            double bestCost = double.MaxValue;
+            if (cl.Count == 1)
+            {
+                var run = first.Segs;
+                double runLen = run.Sum(sg => sg.LengthHorizontal);
                 foreach (double extra in new[] { 0.0, 1.2, 2.6, 4.5 })
                     foreach (double frac in new[] { 0.5, 0.35, 0.65, 0.2, 0.8 })
                     {
-                        var (p, t, nm) = PointAlongRun(run, runLen * frac, rep);
+                        var (p, t, nm) = PointAlongRun(run, runLen * frac, first.Rep);
                         double an = RV(o, Math.Atan2(t.Y, t.X));
-                        var box = Obb.Of(p + nm * (baseOff + (split ? gap : 0) + hh + extra * hh), an, w, hh);
+                        var box = Obb.Of(p + nm * (block + hh + extra * hh), an, w, hh);
                         double cost = cx.Cost(box) + extra * 0.4 + Math.Abs(frac - 0.5);
                         if (cost < bestCost) { bestCost = cost; best = box; }
                     }
-                if (bestCost >= 6) plan.Conflicts++;
-                cx.Placed.Add(best);
-                plan.Texts.Add(new AnnoText { Owner = owner, Key = key, Kind = AnnoTextKind.Confrontante, At = best.C, Text = name, Rotation = Math.Atan2(best.U.Y, best.U.X), HalfW = w, HalfH = hh });
             }
+            else
+            {
+                // Conjunto de lotes: o nome fica no meio do trecho todo.
+                var d = (first.B - first.A).Normalized();
+                var o0 = first.A;
+                var ts = cl.SelectMany(r => new[] { r.A, r.B }).Select(p => d.Dot(p - o0)).ToList();
+                double t0 = ts.Min(), t1 = ts.Max();
+                var nm = Normal(first.Segs[0], first.Rep);
+                double an = RV(o, Math.Atan2(d.Y, d.X));
+                foreach (double extra in new[] { 0.0, 1.2, 2.6, 4.5 })
+                    foreach (double frac in new[] { 0.5, 0.4, 0.6, 0.3, 0.7 })
+                    {
+                        var p = o0 + d * (t0 + (t1 - t0) * frac);
+                        var box = Obb.Of(p + nm * (block + hh + extra * hh), an, w, hh);
+                        double cost = cx.Cost(box) + extra * 0.4 + Math.Abs(frac - 0.5);
+                        if (cost < bestCost) { bestCost = cost; best = box; }
+                    }
+            }
+            if (bestCost >= 6) plan.Conflicts++;
+            cx.Placed.Add(best);
+            plan.Texts.Add(new AnnoText { Owner = owner, Key = key, Kind = AnnoTextKind.Confrontante, At = best.C, Text = name, Rotation = Math.Atan2(best.U.Y, best.U.X), HalfW = w, HalfH = hh });
         }
     }
 

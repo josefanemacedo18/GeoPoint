@@ -246,7 +246,8 @@ public partial class LotManagerWindow : Window
             Watermark.Set(Proprietario, string.IsNullOrWhiteSpace(info.Proprietario) ? "" : "do imóvel: " + info.Proprietario);
             Watermark.Set(Documento, string.IsNullOrWhiteSpace(info.Documento) ? "" : "do imóvel: " + info.Documento);
             Watermark.Set(Endereco, string.IsNullOrWhiteSpace(info.Endereco) ? "" : "do imóvel: " + info.Endereco);
-            Watermark.Set(Matricula, string.IsNullOrWhiteSpace(info.Matricula) ? "" : "do imóvel: " + info.Matricula);
+            // Lote resultante de desmembramento/remembramento não herda a matrícula do imóvel.
+            Watermark.Set(Matricula, _project.IsOperationResult(lot) ? "sem matrícula (lote resultante)" : string.IsNullOrWhiteSpace(info.Matricula) ? "" : "do imóvel: " + info.Matricula);
             Sentido.SelectedIndex = lot.Clockwise is null ? 0 : lot.Clockwise == true ? 1 : 2;
             History.Text = string.Join(Environment.NewLine, lot.History.OrderByDescending(h => h.Date).Take(12)
                 .Select(h => $"{h.Date:dd/MM/yyyy HH:mm} – {h.Description} (área {Fmt.N(h.Area, 2)} m²)"));
@@ -387,7 +388,8 @@ public partial class LotManagerWindow : Window
         if (Uso.SelectedValue is LotUse u) l.Uso = u;
         // Igual ao dado do imóvel = herda (fica vazio no lote; muda junto se o imóvel mudar).
         string Own(string v, string projectValue) => v.Trim() == (projectValue ?? "").Trim() ? "" : v.Trim();
-        l.Matricula = Own(Matricula.Text, _project.Info.Matricula);
+        // Lote resultante de operação guarda a matrícula como digitada (o remanescente fica com a do original).
+        l.Matricula = _project.IsOperationResult(l) ? Matricula.Text.Trim() : Own(Matricula.Text, _project.Info.Matricula);
         l.Proprietario = Own(Proprietario.Text, _project.Info.Proprietario);
         l.Documento = Own(Documento.Text, _project.Info.Documento);
         l.Endereco = Own(Endereco.Text, _project.Info.Endereco);

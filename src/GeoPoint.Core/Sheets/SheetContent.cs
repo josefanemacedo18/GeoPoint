@@ -37,17 +37,24 @@ public sealed class SheetContent
         var tech = ctx.Settings.Technician;
         var op = p.Operations.FirstOrDefault(o => o.Id == spec.OperationId);
 
-        string Distinct(Func<LotRecord, string> f, string fallback)
+        static string Short(LotRecord l) => l.DisplayName.Split(" – ")[0];
+        // Proprietários (com o CPF/CNPJ de cada um) e matrículas efetivas: lotes resultantes de operação não herdam a
+        // matrícula do imóvel (no desmembramento só o remanescente fica com a matrícula do original).
+        var ownerList = lots.Select(l => (Owner: p.EffectiveOwner(l), Doc: p.EffectiveDocumento(l), Lot: l))
+            .Where(x => x.Owner.Length > 0).GroupBy(x => x.Owner, StringComparer.OrdinalIgnoreCase)
+            .Select(g => (Owner: g.First().Owner, Doc: g.Select(x => x.Doc).FirstOrDefault(d => d.Length > 0) ?? "", Lots: g.Select(x => x.Lot).ToList())).ToList();
+        string owners = string.Join("; ", ownerList.Select(x => x.Owner));
+        if (ownerList.Count <= 1)
         {
-            var vals = lots.Select(f).Select(x => string.IsNullOrWhiteSpace(x) ? fallback : x.Trim()).Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            return string.Join("; ", vals);
+            c.Identificacao.Add(new("Proprietário", owners));
+            c.Identificacao.Add(new("CPF/CNPJ", ownerList.FirstOrDefault().Doc ?? ""));
         }
-        string owners = Distinct(l => l.Proprietario, info.Proprietario);
-        string docs = Distinct(l => l.Documento, info.Documento);
-        string matr = Distinct(l => l.Matricula, info.Matricula);
-
-        c.Identificacao.Add(new("Proprietário", owners));
-        c.Identificacao.Add(new("CPF/CNPJ", docs));
+        else
+            c.Identificacao.Add(new("Proprietários", string.Join("; ", ownerList.Select(x => x.Doc.Length > 0 ? $"{x.Owner} ({x.Doc})" : x.Owner))));
+        var mats = lots.Select(l => (Lot: l, Mat: p.EffectiveMatricula(l))).ToList();
+        string matr = lots.Count == 1
+            ? mats[0].Mat
+            : string.Join("; ", mats.Where(x => x.Mat.Length > 0).Select(x => $"{Short(x.Lot)}: {x.Mat}"));
         c.Identificacao.Add(new("Matrícula", matr));
         if (!string.IsNullOrWhiteSpace(info.InscricaoMunicipal)) c.Identificacao.Add(new("Inscrição municipal", info.InscricaoMunicipal));
         if (string.Equals(info.TipoImovel, "Rural", StringComparison.OrdinalIgnoreCase))
@@ -83,16 +90,9 @@ public sealed class SheetContent
             c.Quadro.Add(new("ÁREA TOTAL", fmt.Area(reps.Sum(r => r.AreaLocal))));
         }
 
-        // Convenções (só o que aparece no desenho).
-        bool hasRem = lots.Any(l => l.IsRemanescente);
-        c.Legenda.Add(new(LegendKind.AreaImovel, lots.Count > 1 ? "ÁREA DOS LOTES" : "ÁREA DO IMÓVEL", spec.Colors.TryGetValue(lots.FirstOrDefault()?.Id ?? "", out int ci) ? ci : 0));
-        if (hasRem && spec.Hatch) c.Legenda.Add(new(LegendKind.Remanescente, "LOTE REMANESCENTE"));
-        if (edificacoes) c.Legenda.Add(new(LegendKind.AreaEdificada, "ÁREA EDIFICADA"));
-        c.Legenda.Add(new(LegendKind.Limite, "LIMITE DO IMÓVEL"));
-        if (spec.Detailed) c.Legenda.Add(new(LegendKind.Vertice, "VÉRTICES"));
-        c.Legenda.Add(new(LegendKind.PontoReferencia, "COORDENADA DE REFERÊNCIA"));
-        c.Legenda.Add(new(LegendKind.MudancaConfrontante, "MUDANÇA DE CONFRONTAÇÃO"));
-        if (vias) { c.Legenda.Add(new(LegendKind.MeioFio, "MEIO-FIO")); }
+        // Convenções: só o que aparece no desenho, com as mesmas cores e hachuras.
+        c.SetLegend(spec, lots, spec.Hatch, vertices: spec.Detailed, callouts: spec.Detailed, ticks: HasConfrontanteChange(reps),
+            edificacoes: edificacoes, vias: vias);
 
         c.Orientacao.AddRange(SheetTexts.OrientationLines(ctx.Coords, tableCrs));
 
@@ -104,7 +104,10 @@ public sealed class SheetContent
 
         // Conferência antes de emitir.
         if (owners.Length == 0) c.Pendencias.Add("Proprietário não informado (Dados do Imóvel ou Gerenciar Lotes).");
-        if (matr.Length == 0) c.Pendencias.Add("Matrícula não informada.");
+        foreach (var x in ownerList.Where(x => x.Doc.Length == 0))
+            c.Pendencias.Add($"CPF/CNPJ de {x.Owner} não informado ({string.Join(", ", x.Lots.Select(Short))}).");
+        foreach (var x in mats.Where(x => x.Mat.Length == 0 && !p.IsOperationResult(x.Lot)))
+            c.Pendencias.Add($"{x.Lot.DisplayName}: matrícula não informada.");
         if (string.IsNullOrWhiteSpace(info.Municipio)) c.Pendencias.Add("Município não informado (Dados do Imóvel).");
         if (string.IsNullOrWhiteSpace(tech.Nome)) c.Pendencias.Add("Responsável técnico não informado (Configurações).");
         if (string.IsNullOrWhiteSpace(info.RrtArt)) c.Pendencias.Add("RRT/ART não informado (Dados do Imóvel).");
@@ -116,9 +119,67 @@ public sealed class SheetContent
                 c.Pendencias.Add($"{r.Lot.DisplayName}: perímetro medido {fmt.Distance(r.PerimeterLocal)} difere mais de 5% do da matrícula ({fmt.Distance(pt)}).");
             int sem = r.Segments.Count(s => string.IsNullOrWhiteSpace(s.Confrontante));
             if (sem > 0) c.Pendencias.Add($"{r.Lot.DisplayName}: {sem} divisa(s) sem confrontante.");
+            // Confrontante que é lote do projeto sem proprietário: aparece pelo nome do lote.
+            if (ctx.Settings.Naming.ConfrontanteNome == GeoPoint.Core.Settings.ConfrontanteNome.Proprietario)
+                foreach (var nb in r.Segments.Where(s => s.ConfrontanteLotId.Length > 0).Select(s => p.FindLot(s.ConfrontanteLotId)).Where(l => l is not null).Distinct())
+                    if (p.ConfrontanteOwner(nb!).Length == 0)
+                        c.Pendencias.Add($"{r.Lot.DisplayName}: o confrontante {nb!.DisplayName} está sem proprietário (informe em Gerenciar Lotes; até lá aparece o nome do lote).");
         }
         if (!ctx.Coords.HasGeoreference) c.Pendencias.Add("Projeto sem georreferência (use Definir Referência): as coordenadas são locais.");
         return c;
+    }
+
+    /// <summary>
+    /// Convenções da prancha conforme o desenho: cada lote com a sua cor (até 6 lotes; acima disso uma entrada geral),
+    /// o remanescente com a hachura cruzada na cor dele, e só os símbolos que aparecem.
+    /// </summary>
+    public void SetLegend(SheetSpec spec, IReadOnlyList<LotRecord> lots, bool hatch, bool vertices, bool callouts, bool ticks, bool edificacoes, bool vias)
+    {
+        Legenda.Clear();
+        var ordered = ProjectContext.SortLots(lots).ToList();
+        int Color(LotRecord l, int i) => spec.Colors.TryGetValue(l.Id, out int ci) ? ci : i;
+        static string Short(LotRecord l) => l.DisplayName.Split(" – ")[0].ToUpperInvariant();
+        if (hatch && ordered.Count > 0)
+        {
+            if (ordered.Count == 1)
+            {
+                var l = ordered[0];
+                Legenda.Add(new(l.IsRemanescente ? LegendKind.Remanescente : LegendKind.AreaImovel, l.IsRemanescente ? "LOTE REMANESCENTE" : "ÁREA DO IMÓVEL", Color(l, 0)));
+            }
+            else if (ordered.Count <= 6)
+                for (int i = 0; i < ordered.Count; i++)
+                    Legenda.Add(new(ordered[i].IsRemanescente ? LegendKind.Remanescente : LegendKind.AreaImovel, Short(ordered[i]), Color(ordered[i], i)));
+            else
+            {
+                var firstLot = ordered.FirstOrDefault(l => !l.IsRemanescente) ?? ordered[0];
+                Legenda.Add(new(LegendKind.AreaImovel, "ÁREA DOS LOTES", Color(firstLot, 0)));
+                var rem = ordered.FirstOrDefault(l => l.IsRemanescente);
+                if (rem is not null) Legenda.Add(new(LegendKind.Remanescente, "LOTE REMANESCENTE", Color(rem, ordered.IndexOf(rem))));
+            }
+        }
+        if (edificacoes) Legenda.Add(new(LegendKind.AreaEdificada, "ÁREA EDIFICADA"));
+        Legenda.Add(new(LegendKind.Limite, "LIMITE DO IMÓVEL"));
+        if (vertices) Legenda.Add(new(LegendKind.Vertice, "VÉRTICES"));
+        if (callouts) Legenda.Add(new(LegendKind.PontoReferencia, "COORDENADA DE REFERÊNCIA"));
+        if (ticks) Legenda.Add(new(LegendKind.MudancaConfrontante, "MUDANÇA DE CONFRONTAÇÃO"));
+        if (vias) Legenda.Add(new(LegendKind.MeioFio, "MEIO-FIO"));
+    }
+
+    /// <summary>Algum lote tem confrontantes diferentes numa mesma linha (há ponto de mudança de confrontação)?</summary>
+    public static bool HasConfrontanteChange(IEnumerable<LotReport> reps)
+    {
+        foreach (var r in reps)
+        {
+            int n = r.Segments.Count;
+            for (int i = 0; i < n; i++)
+            {
+                var a = r.Segments[(i - 1 + n) % n]; var b = r.Segments[i];
+                if (a.Curve.TangentAt(1).Dot(b.Curve.TangentAt(0)) > Math.Cos(Math.PI / 90) &&
+                    !string.Equals((a.Confrontante ?? "").Trim(), (b.Confrontante ?? "").Trim(), StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>Conteúdo de exemplo (prévia dos modelos de prancha).</summary>

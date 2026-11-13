@@ -23,6 +23,29 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 
 ---
 
+## Ajustes da versão 1.5.1 (revisão dos projetos de teste)
+
+- **Confrontante pelo proprietário**: quando o confrontante é um lote do projeto, aparece só o nome do proprietário (sem número de
+  lote e quadra). Sem proprietário informado, aparece o nome do lote e a conferência avisa. Outras formas em *Configurações ›
+  Vértices e formatos › Confrontante* (lote e quadra; lote e quadra com o proprietário).
+- **Dois confrontantes na mesma linha**: o ponto onde o confrontante muda é um vértice, com a **distância e o azimute de cada trecho**
+  (desenho, tabela e memorial) e a marca de *mudança de confrontação*. O remembramento não apaga mais esses pontos (só junta trechos
+  alinhados do **mesmo** confrontante).
+- **Confrontante repetido**: quando o mesmo confrontante segue por vários lotes na mesma linha (ex.: fundos ou rua), o nome aparece
+  **uma vez só**, no meio do conjunto.
+- **Prancha geral** (vários lotes): sem coordenadas de referência – ela mostra a visão do conjunto. As coordenadas ficam nas pranchas de cada lote.
+- **Convenções** iguais ao desenho: cada lote com a sua cor (até 6 lotes; acima disso uma entrada geral), o remanescente com a hachura
+  cruzada na cor dele, e só os símbolos que aparecem na prancha (vértices, coordenada de referência, mudança de confrontação, meio-fio…).
+- **Etiqueta das divisas nas pranchas**: `distância / AZ= azimute` (o memorial continua por extenso).
+- **Matrícula no desmembramento**: só o **lote remanescente** fica com a matrícula do lote original; os demais lotes resultantes ficam
+  sem matrícula (não herdam a do imóvel). Se você digitar a matrícula de um lote resultante, ela é usada.
+- **CPF/CNPJ**: um lote com outro proprietário não herda o CPF do imóvel; a conferência avisa quem está sem CPF. No carimbo, vários
+  proprietários aparecem como "Nome (CPF)".
+- **Memorial de cada lote**: um por lote resultante, **inclusive o remanescente**, falando **só do próprio lote** (sem origem, sem os
+  demais lotes). O subtítulo traz o procedimento (*Desmembramento*, *Desmembramento – lote remanescente*, *Remembramento*).
+
+---
+
 ## Novidades da versão 1.5
 
 - **Prancha nova**, no modelo da sua folha "Situação atual – Folha 02": mapa com **grade de coordenadas** atrás do desenho e os
@@ -182,15 +205,16 @@ As edificações aparecem no **memorial** (seção *ÁREA EDIFICADA* com as dist
 ### Painel Anotação
 
 **Anotar Lotes** – na vista de planta atual:
-- cada divisa: **nome do confrontante em cima** e, logo abaixo, **`distância   AZ= azimute`** numa linha só (como no seu modelo;
-  azimute no formato configurado), do lado de fora do lote. Divisa curta: só a distância;
+- cada divisa: **nome do confrontante em cima** e, logo abaixo, **`distância / AZ= azimute`** numa linha só (azimute no formato
+  configurado), do lado de fora do lote. Divisa curta: só a distância. O confrontante é o **proprietário** e aparece uma vez só quando
+  segue por vários lotes na mesma linha;
 - **ponto preenchido** em cada vértice e o nome do vértice (numeração por lote: dentro do próprio lote);
 - **rótulo do lote** no centro: nome (negrito), **proprietário**, **matrícula**, **área** e **perímetro** (sem CPF; cada linha pode ser
   desligada);
 - **coordenada do ponto de referência de cada lote**: ponto, linha de chamada, nome do vértice e as coordenadas no sistema escolhido
   nas Configurações (ex.: `235.142,50 m E` / `9.299.292,99 m S`, ou `Lat:`/`Lon:`). O ponto padrão é o P-01; escolha outro nas Pranchas;
-- confrontantes com extensão (cota vermelha) quando uma divisa tem vários; se a **rua já está desenhada** na vista (Vias), o nome da rua
-  não é repetido na divisa;
+- dois confrontantes na mesma linha: o ponto de mudança é vértice (com distância e azimute de cada trecho) e recebe a marca de
+  *mudança de confrontação*; se a **rua já está desenhada** na vista (Vias), o nome da rua não é repetido na divisa;
 - **nenhum texto sobre outro ou sobre as linhas**, todos **alinhados à vista** (nunca tortos ou de cabeça para baixo), com a largura real
   das letras Arial;
 - **prévia** à direita, com os textos na escala da vista, atualizada a cada opção;

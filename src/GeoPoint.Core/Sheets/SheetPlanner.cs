@@ -70,7 +70,7 @@ public static class SheetPlanner
             res.Add(new SheetSpec
             {
                 Kind = SheetKind.Atual, Title = "SITUAÇÃO ATUAL", Subtitle = subParents, LotIds = parents.Select(l => l.Id).ToList(),
-                QuadroIds = r.Quadro && parents.Count > 1 ? parents.Select(l => l.Id).ToList() : new(), Hatch = r.Hachuras && parents.Count > 1, Colors = colors,
+                QuadroIds = r.Quadro && parents.Count > 1 ? parents.Select(l => l.Id).ToList() : new(), Hatch = r.Hachuras, Colors = colors,
                 CoordTable = r.Coordenadas && parents.Count == 1,
             });
         if (r.IndividualAtual && parents.Count > 1)
@@ -114,7 +114,7 @@ public static class SheetPlanner
             res.Add(new SheetSpec
             {
                 Kind = SheetKind.Atual, Title = "PLANTA DE SITUAÇÃO", Subtitle = sub, LotIds = sorted.Select(l => l.Id).ToList(),
-                QuadroIds = r.Quadro && sorted.Count > 1 ? sorted.Select(l => l.Id).ToList() : new(), Hatch = r.Hachuras && sorted.Count > 1, Colors = colors,
+                QuadroIds = r.Quadro && sorted.Count > 1 ? sorted.Select(l => l.Id).ToList() : new(), Hatch = r.Hachuras, Colors = colors,
                 CoordTable = r.Coordenadas && sorted.Count == 1,
             });
         if (r.IndividualAtual && sorted.Count > 1)

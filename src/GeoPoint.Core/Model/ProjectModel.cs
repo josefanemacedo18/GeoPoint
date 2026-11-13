@@ -340,6 +340,8 @@ public sealed class LotRecord
     public List<EdgeInfo> EdgeInfos { get; set; } = new();
 
     /// <summary>Vértice inicial escolhido para a descrição (coordenadas internas, m).</summary>
+    /// <summary>Lote de origem quando este é uma cópia feita ao criar uma fase.</summary>
+    public string OrigemId { get; set; } = "";
     /// <summary>Ponto de referência do lote (coordenada mostrada no mapa das pranchas); null = vértice inicial (P-01).</summary>
     public double? RefX { get; set; }
     public double? RefY { get; set; }
@@ -615,6 +617,54 @@ public sealed class ParcelProject
     [JsonIgnore] public IEnumerable<BuildingRecord> PhaseBuildings => Buildings.Where(b => b.FaseId == Fase.Id);
 
     public ViaRecord? FindVia(string? id) => string.IsNullOrWhiteSpace(id) ? null : Vias.FirstOrDefault(v => v.Id == id);
+
+    /// <summary>Lote resultante de desmembramento/remembramento (ou cópia, numa fase, de um lote resultante).</summary>
+    public bool IsOperationResult(LotRecord lot)
+    {
+        var cur = lot;
+        for (int depth = 0; cur is not null && depth < 20; depth++)
+        {
+            var id = cur.Id;
+            if (Operations.Any(o => o.ChildIds.Contains(id))) return true;
+            cur = string.IsNullOrEmpty(cur.OrigemId) ? null : FindLot(cur.OrigemId);
+        }
+        return false;
+    }
+
+    /// <summary>Operação que gerou o lote (a mais recente), se houver.</summary>
+    public OperationRecord? OperationOf(LotRecord lot) =>
+        Operations.Where(o => o.ChildIds.Contains(lot.Id)).OrderByDescending(o => o.Date).FirstOrDefault();
+
+    /// <summary>
+    /// Matrícula do lote: a informada no lote; lotes resultantes de operação sem matrícula ficam sem
+    /// (no desmembramento só o remanescente recebe a do original); os demais usam a dos Dados do Imóvel.
+    /// </summary>
+    public string EffectiveMatricula(LotRecord lot) =>
+        !string.IsNullOrWhiteSpace(lot.Matricula) ? lot.Matricula.Trim() : IsOperationResult(lot) ? "" : (Info.Matricula ?? "").Trim();
+
+    /// <summary>Proprietário do lote (vazio = o dos Dados do Imóvel).</summary>
+    public string EffectiveOwner(LotRecord lot) =>
+        !string.IsNullOrWhiteSpace(lot.Proprietario) ? lot.Proprietario.Trim() : (Info.Proprietario ?? "").Trim();
+
+    /// <summary>CPF/CNPJ do proprietário: o do lote; o dos Dados do Imóvel só quando o proprietário é o mesmo.</summary>
+    public string EffectiveDocumento(LotRecord lot)
+    {
+        if (!string.IsNullOrWhiteSpace(lot.Documento)) return lot.Documento.Trim();
+        bool sameOwner = string.IsNullOrWhiteSpace(lot.Proprietario) ||
+                         string.Equals(lot.Proprietario.Trim(), (Info.Proprietario ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
+        return sameOwner ? (Info.Documento ?? "").Trim() : "";
+    }
+
+    /// <summary>
+    /// Proprietário do lote vizinho para o nome do confrontante: o informado no lote; lotes do mesmo processo
+    /// (resultantes ou originais de uma operação) usam o dos Dados do Imóvel; vazio = desconhecido.
+    /// </summary>
+    public string ConfrontanteOwner(LotRecord nb)
+    {
+        if (!string.IsNullOrWhiteSpace(nb.Proprietario)) return nb.Proprietario.Trim();
+        bool family = IsOperationResult(nb) || Operations.Any(o => o.ParentIds.Contains(nb.Id));
+        return family ? (Info.Proprietario ?? "").Trim() : "";
+    }
 
     /// <summary>Fase ativa (cria a Fase 0 e migra dados antigos quando necessário).</summary>
     [JsonIgnore]

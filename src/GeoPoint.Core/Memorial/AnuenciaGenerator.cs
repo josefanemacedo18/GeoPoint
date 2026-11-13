@@ -76,9 +76,9 @@ public sealed class AnuenciaGenerator
         var title = new ParaSpec { Align = ParaAlign.Center, SpaceAfterPt = 4 };
         var text = new ParaSpec { Align = ParaAlign.Justify, SpaceAfterPt = 8, LineSpacing = 1.5 };
         var center = new ParaSpec { Align = ParaAlign.Center, SpaceAfterPt = 0 };
-        string owner = First(lot.Proprietario, info.Proprietario, "________________________________");
-        string ownerDoc = First(lot.Documento, info.Documento, "____________________");
-        string matricula = First(lot.Matricula, info.Matricula, "________");
+        string owner = First(_ctx.Project.EffectiveOwner(lot), "________________________________");
+        string ownerDoc = First(_ctx.Project.EffectiveDocumento(lot), "____________________");
+        string matricula = First(_ctx.Project.EffectiveMatricula(lot), "________");
         string endereco = First(lot.Endereco, info.Endereco, "________________________________");
         string cidade = string.IsNullOrWhiteSpace(info.Municipio) ? "________________" : info.Municipio + (string.IsNullOrWhiteSpace(info.UF) ? "" : "/" + info.UF);
         string dataTxt = date is DateTime d ? ValueFormatter.DateLong(d) : "____ de ______________ de ______";
@@ -96,7 +96,7 @@ public sealed class AnuenciaGenerator
             string confDoc = g.Lote is { } dl && !string.IsNullOrWhiteSpace(dl.Documento) ? dl.Documento : "____________________";
             string confImovel = g.Tipo switch
             {
-                ConfrontanteTipo.Lote when g.Lote is not null => g.Lote.DisplayName + (string.IsNullOrWhiteSpace(g.Lote.Matricula) ? "" : $", matrícula nº {g.Lote.Matricula}"),
+                ConfrontanteTipo.Lote when g.Lote is not null => g.Lote.DisplayName + (_ctx.Project.EffectiveMatricula(g.Lote) is { Length: > 0 } gm ? $", matrícula nº {gm}" : ""),
                 ConfrontanteTipo.Via => $"{g.Nome} (logradouro público)",
                 _ => "imóvel confrontante, matrícula nº ________",
             };

@@ -71,12 +71,25 @@ public sealed class RecognitionSettings
     public string NamePrefix { get; set; } = "Lote";
 }
 
+/// <summary>Nome do confrontante quando ele é um lote do projeto.</summary>
+public enum ConfrontanteNome
+{
+    /// <summary>Só o proprietário (sem número de lote e quadra); sem proprietário informado, o nome do lote.</summary>
+    Proprietario = 0,
+    /// <summary>Número do lote e quadra.</summary>
+    Lote = 1,
+    /// <summary>Lote e proprietário: "Lote 03 – Quadra A (Ana Lima Costa)".</summary>
+    LoteEProprietario = 2,
+}
+
 public sealed class NamingSettings
 {
     public string VertexPrefix { get; set; } = "P-";
     public int VertexDigits { get; set; } = 2;
     /// <summary>Numeração dos vértices: projeto inteiro (registro único), por quadra ou por lote.</summary>
     public VertexNumbering Numbering { get; set; } = VertexNumbering.Lote;
+    /// <summary>Como escrever o confrontante que é um lote do projeto (padrão: só o proprietário).</summary>
+    public ConfrontanteNome ConfrontanteNome { get; set; } = ConfrontanteNome.Proprietario;
     /// <summary>Descrição no sentido horário.</summary>
     public bool Clockwise { get; set; } = true;
     public StartVertexRule StartRule { get; set; } = StartVertexRule.Testada;

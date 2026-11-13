@@ -31,6 +31,17 @@ public static class ParcelOperations
     public const double AreaTolerance = 0.01; // m²
 
     /// <summary>União exata (com arcos) de lotes adjacentes, preservando os elementos de origem das divisas.</summary>
+    /// <summary>
+    /// Matrículas no desmembramento: só o lote remanescente fica com a matrícula do lote original; os demais ficam sem
+    /// (até o registro abrir as novas matrículas). Matrículas já digitadas nos lotes resultantes são mantidas.
+    /// </summary>
+    public static void AssignDesmembramentoMatriculas(ParcelProject p, LotRecord parent, IEnumerable<LotRecord> children)
+    {
+        string parentMat = p.EffectiveMatricula(parent);
+        foreach (var c in children)
+            if (c.IsRemanescente && string.IsNullOrWhiteSpace(c.Matricula)) c.Matricula = parentMat;
+    }
+
     public static UnionResult Union(IReadOnlyList<LotRecord> lots, double tolerance = 0.001)
     {
         var result = new UnionResult();

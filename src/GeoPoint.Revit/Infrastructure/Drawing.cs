@@ -63,12 +63,13 @@ public static class Annotator
         var lines = new List<string> { lot.IsRemanescente ? lot.DisplayName.ToUpperInvariant() : lot.DisplayName };
         if (o.LabelOwner)
         {
-            string owner = string.IsNullOrWhiteSpace(lot.Proprietario) ? info.Proprietario : lot.Proprietario;
+            string owner = ctx.Project.EffectiveOwner(lot);
             if (!string.IsNullOrWhiteSpace(owner)) lines.Add(owner.Trim().ToUpperInvariant());
         }
         if (o.LabelMatricula)
         {
-            string m = string.IsNullOrWhiteSpace(lot.Matricula) ? info.Matricula : lot.Matricula;
+            // Lotes resultantes de operação sem matrícula própria não herdam a do imóvel.
+            string m = ctx.Project.EffectiveMatricula(lot);
             if (!string.IsNullOrWhiteSpace(m)) lines.Add("MATRÍCULA: " + m.Trim());
         }
         lines.Add("ÁREA = " + fmt.Area(rep.AreaLocal));

@@ -33,6 +33,7 @@ public static class FaseService
         {
             var c = Clone(src[i]);
             c.Id = Guid.NewGuid().ToString("N");
+            c.OrigemId = src[i].Id;
             c.FaseId = f.Id;
             c.Created = now.AddMilliseconds(i);   // mantém a ordem (numeração dos vértices)
             c.Modified = now;
@@ -53,7 +54,8 @@ public static class FaseService
                 if (map.TryGetValue(info.LotId, out var nid)) info.LotId = nid;
                 else
                 {
-                    info.Confrontante = p.FindLot(info.LotId)?.DisplayName ?? info.Confrontante;
+                    var nl = p.FindLot(info.LotId);
+                    info.Confrontante = nl is null ? info.Confrontante : p.ConfrontanteOwner(nl) is { Length: > 0 } ow ? ow : nl.DisplayName;
                     info.Tipo = ConfrontanteTipo.Texto;
                     info.LotId = "";
                 }

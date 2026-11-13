@@ -22,7 +22,7 @@ public class SheetAndAnnotationTests
         Assert.Equal(4, edgeTexts.Count);
         Assert.All(edgeTexts, t => Assert.False(rep.Region.Contains(t.At)));
         // Distância e azimute na mesma linha nas divisas longas; nas curtas (o texto não cabe), só a distância.
-        Assert.Equal(2, edgeTexts.Count(t => t.Text.StartsWith("30,00 m   AZ= ")));
+        Assert.Equal(2, edgeTexts.Count(t => t.Text.StartsWith("30,00 m / AZ= ")));
         Assert.Equal(2, edgeTexts.Count(t => t.Text == "10,00 m"));
         Assert.Equal(4, plan.Dots.Count);
         Assert.All(plan.Texts.Where(t => t.Kind == AnnoTextKind.Vertex), t => Assert.False(rep.Region.Contains(t.At)));
@@ -68,9 +68,9 @@ public class SheetAndAnnotationTests
         Assert.Contains("LOTE 16", names);
         Assert.Contains("LOTE 17", names);
         Assert.Contains("LOTE 18", names);
-        // Marcas tracejadas nas 4 pontas dos trechos (2 cantos + 2 divisões) e 3 cotas.
-        Assert.Equal(4, plan.Lines.Count(l => l.Kind == AnnoLineKind.ConfrontanteTick));
-        Assert.Equal(3, plan.Lines.Count(l => l.Kind == AnnoLineKind.ConfrontanteDimension));
+        // Marca tracejada só nos 2 pontos em que o confrontante muda; cada trecho já tem a sua distância (sem cota repetida).
+        Assert.Equal(2, plan.Lines.Count(l => l.Kind == AnnoLineKind.ConfrontanteTick));
+        Assert.Equal(0, plan.Lines.Count(l => l.Kind == AnnoLineKind.ConfrontanteDimension));
         Assert.All(plan.Lines.Where(l => l.Kind is AnnoLineKind.ConfrontanteTick or AnnoLineKind.ConfrontanteDimension), l => Assert.True(l.A.Y >= 30 - 1e-9 && l.B.Y > 30));
         // Nomes fora do lote, além das distâncias.
         Assert.All(plan.Texts.Where(t => t.Kind == AnnoTextKind.Confrontante && t.Text.StartsWith("LOTE 1")), t => Assert.True(t.At.Y > 30 + 2));

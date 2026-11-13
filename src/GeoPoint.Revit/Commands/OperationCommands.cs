@@ -173,6 +173,8 @@ public sealed class CmdDesmembramento : CommandBase
             lot.History.Add(new HistoryEntry { Description = $"Resultante do desmembramento de {parent.DisplayName}" + (lot.IsRemanescente ? " (remanescente)" : ""), Area = lot.ToRegion().Area });
             children.Add(lot);
         }
+        // Só o remanescente fica com a matrícula do lote original; os demais ficam sem matrícula.
+        ParcelOperations.AssignDesmembramentoMatriculas(s.Project, parent, children);
         var ctx = s.NewContext();
         foreach (var c in children) c.EdgeInfos = ConfrontanteInheritance.Inherit(new[] { parent }, c, children, ctx);
 

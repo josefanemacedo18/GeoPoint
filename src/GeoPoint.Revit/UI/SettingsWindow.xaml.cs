@@ -37,6 +37,7 @@ public partial class SettingsWindow : Window
         Digits.Text = n.VertexDigits.ToString();
         StartRule.SelectedIndex = (int)n.StartRule;
         Direction.SelectedIndex = n.Clockwise ? 0 : 1;
+        ConfName.SelectedIndex = (int)n.ConfrontanteNome;
         DecDist.Text = f.DistanceDecimals.ToString();
         DecArea.Text = f.AreaDecimals.ToString();
         DecPlane.Text = f.PlaneCoordDecimals.ToString();
@@ -341,6 +342,7 @@ public partial class SettingsWindow : Window
         n.VertexDigits = digits;
         n.StartRule = (StartVertexRule)Math.Max(0, StartRule.SelectedIndex);
         n.Clockwise = Direction.SelectedIndex != 1;
+        n.ConfrontanteNome = (GeoPoint.Core.Settings.ConfrontanteNome)Math.Max(0, ConfName.SelectedIndex);
         f.DistanceDecimals = dd; f.AreaDecimals = da; f.PlaneCoordDecimals = dp; f.GeoSecondsDecimals = dg; f.AzimuthSecondsDecimals = dz; f.HectareDecimals = dh;
         f.ZoneStyle = (ZoneLabelStyle)Math.Max(0, ZoneStyle.SelectedIndex);
         f.WestAsO = West.SelectedIndex != 1;

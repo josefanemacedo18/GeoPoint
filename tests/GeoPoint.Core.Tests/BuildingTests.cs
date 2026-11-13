@@ -116,3 +116,35 @@ public class CoordinateTableTests
         Assert.Equal(utm.Points[0].Lat, num.Points[0].Lat, 6);
     }
 }
+
+public class ConfrontanteOwnerTests
+{
+    [Fact]
+    public void Confrontante_IsOwnerName_AndChangePointsKept()
+    {
+        // Lote 01 com dois vizinhos do projeto nos fundos: um com proprietário, outro sem.
+        var a = TestProjects.Rect(0, 0, 20, 30, "01");
+        var b = TestProjects.Rect(0, 30, 10, 20, "02");
+        var c = TestProjects.Rect(10, 30, 10, 20, "03");
+        b.Proprietario = "Pedro Alves";
+        // Ponto onde o confrontante muda nos fundos (como "Dividir divisa" faz).
+        a.ExtraVertices.Add(new PointDto { X = 10, Y = 30 });
+        GeoPoint.Core.Topology.EdgeSplitter.Apply(a);
+        var p = TestProjects.Project(a, b, c);
+        var ctx = TestProjects.Context(p);
+        var names = ctx.Report(a).Segments.Select(s => s.Confrontante).ToList();
+        Assert.Contains("Pedro Alves", names);                    // só o proprietário, sem lote/quadra
+        Assert.Contains(names, n => n.StartsWith("Lote 03"));    // sem proprietário: o nome do lote
+        // Os fundos têm dois confrontantes na mesma linha: o ponto (10, 30) é vértice, com distância e azimute de cada trecho.
+        var back = ctx.Report(a).Segments.Where(s => Math.Abs(s.Curve.Mid.Y - 30) < 1e-6).ToList();
+        Assert.Equal(2, back.Count);
+        Assert.All(back, s => Assert.Equal(10, s.LengthHorizontal, 6));
+        // Conferência avisa do confrontante sem proprietário.
+        var spec = new GeoPoint.Core.Sheets.SheetSpec { LotIds = { a.Id } };
+        var content = GeoPoint.Core.Sheets.SheetContent.Build(ctx, new GeoPoint.Core.Memorial.ValueFormatter(ctx.Settings.Format), spec, new[] { a }, GeoPoint.Core.Geodesy.CrsDef.Utm());
+        Assert.Contains(content.Pendencias, x => x.Contains("sem proprietário"));
+        // Estilo "lote e quadra" volta ao nome do lote.
+        var ctx2 = TestProjects.Context(p, st => st.Naming.ConfrontanteNome = GeoPoint.Core.Settings.ConfrontanteNome.Lote);
+        Assert.Contains(ctx2.Report(a).Segments, s => s.Confrontante.StartsWith("Lote 02"));
+    }
+}

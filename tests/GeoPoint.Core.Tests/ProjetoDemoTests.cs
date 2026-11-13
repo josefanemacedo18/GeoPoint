@@ -43,7 +43,7 @@ public class ProjetoDemoTests
         p.Info.Endereco = "Rua Projetada A, s/n";
         p.Info.Bairro = "Jardim São Manoel";
         p.Info.Cep = "65970-000";
-        p.Info.RrtArt = "";            // deixado em branco de propósito: deve aparecer na conferência
+        p.Info.RrtArt = "1234567";
         p.Info.Situacao = "Desmembramento";
         var fase = p.Fase;
         parent.FaseId = fase.Id;
@@ -53,9 +53,14 @@ public class ProjetoDemoTests
 
         // Confrontantes do lote original (ponto médio de cada divisa).
         parent.EdgeInfos.Add(new EdgeInfo { MX = 12, MY = 0, Tipo = ConfrontanteTipo.Via, ViaId = via.Id, Testada = true });
-        parent.EdgeInfos.Add(new EdgeInfo { MX = 12, MY = 40, Confrontante = "Lote 15 – Quadra A" });
+        // Confrontantes pelo nome do proprietário. A lateral direita tem dois vizinhos na mesma linha (25 m + 15 m):
+        // o ponto (24, 25) vira vértice, com a distância e o azimute de cada trecho.
+        parent.ExtraVertices.Add(new PointDto { X = 24, Y = 25 });
+        GeoPoint.Core.Topology.EdgeSplitter.Apply(parent);
+        parent.EdgeInfos.Add(new EdgeInfo { MX = 12, MY = 40, Confrontante = "João Batista Ferreira" });
         parent.EdgeInfos.Add(new EdgeInfo { MX = 0, MY = 20, Confrontante = "José Rodrigues Aguiar" });
-        parent.EdgeInfos.Add(new EdgeInfo { MX = 24, MY = 20, Confrontante = "Maria Souza" });
+        parent.EdgeInfos.Add(new EdgeInfo { MX = 24, MY = 12.5, Confrontante = "Maria Souza" });
+        parent.EdgeInfos.Add(new EdgeInfo { MX = 24, MY = 32.5, Confrontante = "Raimundo Sousa" });
 
         // ---------- 2) Desmembramento: duas linhas verticais (x = 8 e x = 16), que passam além do lote.
         var cuts = new List<(Curve2 Curve, string? Uid)>
@@ -68,6 +73,7 @@ public class ProjetoDemoTests
         // ---------- 3) Lotes resultantes.
         var names = new[] { "02", "03", "04" };
         var owners = new[] { "Carlos Mendes Pereira", "Ana Lima Costa", "Lucas Araujo Marinho Brasil" };
+        var docs = new[] { "123.456.789-00", "987.654.321-00", "" };
         var op = new OperationRecord { Type = OperationType.Desmembramento, FaseId = fase.Id, ParentIds = { parent.Id } };
         var children = new List<LotRecord>();
         for (int i = 0; i < pieces.Count; i++)
@@ -76,12 +82,14 @@ public class ProjetoDemoTests
             {
                 Nome = names[i], Numero = names[i], Quadra = "A", Uso = LotUse.Lote, FaseId = fase.Id,
                 Outer = pieces[i].Outer, Holes = pieces[i].Holes, ZFeet = parent.ZFeet, SourceKind = parent.SourceKind,
-                Proprietario = owners[i], IsRemanescente = i == 2, Created = DateTime.Now.AddMilliseconds(i),
+                Proprietario = owners[i], Documento = docs[i], IsRemanescente = i == 2, Created = DateTime.Now.AddMilliseconds(i),
             };
             c.History.Add(new HistoryEntry { Description = "Resultante do desmembramento do lote 01" });
             children.Add(c);
         }
         p.Lots.AddRange(children);
+        // Só o remanescente fica com a matrícula do lote original.
+        ParcelOperations.AssignDesmembramentoMatriculas(p, parent, children);
         parent.Status = LotStatus.Arquivado;
         op.ChildIds.AddRange(children.Select(c => c.Id));
         op.RemanescenteId = children[2].Id;
@@ -150,14 +158,12 @@ public class ProjetoDemoTests
         report.AppendLine();
 
         // ---------- 6) Memoriais (geral e um por lote) – arquivos .docx.
-        var gen = new MemorialGenerator(ctx, new MemorialPhrases());
-        File.WriteAllBytes(Path.Combine(outDir, "07-memorial-desmembramento-geral.docx"),
-            gen.Generate(new MemorialRequest { Kind = MemorialKind.Desmembramento, Lots = children, Operation = op, Date = date }));
+        // Um memorial por lote resultante (inclusive o remanescente), cada um só com o próprio lote.
         var localSt = ctx.Settings.Clone();
         localSt.Naming.Numbering = VertexNumbering.Lote;
         var genLocal = new MemorialGenerator(new ProjectContext(p, localSt), new MemorialPhrases());
         for (int i = 0; i < 3; i++)
-            File.WriteAllBytes(Path.Combine(outDir, $"08-memorial-lote-{names[i]}.docx"),
+            File.WriteAllBytes(Path.Combine(outDir, $"07-memorial-lote-{names[i]}{(i == 2 ? "-remanescente" : "")}.docx"),
                 genLocal.Generate(new MemorialRequest { Kind = MemorialKind.Lotes, Lots = new List<LotRecord> { children[i] }, Operation = op, Date = date }));
 
         // ---------- 7) Relatório com números, confrontantes e pendências.

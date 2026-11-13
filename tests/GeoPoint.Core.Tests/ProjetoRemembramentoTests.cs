@@ -31,25 +31,25 @@ public class ProjetoRemembramentoTests
         p.Vias.Add(via);
         p.Info.Municipio = "Porto Franco"; p.Info.UF = "MA"; p.Info.Endereco = "Rua Projetada B, s/n";
         p.Info.Bairro = "Jardim São Manoel"; p.Info.Cep = "65970-000"; p.Info.Situacao = "Remembramento";
-        p.Info.RrtArt = "";
+        p.Info.RrtArt = "1234567";
 
-        void Setup(LotRecord l, string owner, string mat, double aTitulo, params EdgeInfo[] edges)
+        void Setup(LotRecord l, string owner, string doc, string mat, double aTitulo, params EdgeInfo[] edges)
         {
-            l.FaseId = fase.Id; l.Proprietario = owner; l.Matricula = mat; l.AreaTitulo = aTitulo; l.PerimetroTitulo = 84;
+            l.FaseId = fase.Id; l.Proprietario = owner; l.Documento = doc; l.Matricula = mat; l.AreaTitulo = aTitulo; l.PerimetroTitulo = 84;
             l.Endereco = "Rua Projetada B, s/n";
             foreach (var e in edges) l.EdgeInfos.Add(e);
         }
-        Setup(l10, "Francisco Lima", "1001", 360,
+        Setup(l10, "Francisco Lima", "111.222.333-44", "1001", 360,
             new EdgeInfo { MX = 6, MY = 0, Tipo = ConfrontanteTipo.Via, ViaId = via.Id, Testada = true },
-            new EdgeInfo { MX = 6, MY = 30, Confrontante = "Lote 9 – Quadra B" },
+            new EdgeInfo { MX = 6, MY = 30, Confrontante = "Pedro Alves" },
             new EdgeInfo { MX = 0, MY = 15, Confrontante = "Antônio Pereira" },
-            new EdgeInfo { MX = 12, MY = 15, Confrontante = "Lote 11 – Quadra B", Tipo = ConfrontanteTipo.Lote });
-        Setup(l11, "Beatriz Costa", "1002", 360,
+            new EdgeInfo { MX = 12, MY = 15, Tipo = ConfrontanteTipo.Lote, LotId = l11.Id });
+        Setup(l11, "Beatriz Costa", "555.666.777-88", "1002", 360,
             new EdgeInfo { MX = 18, MY = 0, Tipo = ConfrontanteTipo.Via, ViaId = via.Id, Testada = true },
-            new EdgeInfo { MX = 18, MY = 30, Confrontante = "Lote 8 – Quadra B" });
-        Setup(l12, "Sérgio Nunes", "1003", 360,
+            new EdgeInfo { MX = 18, MY = 30, Confrontante = "Luzia Martins" });
+        Setup(l12, "Sérgio Nunes", "999.888.777-66", "1003", 360,
             new EdgeInfo { MX = 30, MY = 0, Tipo = ConfrontanteTipo.Via, ViaId = via.Id, Testada = true },
-            new EdgeInfo { MX = 30, MY = 30, Confrontante = "Lote 7 – Quadra B" },
+            new EdgeInfo { MX = 30, MY = 30, Confrontante = "Raimundo Sousa" },
             new EdgeInfo { MX = 36, MY = 15, Confrontante = "Dona Rosa Almeida" });
 
         var ctx0 = TestProjects.Context(p);
@@ -62,7 +62,7 @@ public class ProjetoRemembramentoTests
         {
             Nome = "13", Numero = "13", Quadra = "B", Uso = LotUse.Lote, FaseId = fase.Id,
             Outer = u.Outer, Holes = u.Holes, ZFeet = l10.ZFeet, SourceKind = l10.SourceKind,
-            Proprietario = "Francisco Lima", Endereco = "Rua Projetada B, s/n", Created = DateTime.Now,
+            Proprietario = "Francisco Lima", Documento = "111.222.333-44", Endereco = "Rua Projetada B, s/n", Created = DateTime.Now,
         };
         result.EdgeInfos = ConfrontanteInheritance.Inherit(parents, result, Array.Empty<LotRecord>(), ctx0);
         CollinearMerge.Apply(result, ctx0);
@@ -114,12 +114,10 @@ public class ProjetoRemembramentoTests
         var street = StreetSchematic.Build(p.Vias, new List<CruzamentoRecord>(), fronts, new[] { result.ToRegion() });
         File.WriteAllText(Path.Combine(outDir, "06-rua-rua-projetada-b.svg"), ProjetoDemoTests.StreetSvg(new[] { result }, street));
 
-        // ---------- 5) Memoriais: geral do remembramento e do lote resultante.
+        // ---------- 5) Memorial do lote resultante (só o lote 13).
         var gen = new MemorialGenerator(ctx, new MemorialPhrases());
-        File.WriteAllBytes(Path.Combine(outDir, "07-memorial-remembramento-geral.docx"),
-            gen.Generate(new MemorialRequest { Kind = MemorialKind.Remembramento, Lots = new List<LotRecord> { result }, Operation = op, Date = date }));
-        File.WriteAllBytes(Path.Combine(outDir, "08-memorial-lote-13.docx"),
-            gen.Generate(new MemorialRequest { Kind = MemorialKind.Lotes, Lots = new List<LotRecord> { result }, Date = date }));
+        File.WriteAllBytes(Path.Combine(outDir, "07-memorial-lote-13.docx"),
+            gen.Generate(new MemorialRequest { Kind = MemorialKind.Lotes, Lots = new List<LotRecord> { result }, Operation = op, Date = date }));
 
         // ---------- 6) Relatório.
         report.AppendLine("== rua");

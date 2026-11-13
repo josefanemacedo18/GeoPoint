@@ -38,7 +38,7 @@ public static class ExcelReport
                 lot.AreaSuperficial is double asup ? new XlCell(asup, XlStyle.Num2) : new XlCell("–"),
                 lot.AreaTitulo is double at ? new XlCell(at, XlStyle.Num2) : new XlCell("–"),
                 lot.AreaTitulo is double at2 ? new XlCell(r.AreaLocal - at2, XlStyle.Num2) : new XlCell("–"),
-                lot.Matricula, lot.Proprietario,
+                ctx.Project.EffectiveMatricula(lot), ctx.Project.EffectiveOwner(lot),
                 line is null ? (lot.Status == LotStatus.Arquivado ? "Arquivado" : "") : (line.Problemas.Count == 0 ? "OK" : string.Join(" | ", line.Problemas)));
         }
         sheets.Add(q);

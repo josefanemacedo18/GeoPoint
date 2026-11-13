@@ -201,12 +201,16 @@ public sealed class MemorialGenerator
                     var r = _ctx.Report(main);
                     headerArea = r.Area(_ms.AreaType);
                     headerPerim = r.Perimeter(_ms.DistanceType);
-                    if (req.Operation is { } origin && origin.ChildIds.Contains(main.Id))
-                    {
-                        subtitle = origin.Type == OperationType.Desmembramento ? "DESMEMBRAMENTO – LOTE RESULTANTE" : "REMEMBRAMENTO – LOTE RESULTANTE";
-                        corpo.Add(Heading("ORIGEM"));
-                        corpo.Add(Wml.Paragraph(Body, new RunSpec(OriginText(origin, main))));
-                    }
+                    // Lote resultante de operação: o memorial trata só deste lote (sem origem nem os demais lotes);
+                    // o subtítulo traz o procedimento.
+                    var origin = req.Operation is { } ro && ro.ChildIds.Contains(main.Id) ? ro : _ctx.Project.OperationOf(main);
+                    if (origin is not null)
+                        subtitle = origin.Type switch
+                        {
+                            OperationType.Desmembramento => main.IsRemanescente ? "DESMEMBRAMENTO – LOTE REMANESCENTE" : "DESMEMBRAMENTO",
+                            OperationType.Remembramento => "REMEMBRAMENTO",
+                            _ => "PARCELAMENTO",
+                        };
                     corpo.Add(Heading("DESCRIÇÃO DO PERÍMETRO"));
                     corpo.AddRange(LotSection(main, includeTitle: false));
                 }
@@ -231,17 +235,17 @@ public sealed class MemorialGenerator
 
         blocks["CORPO"] = corpo;
 
-        string ownerName = FirstNonEmpty(main.Proprietario, info.Proprietario);
+        string ownerName = _ctx.Project.EffectiveOwner(main);
         values["TITULO"] = "MEMORIAL DESCRITIVO";
         values["SUBTITULO"] = subtitle;
         values["PROPRIETARIO"] = ownerName;
-        values["DOCUMENTO"] = FirstNonEmpty(main.Documento, info.Documento);
+        values["DOCUMENTO"] = _ctx.Project.EffectiveDocumento(main);
         values["IMOVEL"] = ImovelText(main, req.Kind);
         values["ENDERECO"] = AddressText(main);
         values["BAIRRO"] = info.Bairro;
         values["MATRICULA"] = req.Kind == MemorialKind.Remembramento
             ? string.Join(", ", OperationParents(req).Select(o => o.Matricula).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct())
-            : FirstNonEmpty(main.Matricula, info.Matricula);
+            : _ctx.Project.EffectiveMatricula(main);
         values["CARTORIO"] = info.Cartorio;
         values["INSCRICAO"] = info.InscricaoMunicipal;
         values["CCIR"] = info.Ccir;
@@ -324,7 +328,7 @@ public sealed class MemorialGenerator
         string AreaOf(LotRecord l) { try { return _fmt.Area(_ctx.Report(l).Area(_ms.AreaType)); } catch { return "–"; } }
         string Matr(LotRecord l)
         {
-            var m = FirstNonEmpty(l.Matricula, _ctx.Project.Info.Matricula);
+            var m = _ctx.Project.EffectiveMatricula(l);
             return m.Length > 0 ? $", matrícula nº {m}" : "";
         }
         var parents = op.ParentIds.Select(_ctx.Project.FindLot).Where(l => l is not null).Select(l => l!).ToList();
@@ -370,7 +374,7 @@ public sealed class MemorialGenerator
         if (includeTitle) res.Add(SubHeading(lot.DisplayName.ToUpperInvariant()));
 
         var facts = new List<string> { $"Área: {AreaText(r)}", $"Perímetro: {_fmt.Distance(r.Perimeter(_ms.DistanceType))}" };
-        if (!string.IsNullOrWhiteSpace(lot.Matricula)) facts.Add($"Matrícula: {lot.Matricula}");
+        if (_ctx.Project.EffectiveMatricula(lot) is { Length: > 0 } mat) facts.Add($"Matrícula: {mat}");
         if (!string.IsNullOrWhiteSpace(lot.Proprietario) && lot.Proprietario != _ctx.Project.Info.Proprietario) facts.Add($"Proprietário: {lot.Proprietario}");
         if (r.Testada > 0) facts.Add($"Testada: {_fmt.Distance(r.Testada)}");
         if (r.AreaDeducoes > 0) facts.Add($"Área líquida (descontadas {string.Join(", ", r.Deducoes.Select(d => d.Lot.DisplayName))}): {_fmt.Area(r.AreaLiquida)}");
@@ -594,7 +598,7 @@ public sealed class MemorialGenerator
             double a = r.Area(_ms.AreaType);
             rows.Add(new List<CellSpec>
             {
-                new(l.DisplayName), new(string.IsNullOrWhiteSpace(l.Matricula) ? "–" : l.Matricula, false, ParaAlign.Center),
+                new(l.DisplayName), new(_ctx.Project.EffectiveMatricula(l) is { Length: > 0 } lm ? lm : "–", false, ParaAlign.Center),
                 new(_fmt.Number(a, _fmt.F.AreaDecimals), false, ParaAlign.Right),
                 new(_fmt.DistanceValue(r.Perimeter(_ms.DistanceType)), false, ParaAlign.Right),
                 new(baseArea > 0 ? _fmt.Number(a / baseArea * 100, 2) : "–", false, ParaAlign.Right),

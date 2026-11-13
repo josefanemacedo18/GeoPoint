@@ -137,6 +137,18 @@ public sealed class ProjectContext
 
     public RuleProfile? Rules => Settings.FindProfile(Project.Info.RuleProfileName);
 
+    /// <summary>Texto do confrontante quando ele é um lote do projeto (pelo proprietário, conforme as Configurações).</summary>
+    public string ConfrontanteName(LotRecord nb)
+    {
+        string owner = Project.ConfrontanteOwner(nb);
+        return Settings.Naming.ConfrontanteNome switch
+        {
+            ConfrontanteNome.Lote => nb.DisplayName,
+            ConfrontanteNome.LoteEProprietario => owner.Length > 0 ? $"{nb.DisplayName} ({owner})" : nb.DisplayName,
+            _ => owner.Length > 0 ? owner : nb.DisplayName,
+        };
+    }
+
     public void Invalidate()
     {
         _cache.Clear();
@@ -484,9 +496,9 @@ public sealed class ProjectContext
                     if (target is not null && target.Status == LotStatus.Arquivado && lot.Status == LotStatus.Ativo)
                     {
                         var now = NeighborAt(lot, mid);
-                        if (now is not null) { seg.Confrontante = now.DisplayName; seg.ConfrontanteLotId = now.Id; return; }
+                        if (now is not null) { seg.Confrontante = ConfrontanteName(now); seg.ConfrontanteLotId = now.Id; return; }
                     }
-                    if (target is not null) { seg.Confrontante = target.DisplayName; return; }
+                    if (target is not null) { seg.Confrontante = ConfrontanteName(target); return; }
                     if (!string.IsNullOrWhiteSpace(info.Confrontante)) { seg.Confrontante = info.Confrontante; return; }
                     break;
                 }
@@ -498,7 +510,7 @@ public sealed class ProjectContext
         var nb = NeighborAt(lot, mid);
         if (nb is not null)
         {
-            seg.Confrontante = nb.DisplayName;
+            seg.Confrontante = ConfrontanteName(nb);
             seg.ConfrontanteAutomatico = true;
             seg.ConfrontanteTipo = ConfrontanteTipo.Lote;
             seg.ConfrontanteLotId = nb.Id;

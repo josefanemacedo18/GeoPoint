@@ -42,15 +42,18 @@ public static class CollinearMerge
         int n = ring.Count;
         if (n < 4) return ring;
         var curves = ring.Select(e => e.ToCurve()).ToList();
+        // Confrontante de cada trecho: onde muda de confrontante o ponto fica (com a sua distância e azimute).
+        var names = curves.Select(c => Name(ProjectContext.FindInfo(lot, c.Mid), ctx, lot, c.Mid).ToUpperInvariant()).ToList();
+        bool Join(int i) => Mergeable(curves[(i - 1 + n) % n], curves[i]) && names[(i - 1 + n) % n] == names[i];
         // Começa num vértice que é canto de verdade.
         int start = -1;
-        for (int i = 0; i < n; i++) if (!Mergeable(curves[(i - 1 + n) % n], curves[i])) { start = i; break; }
+        for (int i = 0; i < n; i++) if (!Join(i)) { start = i; break; }
         if (start < 0) return ring;
         var groups = new List<List<int>>();
         for (int k = 0; k < n; k++)
         {
             int i = (start + k) % n;
-            if (k == 0 || !Mergeable(curves[(i - 1 + n) % n], curves[i])) groups.Add(new List<int>());
+            if (k == 0 || !Join(i)) groups.Add(new List<int>());
             groups[^1].Add(i);
         }
         if (groups.Count == n || groups.Count < 3) return ring;
@@ -70,7 +73,7 @@ public static class CollinearMerge
         return res;
     }
 
-    /// <summary>Confrontante da divisa juntada: o mesmo das partes, ou todos eles ("A, B e C") quando são diferentes.</summary>
+    /// <summary>Confrontante da divisa juntada (as partes têm sempre o mesmo confrontante).</summary>
     private static void CombineInfos(LotRecord lot, List<Curve2> parts, Curve2 merged, ProjectContext? ctx)
     {
         var infos = parts.Select(c => ProjectContext.FindInfo(lot, c.Mid)).ToList();
@@ -109,10 +112,11 @@ public static class CollinearMerge
     {
         if (i is not null)
         {
-            if (i.Tipo == ConfrontanteTipo.Lote && i.LotId.Length > 0) return ctx?.Project.FindLot(i.LotId)?.DisplayName ?? "";
+            if (i.Tipo == ConfrontanteTipo.Lote && i.LotId.Length > 0)
+                return ctx?.Project.FindLot(i.LotId) is { } nl ? ctx.ConfrontanteName(nl) : i.LotId;
             if (i.Tipo == ConfrontanteTipo.Via && i.ViaId.Length > 0) return ctx?.Project.FindVia(i.ViaId)?.Nome ?? "";
             if (!string.IsNullOrWhiteSpace(i.Confrontante)) return i.Confrontante.Trim();
         }
-        return ctx?.NeighborAt(lot, mid)?.DisplayName ?? "";
+        return ctx?.NeighborAt(lot, mid) is { } nb ? ctx.ConfrontanteName(nb) : "";
     }
 }

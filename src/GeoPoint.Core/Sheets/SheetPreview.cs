@@ -73,7 +73,8 @@ public static class SheetPreview
             Vertices = spec.Detailed, EdgeAngle = spec.Detailed, Dots = spec.Detailed, Edges = true, Confrontantes = true, Area = true,
             LabelOf = labelOf ?? (r => DefaultLabel(r, ctx, fmt)),
             PerLotVertexNames = lots.Count > 1,
-            RefCallout = r => r.Vertices.Count == 0 ? null : RefFor(r, actx, fmt, def),
+            // Prancha geral (vários lotes) é visão do conjunto: sem coordenadas de referência.
+            RefCallout = spec.Detailed ? r => r.Vertices.Count == 0 ? null : RefFor(r, actx, fmt, def) : null,
         };
         var plan = AnnotationPlanner.Plan(reps, fmt, o);
         var content = SheetContent.Build(ctx, fmt, spec, lots, def);
@@ -146,9 +147,9 @@ public static class SheetPreview
         var info = ctx.Project.Info;
         var a = ctx.Settings.Annotation;
         var lines = new List<string> { lot.IsRemanescente ? lot.DisplayName.ToUpperInvariant() : lot.DisplayName };
-        string owner = string.IsNullOrWhiteSpace(lot.Proprietario) ? info.Proprietario : lot.Proprietario;
+        string owner = ctx.Project.EffectiveOwner(lot);
         if (a.LabelOwner && !string.IsNullOrWhiteSpace(owner)) lines.Add(owner.Trim().ToUpperInvariant());
-        string m = string.IsNullOrWhiteSpace(lot.Matricula) ? info.Matricula : lot.Matricula;
+        string m = ctx.Project.EffectiveMatricula(lot);
         if (a.LabelMatricula && !string.IsNullOrWhiteSpace(m)) lines.Add("MATRÍCULA: " + m.Trim());
         lines.Add("ÁREA = " + fmt.Area(rep.AreaLocal));
         if (a.LabelPerimeter) lines.Add("PERÍMETRO = " + fmt.Distance(rep.PerimeterLocal));

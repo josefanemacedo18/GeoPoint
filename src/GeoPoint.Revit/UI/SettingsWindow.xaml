@@ -57,6 +57,14 @@
                                 <ComboBoxItem Content="Horário"/>
                                 <ComboBoxItem Content="Anti-horário"/>
                             </ComboBox>
+                            <StackPanel Grid.Row="3" Grid.Column="2" Orientation="Horizontal" Margin="12,0,0,0">
+                                <Label Content="Confrontante (lote do projeto):"/>
+                                <ComboBox x:Name="ConfName" Width="210" ToolTip="Como escrever o confrontante quando ele é um lote do projeto (pranchas, anotações e memorial).">
+                                    <ComboBoxItem Content="Só o proprietário"/>
+                                    <ComboBoxItem Content="Lote e quadra"/>
+                                    <ComboBoxItem Content="Lote e quadra (proprietário)"/>
+                                </ComboBox>
+                            </StackPanel>
                             <Label Grid.Row="4" Content="Casas decimais – distâncias / áreas:"/>
                             <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal">
                                 <TextBox x:Name="DecDist" Width="50"/>

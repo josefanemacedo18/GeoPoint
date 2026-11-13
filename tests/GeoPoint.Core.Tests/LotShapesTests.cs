@@ -89,7 +89,7 @@ public class LotShapesTests
 public class CollinearMergeTests
 {
     [Fact]
-    public void Remembramento_ThreeRectangles_FourCorners_CombinedConfrontantes()
+    public void Remembramento_ThreeRectangles_KeepsPointsWhereConfrontanteChanges()
     {
         var a = TestProjects.Rect(0, 0, 10, 30, "01");
         var b = TestProjects.Rect(10, 0, 10, 30, "02");
@@ -104,11 +104,12 @@ public class CollinearMergeTests
         lot.EdgeInfos.Add(new GeoPoint.Core.Model.EdgeInfo { MX = 25, MY = 30, Confrontante = "Lote 18" });
         foreach (var x in new[] { 5.0, 15, 25 }) lot.EdgeInfos.Add(new GeoPoint.Core.Model.EdgeInfo { MX = x, MY = 0, Confrontante = "Rua 1", Testada = true });
         int removed = GeoPoint.Core.Operations.CollinearMerge.Apply(lot);
-        Assert.Equal(4, removed);
-        Assert.Equal(4, lot.Outer.Count);
+        // A frente (mesma rua) vira uma divisa só; nos fundos os pontos ficam onde o confrontante muda.
+        Assert.Equal(2, removed);
+        Assert.Equal(6, lot.Outer.Count);
         Assert.Equal(900, lot.ToRegion().Area, 6);
-        var back = GeoPoint.Core.Calc.ProjectContext.FindInfo(lot, new GeoPoint.Core.Geometry.Vec2(15, 30));
-        Assert.Contains(back!.Confrontante, new[] { "Lote 16, Lote 17 e Lote 18", "Lote 18, Lote 17 e Lote 16" });
+        foreach (var (x, name) in new[] { (5.0, "Lote 16"), (15.0, "Lote 17"), (25.0, "Lote 18") })
+            Assert.Equal(name, GeoPoint.Core.Calc.ProjectContext.FindInfo(lot, new GeoPoint.Core.Geometry.Vec2(x, 30))!.Confrontante);
         var front = GeoPoint.Core.Calc.ProjectContext.FindInfo(lot, new GeoPoint.Core.Geometry.Vec2(15, 0));
         Assert.Equal("Rua 1", front!.Confrontante);
         Assert.True(front.Testada);
