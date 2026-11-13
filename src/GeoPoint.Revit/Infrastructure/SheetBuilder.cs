@@ -193,7 +193,12 @@ public sealed class SheetBuilder
         bool customTitleBlock = !string.IsNullOrWhiteSpace(_s.Settings.Sheets.TitleBlock) && TitleBlockId() != ElementId.InvalidElementId;
 
         // ---- Conteúdo do carimbo e elementos da folha.
-        var content = SheetContent.Build(_ctx, _fmt, spec, lots, def, vias: _o.Vias && _s.Project.Vias.Count > 0);
+        // Edificações dos lotes da prancha (área edificada).
+        var buildings = new List<GeoPoint.Core.Urban.BuildingReport>();
+        foreach (var l in lots)
+            foreach (var b in GeoPoint.Core.Urban.BuildingAnalyzer.Of(_s.Project, l))
+                try { buildings.Add(GeoPoint.Core.Urban.BuildingAnalyzer.Analyze(ctx.Report(l), b)); } catch { }
+        var content = SheetContent.Build(_ctx, _fmt, spec, lots, def, vias: _o.Vias && _s.Project.Vias.Count > 0, edificacoes: buildings.Count > 0);
         var images = new HashSet<string>();
         string? croqui = null;
         try { croqui = _o.Croqui?.Invoke(spec, lots); } catch (Exception ex) { Logger.Error("Croqui automático", ex); Warnings.Add($"{spec.Title}: croqui automático – {ex.Message}"); }
@@ -217,9 +222,13 @@ public sealed class SheetBuilder
             foreach (var w in StreetDrawer.Draw(_doc, view, _ctx, lots, _s.Settings.Streets, _o.Font)) Warnings.Add($"{spec.Title}: {w}");
         if (spec.Hatch)
             Hatcher.Apply(_doc, view, lots, l => spec.Colors.TryGetValue(l.Id, out int c) ? c : 0);
+        double annoMm = st.DesenhoMm > 0 ? st.DesenhoMm : _s.Settings.Annotation.TextSizeMm;
+        if (buildings.Count > 0)
+            BuildingDrawer.Draw(_doc, view, buildings, _fmt, annoMm, string.IsNullOrWhiteSpace(st.Font) ? _o.Font : st.Font, setbacks: spec.Detailed);
         if (_o.Anotacoes)
         {
             var obstacles = new List<Obb> { Obst(northRect) };
+            obstacles.AddRange(BuildingDrawer.LabelBoxes(buildings, view, annoMm, _fmt));
             if (fit.Table is PaperRect tbr) obstacles.Add(Obst(tbr));
             obstacles.AddRange(SheetRenderer.OutsideMap(map).Select(Obst));
             var fails = new List<string>();

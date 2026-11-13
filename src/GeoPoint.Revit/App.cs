@@ -41,6 +41,7 @@ public sealed class App : IExternalApplication
             Add(ops, "Desmem-\nbramento", typeof(Commands.CmdDesmembramento), "Divide um lote: automático (partes iguais, áreas ou testadas definidas), pelas linhas que você desenhou ou por lotes já reconhecidos. Com prévia, lote remanescente, proprietários e anexação a lotes vizinhos.", IconKind.Split);
             Add(ops, "Remem-\nbramento", typeof(Commands.CmdRemembramento), "Une lotes contíguos em um único lote (remembramento/unificação), com prévia.", IconKind.Merge);
             Add(ops, "Área\nEdificável", typeof(Commands.CmdAreaEdificavel), "Calcula e desenha a área edificável a partir dos recuos de cada divisa.", IconKind.Setback);
+            Add(ops, "Área\nEdificada", typeof(Commands.CmdAreaEdificada), "Edificações existentes desenhadas com linhas dentro do lote: área de projeção, pavimentos, área construída, taxa de ocupação e distância até cada divisa (no desenho, no memorial e nas pranchas).", IconKind.Building);
 
             var anot = app.CreateRibbonPanel(TabName, "Anotação");
             Add(anot, "Anotar\nLotes", typeof(Commands.CmdAnotar), "Distâncias e azimutes fora do lote, vértices com ponto preenchido, área e extensão de cada confrontante, na vista atual.", IconKind.Annotate);
@@ -51,7 +52,7 @@ public sealed class App : IExternalApplication
             var docs = app.CreateRibbonPanel(TabName, "Documentos");
             Add(docs, "Memorial\nDescritivo", typeof(Commands.CmdMemorial), "Gera o memorial descritivo em Word (lote, desmembramento, remembramento ou loteamento).", IconKind.Memorial);
             Add(docs, "Anuência de\nConfrontantes", typeof(Commands.CmdAnuencia), "Declaração de anuência (limite) para cada confrontante, com a descrição da divisa comum, em Word.", IconKind.Signature);
-            Add(docs, "Pranchas\nA4", typeof(Commands.CmdPranchas), "Pranchas A4 por situação (atual, proposta, cada lote e total), com carimbo, quadro de áreas e norte.", IconKind.Sheet);
+            Add(docs, "Pranchas", typeof(Commands.CmdPranchas), "Pranchas por situação (atual, proposta, cada lote e total) pelo modelo escolhido: mapa com grade de coordenadas, norte, tabela de coordenadas, coordenada de referência, croqui de satélite e carimbo.", IconKind.Sheet);
             Add(docs, "Google Earth\n/ QGIS", typeof(Commands.CmdExportarSig), "Exporta KMZ/KML (Google Earth) e GeoJSON (QGIS) para conferir sobre imagem de satélite.", IconKind.Globe);
             Add(docs, "Planilha\nExcel", typeof(Commands.CmdExportarExcel), "Exporta lotes, coordenadas e segmentos para Excel.", IconKind.Excel);
 
@@ -103,7 +104,7 @@ public sealed class App : IExternalApplication
     }
 }
 
-public enum IconKind { Recognize, Manager, Sync, Info, Reference, Traverse, Split, Merge, Divide, Setback, Annotate, Table, Native, Memorial, Globe, Excel, Chart, Check, Topo, Settings, Help, Hatch, Street, Signature, Sheet, Phases, Import, Generate }
+public enum IconKind { Recognize, Manager, Sync, Info, Reference, Traverse, Split, Merge, Divide, Setback, Annotate, Table, Native, Memorial, Globe, Excel, Chart, Check, Topo, Settings, Help, Hatch, Street, Signature, Sheet, Phases, Import, Generate, Building }
 
 /// <summary>Ícones vetoriais desenhados em código (sem arquivos externos).</summary>
 public static class Icons
@@ -223,6 +224,14 @@ public static class Icons
             case IconKind.Divide:
                 dc.DrawRectangle(Light, P(Blue, 2), new Rect(3, 6, 26, 20));
                 for (int i = 1; i < 4; i++) dc.DrawLine(P(Orange, 1.8), new Point(3 + i * 6.5, 6), new Point(3 + i * 6.5, 26));
+                break;
+            case IconKind.Building:
+                dc.DrawRectangle(Light, P(Blue, 1.6), new Rect(2, 4, 28, 25));
+                dc.PushClip(new RectangleGeometry(new Rect(8, 11, 15, 13)));
+                for (int i = -16; i < 32; i += 3) dc.DrawLine(P(Gray, 1), new Point(i, 26), new Point(i + 16, 10));
+                dc.Pop();
+                dc.DrawRectangle(null, P(Gray, 2), new Rect(8, 11, 15, 13));
+                dc.DrawLine(P(Orange, 1.4), new Point(2, 17.5), new Point(8, 17.5));
                 break;
             case IconKind.Setback:
                 dc.DrawRectangle(Light, P(Blue, 2), new Rect(3, 4, 26, 24));

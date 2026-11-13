@@ -396,6 +396,28 @@ public sealed class LotRecord
     public static string VertexKey(Vec2 p) => FormattableString.Invariant($"{p.X:0.000};{p.Y:0.000}");
 }
 
+/// <summary>Edificação existente (área edificada) dentro de um lote, desenhada com linhas.</summary>
+public sealed class BuildingRecord
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string FaseId { get; set; } = "";
+    /// <summary>Lote onde a edificação está (reatribuído automaticamente se o lote for desmembrado/remembrado).</summary>
+    public string LotId { get; set; } = "";
+    public string Nome { get; set; } = "Edificação 1";
+    public string Uso { get; set; } = "Residencial";
+    public int Pavimentos { get; set; } = 1;
+    /// <summary>Área construída informada (todos os pavimentos); null = área de projeção × pavimentos.</summary>
+    public double? AreaConstruidaInformada { get; set; }
+    public string Observacoes { get; set; } = "";
+    public List<EdgeDto> Outer { get; set; } = new();
+    /// <summary>Linhas do Revit que formam a edificação (UniqueId).</summary>
+    public List<string> SourceIds { get; set; } = new();
+    /// <summary>Elementos desenhados pelo GeoPoint (hachura, rótulo, afastamentos) por vista.</summary>
+    public List<AnnotationRecord> Drawings { get; set; } = new();
+
+    public Region ToRegion() => new(new Ring(Outer.Select(e => e.ToCurve()).ToList()));
+}
+
 /// <summary>Quadro de referência das coordenadas compartilhadas do Revit (capturado do documento).</summary>
 public sealed class SharedFrame
 {
@@ -586,6 +608,11 @@ public sealed class ParcelProject
     public List<CruzamentoRecord> Cruzamentos { get; set; } = new();
     public List<ControlPoint> ControlPoints { get; set; } = new();
     public List<GeneratedSheet> Sheets { get; set; } = new();
+    /// <summary>Edificações (área edificada) desenhadas dentro dos lotes.</summary>
+    public List<BuildingRecord> Buildings { get; set; } = new();
+
+    /// <summary>Edificações da fase ativa.</summary>
+    [JsonIgnore] public IEnumerable<BuildingRecord> PhaseBuildings => Buildings.Where(b => b.FaseId == Fase.Id);
 
     public ViaRecord? FindVia(string? id) => string.IsNullOrWhiteSpace(id) ? null : Vias.FirstOrDefault(v => v.Id == id);
 

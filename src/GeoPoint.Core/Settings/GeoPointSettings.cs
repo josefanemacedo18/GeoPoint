@@ -115,6 +115,8 @@ public sealed class MemorialSettings
     public bool IncludeSide { get; set; } = true;
     /// <summary>Quadro de confrontantes por lado.</summary>
     public bool IncludeConfrontantesTable { get; set; } = true;
+    /// <summary>Área edificada (edificações desenhadas) com as distâncias até as divisas.</summary>
+    public bool IncludeBuildings { get; set; } = true;
     public string TemplatePath { get; set; } = "";
     public string PhrasesPath { get; set; } = "";
     public bool OneFilePerLot { get; set; }

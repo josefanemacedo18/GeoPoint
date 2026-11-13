@@ -58,6 +58,16 @@ public static class FaseService
                     info.LotId = "";
                 }
             }
+        // Edificações dos lotes copiados acompanham a nova fase.
+        foreach (var b in p.Buildings.Where(b => map.ContainsKey(b.LotId)).ToList())
+        {
+            var nb = JsonSerializer.Deserialize<BuildingRecord>(JsonSerializer.Serialize(b, JsonOptions.Default), JsonOptions.Default)!;
+            nb.Id = Guid.NewGuid().ToString("N");
+            nb.FaseId = f.Id;
+            nb.LotId = map[b.LotId];
+            nb.Drawings = new();
+            p.Buildings.Add(nb);
+        }
         p.Fases.Add(f);
         p.Lots.AddRange(copies);
         p.ActiveFaseId = f.Id;
@@ -83,6 +93,7 @@ public static class FaseService
         p.Lots.RemoveAll(l => l.FaseId == f.Id);
         p.Operations.RemoveAll(o => o.FaseId == f.Id);
         p.Sheets.RemoveAll(s => s.FaseId == f.Id);
+        p.Buildings.RemoveAll(b => b.FaseId == f.Id);
         p.Fases.Remove(f);
         if (p.ActiveFaseId == f.Id) p.ActiveFaseId = (p.FindFase(f.BaseFaseId) ?? p.Fases.OrderBy(x => x.Numero).First()).Id;
         return removed;

@@ -415,3 +415,109 @@ public static class StreetDrawer
         return drawing.Warnings;
     }
 }
+
+/// <summary>Desenho das edificações (área edificada): hachura cinza, rótulo e cotas de afastamento até as divisas.</summary>
+public static class BuildingDrawer
+{
+    public const string LineAfastamento = "GeoPoint - Afastamento da edificação";
+    public const string LineEdificacao = "GeoPoint - Edificação";
+
+    public static void Clear(Document doc, BuildingRecord b, View view)
+    {
+        foreach (var rec in b.Drawings.Where(a => a.ViewId == view.UniqueId).ToList())
+        {
+            var ids = ElementUtil.ExistingIds(doc, rec.ElementIds);
+            if (ids.Count > 0) doc.Delete(ids);
+            b.Drawings.Remove(rec);
+        }
+    }
+
+    /// <summary>Retângulos ocupados pelos rótulos das edificações (para as outras anotações desviarem).</summary>
+    public static List<Obb> LabelBoxes(IEnumerable<BuildingReport> reps, View view, double textMm, ValueFormatter fmt)
+    {
+        double k = Math.Max(1, view.Scale) / 1000.0;
+        double ang = Annotator.ViewAngle(view);
+        var res = new List<Obb>();
+        foreach (var r in reps)
+        {
+            var reg = r.Building.ToRegion();
+            var (text, hw, hh) = Label(r, textMm * k, fmt);
+            res.Add(Obb.Of(reg.InteriorPoint(), ang, hw, hh));
+        }
+        return res;
+    }
+
+    private static (string Text, double Hw, double Hh) Label(BuildingReport r, double hM, ValueFormatter fmt)
+    {
+        var lines = new[] { r.Building.Nome.ToUpperInvariant(), "ÁREA = " + fmt.Area(r.Area) + (r.Building.Pavimentos > 1 ? $" ({r.Building.Pavimentos} pav.)" : "") };
+        double hw = lines.Max(l => AnnotationPlanner.TextWidth(l, hM)) / 2 + RevitStyles.TextPadMm / 1000.0;
+        double hh = lines.Length * hM * RevitStyles.LineFactor / 2 + RevitStyles.TextPadMm / 1000.0;
+        return (string.Join("\n", lines), hw, hh);
+    }
+
+    /// <summary>Desenha as edificações na vista. Dentro de transação.</summary>
+    public static int Draw(Document doc, View view, IReadOnlyList<BuildingReport> reps, ValueFormatter fmt, double textMm, string font, bool setbacks)
+    {
+        int n = 0;
+        double scale = Math.Max(1, view.Scale);
+        double k = scale / 1000.0;
+        double ang = Annotator.ViewAngle(view);
+        double z = ElementUtil.ViewPlaneZ(view);
+        var hatch = Hatcher.TypeFor(doc, 0, true, 1.2, gray: true);
+        var outline = RevitStyles.LineStyle(doc, LineEdificacao, new Color(60, 60, 60), 3);
+        var dimStyle = RevitStyles.LineStyle(doc, LineAfastamento, new Color(0, 90, 170), 1);
+        var textType = RevitStyles.TextType(doc, textMm, font, true);
+        var dimText = RevitStyles.TextType(doc, Math.Round(textMm * 0.9, 2), font, true, color: new Color(0, 90, 170));
+        foreach (var r in reps)
+        {
+            var b = r.Building;
+            Clear(doc, b, view);
+            var ids = new List<string>();
+            try
+            {
+                var reg = b.ToRegion();
+                var fr = FilledRegion.Create(doc, hatch, view.Id, new List<CurveLoop> { RvtUnits.ToCurveLoop(reg.Outer, z) });
+                if (outline is not null && FilledRegion.IsValidLineStyleIdForFilledRegion(doc, outline.Id)) fr.SetLineStyleId(outline.Id);
+                ids.Add(fr.UniqueId);
+                var (text, hw, hh) = Label(r, textMm * k, fmt);
+                var c = reg.InteriorPoint();
+                var top = c + Vec2.FromAngle(ang).PerpLeft * hh;
+                var at = RvtUnits.ToXyz(top, z);
+                var tn = TextNote.Create(doc, view.Id, at, text.Replace("\n", "\r"), new TextNoteOptions(textType) { HorizontalAlignment = HorizontalTextAlignment.Center, KeepRotatedTextReadable = false });
+                Annotator.AlignText(doc, tn, ang, at);
+                Annotator.BoldFirstLine(tn);
+                ids.Add(tn.UniqueId);
+                if (setbacks)
+                    foreach (var s in r.Afastamentos.Where(s => s.Distance > 0.05))
+                    {
+                        var a = s.AtBuilding; var e = s.AtBoundary;
+                        var dc = doc.Create.NewDetailCurve(view, Line.CreateBound(RvtUnits.ToXyz(a, z), RvtUnits.ToXyz(e, z)));
+                        if (dimStyle is not null) dc.LineStyle = dimStyle;
+                        ids.Add(dc.UniqueId);
+                        // Traços nas pontas (como uma cota).
+                        var dir = (e - a).Normalized();
+                        var perp = dir.PerpLeft * (1.2 * k);
+                        foreach (var p in new[] { a, e })
+                        {
+                            var t = doc.Create.NewDetailCurve(view, Line.CreateBound(RvtUnits.ToXyz(p - perp, z), RvtUnits.ToXyz(p + perp, z)));
+                            if (dimStyle is not null) t.LineStyle = dimStyle;
+                            ids.Add(t.UniqueId);
+                        }
+                        double rot = ang + AnnotationPlanner.Readable(Math.Atan2(dir.Y, dir.X) - ang);
+                        var mid = (a + e) * 0.5 + Vec2.FromAngle(rot).PerpLeft * (textMm * 0.9 * k * 1.3);
+                        var at2 = RvtUnits.ToXyz(mid, z);
+                        var t2 = TextNote.Create(doc, view.Id, at2, fmt.Distance(s.Distance), new TextNoteOptions(dimText)
+                        {
+                            HorizontalAlignment = HorizontalTextAlignment.Center, Rotation = AngleUtil.NormPi(rot - ang), KeepRotatedTextReadable = false,
+                        });
+                        Annotator.AlignText(doc, t2, rot, at2);
+                        ids.Add(t2.UniqueId);
+                    }
+                n++;
+            }
+            catch (Exception ex) { Logger.Error("Edificação " + b.Nome, ex); }
+            if (ids.Count > 0) b.Drawings.Add(new AnnotationRecord { ViewId = view.UniqueId, ElementIds = ids, Scale = view.Scale });
+        }
+        return n;
+    }
+}

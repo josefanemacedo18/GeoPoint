@@ -381,6 +381,20 @@ public sealed class MemorialGenerator
             foreach (var line in Confrontacoes(r)) res.Add(line);
         foreach (var t in HoleDescriptions(lot)) res.Add(Wml.Paragraph(Body, new RunSpec(t)));
 
+        // Área edificada: projeção, pavimentos, área construída, taxa de ocupação e distância até cada divisa.
+        if (_ms.IncludeBuildings)
+        {
+            var bs = GeoPoint.Core.Urban.BuildingAnalyzer.Of(_ctx.Project, lot);
+            if (bs.Count > 0)
+            {
+                res.Add(Wml.Paragraph(new ParaSpec { Align = ParaAlign.Left, SpaceBeforePt = 6, SpaceAfterPt = 2 }, new RunSpec("ÁREA EDIFICADA", true)));
+                var reps = bs.Select(b => GeoPoint.Core.Urban.BuildingAnalyzer.Analyze(r, b)).ToList();
+                foreach (var t in GeoPoint.Core.Urban.BuildingAnalyzer.MemorialText(reps, _fmt)) res.Add(Wml.Paragraph(Body, new RunSpec(t)));
+                if (reps.Count > 1)
+                    res.Add(Wml.Paragraph(Body, new RunSpec($"Total edificado: projeção de {_fmt.Area(reps.Sum(x => x.Area))} (taxa de ocupação de {_fmt.Number(reps.Sum(x => x.TaxaOcupacao), 2)}%) e área construída de {_fmt.Area(reps.Sum(x => x.AreaConstruida))}.")));
+            }
+        }
+
         if (includeTables && _ms.IncludeVertexTable)
         {
             res.Add(Wml.Paragraph(Caption, new RunSpec($"Quadro de coordenadas – {lot.DisplayName}", true, SizePt: 9)));
