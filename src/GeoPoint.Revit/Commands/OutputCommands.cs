@@ -61,6 +61,7 @@ public sealed class CmdAnotar : CommandBase
             new("lowner", "Rótulo do lote: proprietário", a.LabelOwner),
             new("lmat", "Rótulo do lote: matrícula", a.LabelMatricula),
             new("lper", "Rótulo do lote: perímetro", a.LabelPerimeter),
+            new("refc", "Coordenada do ponto de referência de cada lote (ponto, linha de chamada, nome e coordenadas no sistema das opções)", a.RefCallout),
             new("area", "Nome e área no centro do lote", a.AreaLabel),
             new("opaque", "Fundo opaco nos textos (legíveis sobre hachuras)", a.OpaqueText),
             new("size", "Altura do texto no papel (mm)", a.TextSizeMm),
@@ -82,7 +83,7 @@ public sealed class CmdAnotar : CommandBase
         if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
         a.Edges = w.Option("edges"); a.EdgeAzimuth = w.Option("angle"); a.TextOutside = w.Option("out"); a.Vertices = w.Option("vert");
         a.VertexDots = w.Option("dots"); a.Confrontantes = w.Option("conf"); a.AreaLabel = w.Option("area"); a.OpaqueText = w.Option("opaque");
-        a.LabelOwner = w.Option("lowner"); a.LabelMatricula = w.Option("lmat"); a.LabelPerimeter = w.Option("lper");
+        a.LabelOwner = w.Option("lowner"); a.LabelMatricula = w.Option("lmat"); a.LabelPerimeter = w.Option("lper"); a.RefCallout = w.Option("refc");
         a.TextSizeMm = Math.Clamp(w.Number("size"), 0.5, 20);
         a.OffsetMm = Math.Clamp(w.Number("offset"), 0, 50);
         a.DotMm = Math.Clamp(w.Number("dot"), 0.2, 10);
@@ -107,7 +108,12 @@ public sealed class CmdAnotar : CommandBase
                 foreach (var l in w.SelectedLots) Annotator.Clear(s.Doc, l, view);
                 total = 0;
             }
-            else total = Annotator.Annotate(s.Doc, view, w.SelectedLots, ctx, fmt, o, failed);
+            else
+            {
+                var defR = ctx.Coords.HasGeoreference ? (s.Settings.Memorial.CoordinateSystems.FirstOrDefault() ?? GeoPoint.Core.Geodesy.CrsDef.Utm()) : GeoPoint.Core.Geodesy.CrsDef.ProjectLocalDef();
+                Func<LotReport, RefCallout?>? refc = a.RefCallout ? r => SheetBuilder.Callout(r, ctx, fmt, defR) : null;
+                total = Annotator.Annotate(s.Doc, view, w.SelectedLots, ctx, fmt, o, failed, refCallout: refc);
+            }
             ProjectStore.Save(s.Doc, s.Project);
             t.Commit();
         }

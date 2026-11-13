@@ -5,7 +5,7 @@ using GeoPoint.Core.Model;
 
 namespace GeoPoint.Core.Calc;
 
-public enum AnnoTextKind { Distance, Azimuth, Vertex, LotLabel, Confrontante, Measure }
+public enum AnnoTextKind { Distance, Azimuth, Vertex, LotLabel, Confrontante, Measure, RefName, RefCoord }
 
 /// <summary>Caixa orientada (retângulo girado) usada para evitar sobreposição de textos.</summary>
 public readonly record struct Obb(Vec2 C, Vec2 U, double Hw, double Hh)
@@ -89,7 +89,7 @@ public sealed class AnnoDot
     public double Radius { get; init; }
 }
 
-public enum AnnoLineKind { ConfrontanteTick, ConfrontanteDimension, Leader }
+public enum AnnoLineKind { ConfrontanteTick, ConfrontanteDimension, Leader, RefLeader }
 
 public sealed class AnnoLine
 {
@@ -147,6 +147,8 @@ public sealed class AnnotationPlanOptions
     public bool PerLotVertexNames { get; set; }
     /// <summary>Não escreve o nome da via nas divisas de frente (a rua já está desenhada com o nome).</summary>
     public bool SkipViaNames { get; set; }
+    /// <summary>Chamada da coordenada do ponto de referência de cada lote (null = sem chamada).</summary>
+    public Func<LotReport, RefCallout?>? RefCallout { get; set; }
 }
 
 /// <summary>
@@ -154,6 +156,9 @@ public sealed class AnnotationPlanOptions
 /// divisa (alinhados à divisa e legíveis), nomes dos vértices fora dos lotes, ponto nos vértices, nome e área no interior e a
 /// extensão de cada confrontante. Divisas e vértices compartilhados são anotados uma vez só.
 /// </summary>
+/// <summary>Ponto de referência de um lote: ponto preenchido, linha de chamada, nome e coordenadas.</summary>
+public sealed record RefCallout(Vec2 Point, string Name, IReadOnlyList<string> Lines);
+
 public static class AnnotationPlanner
 {
     public const double KeyTol = 0.001;
@@ -178,24 +183,45 @@ public static class AnnotationPlanner
         return a;
     }
 
-    /// <summary>Largura estimada (m) de um texto Arial com altura <paramref name="h"/>.</summary>
+    /// <summary>Larguras do Arial (unidades de 1/1000 do corpo) – letras acentuadas usam a letra base.</summary>
+    private static readonly Dictionary<char, int> ArialW = BuildArial();
+
+    private static Dictionary<char, int> BuildArial()
+    {
+        var d = new Dictionary<char, int>();
+        void Set(string chars, int w) { foreach (var c in chars) d[c] = w; }
+        Set(" !,./:;I[]\\fijlt'|", 278);
+        Set("ijl", 222);
+        Set("\"", 355);
+        Set("#$0123456789?L_abdeghnopqu~–", 556);
+        Set("%", 889); Set("&ABEKPSVXY", 667); Set("()-`r", 333); Set("*", 389); Set("+<=>", 584); Set("@", 1015);
+        Set("CDHNRUw", 722); Set("FTZ", 611); Set("GOQ", 778); Set("J", 500); Set("M", 833); Set("W", 944);
+        Set("ckvxyz", 500); Set("m", 833); Set("s", 500); Set("t", 278); Set("f", 278);
+        Set("°", 400); Set("²³", 333); Set("—…", 1000); Set("•", 350); Set("ºª", 365);
+        return d;
+    }
+
+    private static char Base(char c) => c switch
+    {
+        'á' or 'à' or 'â' or 'ã' or 'ä' => 'a', 'é' or 'ê' or 'è' => 'e', 'í' or 'ì' or 'î' => 'i', 'ó' or 'ô' or 'õ' or 'ò' or 'ö' => 'o', 'ú' or 'ù' or 'û' or 'ü' => 'u', 'ç' => 'c',
+        'Á' or 'À' or 'Â' or 'Ã' or 'Ä' => 'A', 'É' or 'Ê' or 'È' => 'E', 'Í' or 'Ì' or 'Î' => 'I', 'Ó' or 'Ô' or 'Õ' or 'Ò' or 'Ö' => 'O', 'Ú' or 'Ù' or 'Û' or 'Ü' => 'U', 'Ç' => 'C',
+        _ => c,
+    };
+
+    /// <summary>Altura das maiúsculas do Arial em relação ao corpo (o tamanho do texto no Revit é a altura das maiúsculas).</summary>
+    public const double ArialCapHeight = 0.716;
+
+    /// <summary>Largura estimada (m) de um texto Arial com altura <paramref name="h"/> (altura das maiúsculas, como no Revit).</summary>
     public static double TextWidth(string s, double h, bool bold = false)
     {
         double w = 0;
-        foreach (char c in s)
+        foreach (char c0 in s)
         {
-            w += c switch
-            {
-                '°' or '\'' or '"' or ',' or '.' or ':' or ';' or '|' or 'i' or 'l' or 'I' or 'j' or '!' => 0.32,
-                ' ' => 0.3,
-                '-' or '(' or ')' or 'r' or 't' or 'f' => 0.4,
-                'm' or 'M' or 'W' or 'w' => 0.9,
-                >= '0' and <= '9' => 0.6,
-                _ when char.IsUpper(c) => 0.7,
-                _ => 0.58,
-            };
+            char c = Base(c0);
+            w += ArialW.TryGetValue(c, out int v) ? v : char.IsUpper(c) ? 700 : 556;
         }
-        return w * h * (bold ? 1.08 : 1.0);
+        // Negrito do Arial é ~6% mais largo; folga de 3% para variações de renderização.
+        return w / 1000.0 / ArialCapHeight * h * (bold ? 1.06 : 1.0) * 1.03;
     }
 
     private sealed class Ctx
@@ -302,6 +328,17 @@ public static class AnnotationPlanner
             foreach (var rep in reports)
                 PlanConfrontantes(plan, cx, rep, o, used, edgeCount, hh, gap);
 
+        // 4b) Coordenada do ponto de referência de cada lote (o nome do vértice vai na chamada).
+        if (o.RefCallout is not null)
+            foreach (var rep in reports)
+            {
+                RefCallout? rc;
+                try { rc = o.RefCallout(rep); } catch { rc = null; }
+                if (rc is null || !used.Add("ref:" + rep.Lot.Id)) continue;
+                PlaceRefCallout(plan, cx, rep, rc, o, hh, gap);
+                used.Add("n" + (o.PerLotVertexNames ? rep.Lot.Id + ":" : "") + VertexKey(rc.Point));
+            }
+
         // 5) Nomes dos vértices: fora dos lotes, sem cruzar linhas nem outros textos.
         if (o.Vertices)
             foreach (var rep in reports)
@@ -328,6 +365,77 @@ public static class AnnotationPlanner
                 }
             }
         return plan;
+    }
+
+    /// <summary>
+    /// Chamada do ponto de referência: ponto maior no vértice, linha inclinada até um "ombro" horizontal,
+    /// nome em negrito acima do ombro e as coordenadas abaixo. Procura a direção (de preferência para fora do lote) com menos conflito.
+    /// </summary>
+    private static void PlaceRefCallout(AnnotationPlan plan, Ctx cx, LotReport rep, RefCallout rc, AnnotationPlanOptions o, double hh, double gap)
+    {
+        string owner = rep.Lot.Id;
+        var p = rc.Point;
+        var u = Vec2.FromAngle(o.ViewAngle);     // horizontal da vista
+        var v = u.PerpLeft;                       // vertical da vista
+        double hName = o.TextM;
+        double nameHw = TextWidth(rc.Name, hName, true) / 2 + o.PadM;
+        double coordHw = (rc.Lines.Count == 0 ? 0 : rc.Lines.Max(l => TextWidth(l, o.TextM))) / 2 + o.PadM;
+        double halfW = Math.Max(nameHw, coordHw);
+        double nameHh = hName * o.LineFactor / 2 + o.PadM;
+        double coordHh = Math.Max(1, rc.Lines.Count) * o.TextM * o.LineFactor / 2 + o.PadM;
+        double dotR = o.DotRadiusM * 1.6;
+        // Direção preferida: para fora do lote (bissetriz no vértice).
+        Vec2 outward = new(0, 0);
+        int idx = rep.Vertices.FindIndex(x => x.Internal.DistanceTo(p) < 1e-6);
+        if (idx >= 0)
+        {
+            int n = rep.Segments.Count;
+            var tIn = rep.Segments[(idx - 1 + n) % n].Curve.TangentAt(1);
+            var tOut = rep.Segments[idx].Curve.TangentAt(0);
+            var bis = tOut - tIn;
+            if (bis.LengthSquared > 1e-12)
+            {
+                bis = bis.Normalized();
+                outward = rep.Region.Contains(p + bis * o.TextM) ? -bis : bis;
+            }
+        }
+        double best = double.MaxValue;
+        (Obb name, Obb coord, Vec2 elbow, Vec2 far)? pick = null;
+        foreach (double dist in new[] { 3.0, 4.5, 6.5, 9.0 })
+            for (int k = 0; k < 16; k++)
+            {
+                double a = o.ViewAngle + k * Math.PI / 8;
+                var dir = Vec2.FromAngle(a);
+                // Evita a linha quase vertical ou quase horizontal (fica confusa com o ombro).
+                double cosv = Math.Abs(dir.Dot(u));
+                if (cosv < 0.25 || cosv > 0.97) continue;
+                var elbow = p + dir * (dist * o.TextM);
+                double sx = dir.Dot(u) >= 0 ? 1 : -1;
+                var far = elbow + u * (sx * 2 * halfW);
+                var mid = (elbow + far) * 0.5;
+                var nameBox = Obb.Of(mid + v * (nameHh + o.TextM * 0.08), o.ViewAngle, halfW, nameHh);
+                var coordBox = Obb.Of(mid - v * (coordHh + o.TextM * 0.08), o.ViewAngle, halfW, coordHh);
+                var leaderStart = p + dir * (dotR * 1.4);
+                var leaderBox = Obb.Of((leaderStart + elbow) * 0.5, a, Math.Max(1e-6, leaderStart.DistanceTo(elbow) / 2), o.TextM * 0.05);
+                double cost = cx.Cost(nameBox) + cx.Cost(coordBox) + cx.Cost(leaderBox) * 0.6;
+                if (cx.InsideAny(mid)) cost += 3;
+                if (outward.LengthSquared > 0) cost += (1 - dir.Dot(outward)) * 0.8;
+                cost += dist * 0.15;
+                if (cost < best) { best = cost; pick = (nameBox, coordBox, elbow, far); }
+            }
+            
+        if (pick is null) return;
+        var (nb, cb, el, fr) = pick.Value;
+        if (best >= 6) plan.Conflicts++;
+        cx.Placed.Add(nb);
+        cx.Placed.Add(cb);
+        cx.Placed.Add(Obb.Of(p, o.ViewAngle, dotR * 1.3, dotR * 1.3));
+        plan.Dots.Add(new AnnoDot { Owner = owner, Key = "ref:" + owner + ":dot", At = p, Radius = dotR });
+        plan.Lines.Add(new AnnoLine { Owner = owner, Key = "ref:" + owner + ":l1", Kind = AnnoLineKind.RefLeader, A = p, B = el });
+        plan.Lines.Add(new AnnoLine { Owner = owner, Key = "ref:" + owner + ":l2", Kind = AnnoLineKind.RefLeader, A = el, B = fr });
+        plan.Texts.Add(new AnnoText { Owner = owner, Key = "ref:" + owner, Kind = AnnoTextKind.RefName, At = nb.C, Text = rc.Name, Rotation = o.ViewAngle, HalfW = nb.Hw, HalfH = nb.Hh, BoldFirstLine = true });
+        if (rc.Lines.Count > 0)
+            plan.Texts.Add(new AnnoText { Owner = owner, Key = "ref:" + owner + ":c", Kind = AnnoTextKind.RefCoord, At = cb.C, Text = string.Join("\n", rc.Lines), Rotation = o.ViewAngle, HalfW = cb.Hw, HalfH = cb.Hh, Lines = rc.Lines.Count });
     }
 
     private static Vec2 BestInterior(Region r, double hw, double hh, Ctx cx, double angle)

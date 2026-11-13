@@ -42,6 +42,7 @@ public sealed class SheetRow : Notify
     public SheetRow(SheetSpec spec, List<IdText> refs, string refKey, bool exists, bool edited, SheetReplace replace)
     {
         Spec = spec; RefOptions = refs; _refKey = refKey; Exists = exists; Edited = edited; _replace = replace;
+        RefEditable = spec.Detailed;
         Title = spec.Title;
         Conteudo = spec.Detailed ? "1 lote – vértices e azimutes" : $"{spec.LotIds.Count} lotes – visualização";
         Status = !exists ? "–" : edited ? "Sim – EDITADA por você" : "Sim (sem alterações)";
@@ -50,6 +51,8 @@ public sealed class SheetRow : Notify
     public string Title { get; }
     public string Conteudo { get; }
     public List<IdText> RefOptions { get; }
+    /// <summary>Só nas pranchas de um lote (nas gerais cada lote usa o seu ponto).</summary>
+    public bool RefEditable { get; }
     public string RefKey { get => _refKey; set => Set(ref _refKey, value ?? ""); }
     public bool Exists { get; }
     public bool Edited { get; }
@@ -66,6 +69,7 @@ public partial class PranchasWindow : Window
     private readonly Func<SheetSpec, (bool exists, bool edited)> _existing;
     private List<SheetRow> _sheetRows = new();
     private bool _loading = true;
+    private readonly SheetSettings _st;
 
     public PranchasWindow(ParcelProject project, SheetSettings st, IEnumerable<LotRow> rows, OperationRecord? preselect, PranchasState state,
         Func<SheetSpec, List<IdText>> refOptions, Func<SheetSpec, (bool exists, bool edited)> existing)
@@ -97,11 +101,9 @@ public partial class PranchasWindow : Window
         Coordenadas.IsChecked = st.Coordenadas;
         Vias.IsChecked = st.Vias;
         Norte.IsChecked = st.NorteParaCima;
-        Orientation.SelectedIndex = st.Orientation == 1 ? 1 : 0;
-        var scales = new List<string> { "Automática (cabe na folha)" };
-        scales.AddRange(SheetLayout.StandardScales.Select(x => "1:" + x));
-        Scale.ItemsSource = scales;
-        Scale.SelectedIndex = st.AutoScale ? 0 : Math.Max(0, Array.IndexOf(SheetLayout.StandardScales, st.Scale) + 1);
+        _st = st;
+        LoadTemplates(st.Template, st.Orientation == 1 ? SheetOrientation.Paisagem : SheetOrientation.Retrato);
+        CroquiAuto.IsChecked = st.CroquiAuto;
         Prefix.Text = st.NumberPrefix;
         Image.Text = project.Info.ImagemLocalizacao;
         _loading = false;
@@ -127,9 +129,10 @@ public partial class PranchasWindow : Window
         st.Anotacoes = Anotacoes.IsChecked == true; st.Hachuras = Hachuras.IsChecked == true; st.Quadro = Quadro.IsChecked == true;
         st.Coordenadas = Coordenadas.IsChecked == true;
         st.Vias = Vias.IsChecked == true; st.NorteParaCima = Norte.IsChecked == true;
-        st.Orientation = Orientation.SelectedIndex == 1 ? 1 : 0;
+        if (SelectedTemplate is { } t) { st.Template = t.Name; st.Orientation = t.Orientation == SheetOrientation.Paisagem ? 1 : 0; }
         st.AutoScale = Scale.SelectedIndex <= 0;
-        if (!st.AutoScale) st.Scale = SheetLayout.StandardScales[Scale.SelectedIndex - 1];
+        if (!st.AutoScale && SelectedTemplate is { } t2) st.Scale = t2.ScaleList[Math.Min(Scale.SelectedIndex - 1, t2.ScaleList.Count - 1)];
+        st.CroquiAuto = CroquiAuto.IsChecked == true;
         st.NumberPrefix = Prefix.Text.Trim();
         info.ImagemLocalizacao = Image.Text.Trim();
     }
@@ -164,6 +167,38 @@ public partial class PranchasWindow : Window
             ? "Nenhuma prancha: marque as situações e os lotes."
             : $"{Specs.Count} prancha(s)." + (edits > 0 ? $"  ⚠ {edits} já existe(m) e foi(ram) EDITADA(S) por você: escolha em 'Se já existir' (padrão: manter a atual)." : "");
         OkButton.IsEnabled = Specs.Count > 0;
+    }
+
+    public SheetTemplate? SelectedTemplate => Template.SelectedItem as SheetTemplate;
+
+    private void LoadTemplates(string? name, SheetOrientation fallback)
+    {
+        var all = SheetTemplateLibrary.LoadAll();
+        Template.ItemsSource = all;
+        Template.SelectedItem = all.FirstOrDefault(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase))
+                                ?? all.FirstOrDefault(t => t.Orientation == fallback) ?? all.FirstOrDefault();
+        FillScales();
+    }
+
+    private void FillScales()
+    {
+        var t = SelectedTemplate;
+        var list = t?.ScaleList ?? SheetLayout.StandardScales;
+        int keep = Scale.SelectedIndex > 0 && Scale.SelectedItem is string cur && int.TryParse(cur.Replace("1:", ""), out int v) ? v : (_st.AutoScale ? 0 : _st.Scale);
+        var scales = new List<string> { "Automática (a que melhor cabe na folha)" };
+        scales.AddRange(list.Select(x => "1:" + x));
+        Scale.ItemsSource = scales;
+        int idx = keep > 0 ? list.ToList().IndexOf(keep) : -1;
+        Scale.SelectedIndex = idx >= 0 ? idx + 1 : 0;
+    }
+
+    private void Template_Changed(object sender, SelectionChangedEventArgs e) { if (!_loading) FillScales(); }
+
+    private void Templates_Click(object sender, RoutedEventArgs e)
+    {
+        var w = new SheetTemplatesWindow(SelectedTemplate?.Name) { Owner = this };
+        w.ShowDialog();
+        LoadTemplates(w.ChosenName ?? SelectedTemplate?.Name, SheetOrientation.Retrato);
     }
 
     private void Image_Click(object sender, RoutedEventArgs e)

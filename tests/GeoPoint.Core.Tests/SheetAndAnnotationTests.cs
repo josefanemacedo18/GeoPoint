@@ -71,7 +71,7 @@ public class SheetAndAnnotationTests
         // Marcas tracejadas nas 4 pontas dos trechos (2 cantos + 2 divisões) e 3 cotas.
         Assert.Equal(4, plan.Lines.Count(l => l.Kind == AnnoLineKind.ConfrontanteTick));
         Assert.Equal(3, plan.Lines.Count(l => l.Kind == AnnoLineKind.ConfrontanteDimension));
-        Assert.All(plan.Lines, l => Assert.True(l.A.Y >= 30 - 1e-9 && l.B.Y > 30));
+        Assert.All(plan.Lines.Where(l => l.Kind is AnnoLineKind.ConfrontanteTick or AnnoLineKind.ConfrontanteDimension), l => Assert.True(l.A.Y >= 30 - 1e-9 && l.B.Y > 30));
         // Nomes fora do lote, além das distâncias.
         Assert.All(plan.Texts.Where(t => t.Kind == AnnoTextKind.Confrontante && t.Text.StartsWith("LOTE 1")), t => Assert.True(t.At.Y > 30 + 2));
     }

@@ -9,6 +9,8 @@ public readonly record struct PaperRect(double X0, double Y0, double X1, double 
     public double Height => Y1 - Y0;
     public Vec2 Center => new((X0 + X1) / 2, (Y0 + Y1) / 2);
     public PaperRect Inset(double d) => new(X0 + d, Y0 + d, X1 - d, Y1 - d);
+    public bool Intersects(PaperRect o) => X0 < o.X1 && o.X0 < X1 && Y0 < o.Y1 && o.Y0 < Y1;
+    public bool Contains(Vec2 p) => p.X >= X0 && p.X <= X1 && p.Y >= Y0 && p.Y <= Y1;
 }
 
 /// <summary>Campo do carimbo.</summary>

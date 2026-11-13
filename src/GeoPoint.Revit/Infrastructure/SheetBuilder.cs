@@ -15,18 +15,25 @@ namespace GeoPoint.Revit.Infrastructure;
 
 public sealed class SheetBuildOptions
 {
-    public SheetOrientation Orientation { get; set; } = SheetOrientation.Retrato;
-    /// <summary>0 = automática.</summary>
+    /// <summary>Modelo de prancha (biblioteca de modelos).</summary>
+    public SheetTemplate Template { get; set; } = SheetTemplate.Default();
+    /// <summary>0 = automática (a menor escala da lista do modelo em que o desenho cabe).</summary>
     public int Scale { get; set; }
     public bool Anotacoes { get; set; } = true;
     public bool Vias { get; set; } = true;
     public bool NorteParaCima { get; set; } = true;
+    /// <summary>Imagem de localização escolhida pelo usuário (usada quando não há croqui automático).</summary>
     public string LocationImage { get; set; } = "";
+    /// <summary>Croqui automático (imagem de satélite com o lote): devolve o caminho da imagem ou null.</summary>
+    public Func<SheetSpec, IReadOnlyList<LotRecord>, string?>? Croqui { get; set; }
     public string NumberPrefix { get; set; } = "GP";
     public string Font { get; set; } = "Arial";
 }
 
-/// <summary>Gera vistas (cópias da planta original) e pranchas A4 com moldura e carimbo desenhados pelo GeoPoint.</summary>
+/// <summary>
+/// Gera pranchas pelo modelo escolhido: cópia da planta recortada exatamente no mapa, grade de coordenadas atrás do desenho,
+/// tabela num canto livre, norte, chamada da coordenada de referência de cada lote e os blocos do carimbo.
+/// </summary>
 public sealed class SheetBuilder
 {
     private const double Ft = 304.8; // mm por pé
@@ -51,6 +58,8 @@ public sealed class SheetBuilder
     public List<string> Warnings { get; } = new();
     /// <summary>UniqueIds das vistas e pranchas criadas.</summary>
     public IReadOnlyList<string> Created => _created;
+    /// <summary>Pranchas mantidas (já existiam e foram preservadas).</summary>
+    public int Kept { get; private set; }
 
     private static XYZ P(double xMm, double yMm) => new(xMm / Ft, yMm / Ft, 0);
 
@@ -58,13 +67,12 @@ public sealed class SheetBuilder
     public List<ViewSheet> Build(IReadOnlyList<SheetSpec> specs)
     {
         var sheets = new List<ViewSheet>();
-        int n = specs.Count, i = 0;
         foreach (var spec in specs)
         {
-            i++;
             var old = SheetRegistry.Find(_s, spec.Key);
             if (old is not null && spec.Replace == SheetReplace.Manter) { Kept++; continue; }
             string? number = null;
+            int folha = old?.Folha ?? 0;
             try
             {
                 if (old is not null && spec.Replace == SheetReplace.Substituir)
@@ -72,7 +80,8 @@ public sealed class SheetBuilder
                     number = (ElementUtil.ByUniqueId(_doc, old.SheetId) as ViewSheet)?.SheetNumber;
                     SheetRegistry.Delete(_s, old);
                 }
-                var sheet = BuildOne(spec, i, n, number);
+                if (folha <= 0) folha = _s.Project.Sheets.Select(g => g.Folha).DefaultIfEmpty(0).Max() + 1;
+                var sheet = BuildOne(spec, number, folha);
                 sheets.Add(sheet);
             }
             catch (Exception ex)
@@ -84,9 +93,6 @@ public sealed class SheetBuilder
         return sheets;
     }
 
-    /// <summary>Pranchas mantidas (já existiam e foram preservadas).</summary>
-    public int Kept { get; private set; }
-
     /// <summary>Contexto com numeração própria de cada lote (P-01…), para as pranchas de um lote só.</summary>
     private ProjectContext LocalContext()
     {
@@ -95,152 +101,289 @@ public sealed class SheetBuilder
         return new ProjectContext(_s.Project, st);
     }
 
-    /// <summary>Ponto de referência padrão: P-01 do lote (prancha de um lote) ou o ponto de referência do projeto, se for vértice dos lotes.</summary>
-    private Vec2 DefaultRef(SheetSpec spec, List<LotRecord> lots, ProjectContext ctx)
+    /// <summary>Sistema das coordenadas da prancha: o primeiro do memorial (o mesmo das opções), ou local sem georreferência.</summary>
+    private CrsDef TableCrs() => _ctx.Coords.HasGeoreference ? (_s.Settings.Memorial.CoordinateSystems.FirstOrDefault() ?? CrsDef.Utm()) : CrsDef.ProjectLocalDef();
+
+    /// <summary>Chamada da coordenada de referência do lote (vértice escolhido ou P-01).</summary>
+    public static RefCallout? Callout(LotReport rep, ProjectContext ctx, ValueFormatter fmt, CrsDef def)
     {
-        if (!spec.Detailed && _s.Project.Reference.IsSet)
+        if (rep.Vertices.Count == 0) return null;
+        var lot = rep.Lot;
+        var v = rep.Vertices[0];
+        if (lot.RefX is double rx && lot.RefY is double ry)
         {
-            var anchor = new Vec2(_s.Project.Reference.AnchorX, _s.Project.Reference.AnchorY);
-            foreach (var l in lots)
-                if (l.Outer.Any(e => new Vec2(e.X1, e.Y1).DistanceTo(anchor) < 0.01)) return anchor;
+            var want = new Vec2(rx, ry);
+            v = rep.Vertices.OrderBy(x => x.Internal.DistanceTo(want)).First();
+            if (v.Internal.DistanceTo(want) > 0.05) v = rep.Vertices[0];
         }
-        return ctx.Report(lots[0]).Vertices[0].Internal;
+        return new RefCallout(v.Internal, v.Name, SheetTexts.CalloutLines(ctx.Coords, fmt, def, v.Internal));
     }
 
-    private ViewSheet BuildOne(SheetSpec spec, int index, int count, string? number)
+    private ViewSheet BuildOne(SheetSpec spec, string? number, int folha)
     {
+        var tpl = _o.Template;
+        var st = tpl.Styles;
         var lots = spec.LotIds.Select(_s.Project.FindLot).Where(l => l is not null).Select(l => l!).ToList();
         if (lots.Count == 0) throw new InvalidOperationException("Nenhum lote para a prancha.");
-        var layout = SheetLayout.A4(_o.Orientation);
-        // Prancha de um lote: numeração própria do lote (P-01…). Prancha com vários lotes: visualização (sem vértices nem azimutes).
-        var ctx = spec.Detailed ? LocalContext() : _ctx;
-        var refPt = spec.RefPoint ?? DefaultRef(spec, lots, ctx);
-        _refText = ReferenceText(refPt, RefName(spec, lots, ctx, refPt));
+        var local = LocalContext();
+        // Prancha de um lote: numeração própria (P-01…). Com vários lotes: visualização (sem vértices nem azimutes).
+        var ctx = spec.Detailed ? local : _ctx;
+        var def = TableCrs();
+        var map = tpl.MapRect();
+
+        // ---- Tabela dentro do mapa: coordenadas (um lote) ou quadro de áreas (vários lotes).
+        SheetTable? table = null;
+        if (tpl.TablesInsideMap)
+        {
+            try
+            {
+                if (spec.Detailed && spec.CoordTable) table = SheetTable.Coordinates(local.Report(lots[0]), local, _fmt, def, st);
+                else if (spec.QuadroIds.Count > 0)
+                    table = SheetTable.Lots(spec.QuadroIds.Select(_s.Project.FindLot).Where(l => l is not null).Select(l => l!).ToList(), _ctx, _fmt, st);
+            }
+            catch (Exception ex) { Logger.Error("Tabela da prancha", ex); }
+            if (table is not null && !table.FitInto(map.Width * 0.8, map.Height * 0.5))
+            {
+                Warnings.Add($"{spec.Title}: a tabela ({table.Rows.Count} linhas) não cabe na folha; ela continua no memorial e em 'Tabela de Coordenadas'.");
+                table = null;
+            }
+            else if (table is not null && table.TextMm < st.TabelaMm - 1e-9)
+                Warnings.Add($"{spec.Title}: o texto da tabela foi reduzido para {table.TextMm:0.0} mm para caber.");
+        }
+        var northRect = SheetRenderer.NorthRect(tpl);
 
         // ---- Vista: cópia da planta original (o desenho original não é alterado).
         var view = DuplicateView(spec, lots);
         var regions = lots.Select(l => l.ToRegion()).ToList();
-
-        // ---- Quadro de áreas: ocupa uma faixa acima do carimbo.
-        double quadroH = spec.QuadroIds.Count > 0 ? 6 + 4.6 * (spec.QuadroIds.Count + 2) : 0;
-        LotReport? coordRep = null;
-        if (spec.CoordTable && lots.Count == 1)
-        {
-            try { coordRep = ctx.Report(lots[0]); } catch { }
-            // Lotes com muitos vértices: o quadro não cabe na folha A4 (fica no memorial e na Tabela de Coordenadas).
-            if (coordRep is not null && coordRep.Vertices.Count <= 24) quadroH = 6 + 4.2 * (coordRep.Vertices.Count + 1);
-            else coordRep = null;
-        }
-        var area = layout.Drawing;
-        var vpArea = new PaperRect(area.X0, area.Y0 + quadroH, area.X1, area.Y1);
-
-        // ---- Escala e recorte.
-        var pts = regions.SelectMany(r => r.AllRings().SelectMany(g => g.ToPolygon(0.05))).Select(p => RvtUnits.ToXyz(p, 0)).ToList();
         var crop = view.CropBox;
         var inv = crop.Transform.Inverse;
-        var local = pts.Select(p => inv.OfPoint(p)).ToList();
-        double minX = local.Min(p => p.X), maxX = local.Max(p => p.X), minY = local.Min(p => p.Y), maxY = local.Max(p => p.Y);
+        var local3 = regions.SelectMany(r => r.AllRings().SelectMany(g => g.ToPolygon(0.05))).Select(p => inv.OfPoint(RvtUnits.ToXyz(p, 0))).ToList();
+        double minX = local3.Min(p => p.X), maxX = local3.Max(p => p.X), minY = local3.Min(p => p.Y), maxY = local3.Max(p => p.Y);
         double wM = (maxX - minX) * RvtUnits.FtToM, hM = (maxY - minY) * RvtUnits.FtToM;
-        double marginMm = 16 + (_o.Vias && _s.Project.Vias.Count > 0 ? 10 : 0);
-        int scale = _o.Scale > 0 ? _o.Scale : SheetLayout.ChooseScale(wM, hM, vpArea.Width - 6, vpArea.Height - 6, marginMm);
+        double marginMm = tpl.DrawingMarginMm + (_o.Vias && _s.Project.Vias.Count > 0 ? 8 : 0);
+        var fit = MapFit.Fit(map, wM, hM, marginMm, table is null ? null : (table.Width, table.Height), northRect, tpl.TableCorner, tpl.ScaleList, _o.Scale);
+        if (!fit.Fits)
+            Warnings.Add(_o.Scale > 0
+                ? $"{spec.Title}: na escala 1:{fit.Scale} o desenho não cabe livre de tabela/norte; use 'Automática' ou outra escala."
+                : $"{spec.Title}: o desenho não coube folgado nem em 1:{fit.Scale}; confira a prancha.");
+        int scale = fit.Scale;
         view.Scale = scale;
-        double marginFt = marginMm / Ft * scale;
-        var box = new BoundingBoxXYZ
+        double k = scale / Ft;   // pés no modelo por mm no papel
+        double cx = (minX + maxX) / 2 + (map.Center.X - fit.DrawingCenter.X) * k;
+        double cy = (minY + maxY) / 2 + (map.Center.Y - fit.DrawingCenter.Y) * k;
+        view.CropBoxActive = true;
+        view.CropBox = new BoundingBoxXYZ
         {
             Transform = crop.Transform,
-            Min = new XYZ(minX - marginFt, minY - marginFt, crop.Min.Z),
-            Max = new XYZ(maxX + marginFt, maxY + marginFt, crop.Max.Z),
+            Min = new XYZ(cx - map.Width / 2 * k, cy - map.Height / 2 * k, crop.Min.Z),
+            Max = new XYZ(cx + map.Width / 2 * k, cy + map.Height / 2 * k, crop.Max.Z),
         };
-        view.CropBoxActive = true;
-        view.CropBox = box;
         try { view.CropBoxVisible = false; } catch { }
         try { view.get_Parameter(BuiltInParameter.VIEWER_ANNOTATION_CROP_ACTIVE)?.Set(0); } catch { }
+        // Papel (mm) → modelo (m).
+        var tr = crop.Transform;
+        Vec2 ToModel(Vec2 q) => RvtUnits.ToVec(tr.OfPoint(new XYZ(cx + (q.X - map.Center.X) * k, cy + (q.Y - map.Center.Y) * k, 0)));
+        double viewAngle = Annotator.ViewAngle(view);
+        double mPerMm = scale / 1000.0;
+        Obb Obst(PaperRect r) => Obb.Of(ToModel(r.Center), viewAngle, r.Width / 2 * mPerMm, r.Height / 2 * mPerMm);
 
-        // ---- Conteúdo da vista: vias, hachuras e anotações.
+        // ---- Prancha (o número entra no carimbo).
+        var sheet = CreateSheet(spec, number);
+        _created.Add(sheet.UniqueId);
+        bool customTitleBlock = !string.IsNullOrWhiteSpace(_s.Settings.Sheets.TitleBlock) && TitleBlockId() != ElementId.InvalidElementId;
+
+        // ---- Conteúdo do carimbo e elementos da folha.
+        var content = SheetContent.Build(_ctx, _fmt, spec, lots, def, vias: _o.Vias && _s.Project.Vias.Count > 0);
+        var images = new HashSet<string>();
+        string? croqui = null;
+        try { croqui = _o.Croqui?.Invoke(spec, lots); } catch (Exception ex) { Logger.Error("Croqui automático", ex); Warnings.Add($"{spec.Title}: croqui automático – {ex.Message}"); }
+        if (string.IsNullOrWhiteSpace(croqui) || !File.Exists(croqui)) croqui = File.Exists(_o.LocationImage) ? _o.LocationImage : null;
+        if (croqui is not null) images.Add("croqui");
+        if (!string.IsNullOrWhiteSpace(tpl.LogoPath) && File.Exists(tpl.LogoPath)) images.Add("logo");
+        var northDir = NorthOnPaper(view);
+        bool geo = def.Kind == CrsKind.Geographic;
+        var prims = SheetRenderer.Render(new SheetRenderInput
+        {
+            Template = tpl, Content = content, Scale = scale, Folha = folha.ToString("00"), SheetNumber = sheet.SheetNumber, Date = DateTime.Today,
+            CrsAt = q => _ctx.Coords.ToCrs(ToModel(q), def) is { } c ? (geo ? (c.Lon, c.Lat) : (c.East, c.North)) : null,
+            Geographic = geo, WestAsO = _s.Settings.Format.WestAsO,
+            Table = fit.Table is null ? null : table, TableRect = fit.Table, North = northDir, FrameAndBlocks = !customTitleBlock,
+            Palette = Hatcher.Palette, Images = images,
+        });
+
+        // ---- Conteúdo da vista. A grade vem primeiro (fica atrás das hachuras e do desenho).
+        DrawGridInView(view, prims.OfType<PLine>().Where(l => l.Style == PLineStyle.Grade), ToModel, tpl.GridColor);
         if (_o.Vias && _s.Project.Vias.Count > 0)
             foreach (var w in StreetDrawer.Draw(_doc, view, _ctx, lots, _s.Settings.Streets, _o.Font)) Warnings.Add($"{spec.Title}: {w}");
         if (spec.Hatch)
             Hatcher.Apply(_doc, view, lots, l => spec.Colors.TryGetValue(l.Id, out int c) ? c : 0);
-        var obstacles = DrawRefMarker(view, refPt, !spec.Detailed, scale);
         if (_o.Anotacoes)
         {
+            var obstacles = new List<Obb> { Obst(northRect) };
+            if (fit.Table is PaperRect tbr) obstacles.Add(Obst(tbr));
+            obstacles.AddRange(SheetRenderer.OutsideMap(map).Select(Obst));
             var fails = new List<string>();
             var ao = Annotator.Options.From(_s.Settings.Annotation);
+            if (st.DesenhoMm > 0) ao.TextMm = st.DesenhoMm;
+            ao.Font = string.IsNullOrWhiteSpace(st.Font) ? ao.Font : st.Font;
             ao.Edges = true;
             ao.Confrontantes = true;
             ao.Area = true;
             if (spec.Detailed) { ao.Vertices = true; ao.EdgeAngle = true; ao.Dots = true; }
             else { ao.Vertices = false; ao.EdgeAngle = false; ao.Dots = false; }
-            Func<LotRecord, string>? owner = spec.Detailed ? null : l => string.IsNullOrWhiteSpace(l.Proprietario) ? _s.Project.Info.Proprietario : l.Proprietario;
-            Annotator.Annotate(_doc, view, lots, ctx, _fmt, ao, fails, owner, obstacles);
+            var callCtx = ctx;
+            Annotator.Annotate(_doc, view, lots, ctx, _fmt, ao, fails, null, obstacles, refCallout: r => Callout(r, callCtx, _fmt, def));
             Warnings.AddRange(fails.Select(f => $"{spec.Title}: {f}"));
+            if (Annotator.LastConflicts > 0)
+                Warnings.Add($"{spec.Title}: {Annotator.LastConflicts} texto(s) sem espaço livre (ficaram na posição de menor conflito) – confira e arraste se precisar.");
         }
         _doc.Regenerate();
 
-        // ---- Prancha.
-        var sheet = CreateSheet(spec, index, number);
-        _created.Add(sheet.UniqueId);
-        bool customTitleBlock = !string.IsNullOrWhiteSpace(_s.Settings.Sheets.TitleBlock) && TitleBlockId() != ElementId.InvalidElementId;
-        if (!customTitleBlock) DrawFrame(sheet, layout, spec, lots, scale, index, count);
+        // ---- Viewport no mapa, alinhado com precisão (a grade e os valores das bordas dependem disso).
         if (!Viewport.CanAddViewToSheet(_doc, sheet.Id, view.Id)) throw new InvalidOperationException("A vista não pode ser colocada na prancha.");
-        var c = vpArea.Center;
-        var vp = Viewport.Create(_doc, sheet.Id, view.Id, P(c.X, c.Y));
+        var vp = Viewport.Create(_doc, sheet.Id, view.Id, P(map.Center.X, map.Center.Y));
         NoTitle(vp);
-        if (coordRep is not null) DrawCoordTable(sheet, new PaperRect(area.X0, area.Y0, area.X1, area.Y0 + quadroH), coordRep);
-        else if (spec.QuadroIds.Count > 0) DrawQuadro(sheet, new PaperRect(area.X0, area.Y0, area.X1, area.Y0 + quadroH), spec);
-        DrawNorth(sheet, view, new Vec2(area.X1 - 10, area.Y1 - 16));
         _doc.Regenerate();
-        SheetRegistry.Register(_s, spec, sheet, view);
+        AlignViewport(vp, view, ToModel(map.Center), map.Center);
+
+        // ---- Elementos da folha (tudo menos a grade, que está na vista).
+        DrawPrims(sheet, prims.Where(x => x is not PLine { Style: PLineStyle.Grade }), croqui, tpl.LogoPath);
+        _doc.Regenerate();
+        var g = SheetRegistry.Register(_s, spec, sheet, view);
+        g.Folha = folha;
         return sheet;
     }
 
-    private string _refText = "";
-
-    /// <summary>Nome do ponto de referência: o nome do vértice na prancha de um lote; "PR" nas pranchas de visualização.</summary>
-    private static string RefName(SheetSpec spec, List<LotRecord> lots, ProjectContext ctx, Vec2 p)
+    /// <summary>Direção do norte (o mesmo dos azimutes) no papel, pela orientação da vista.</summary>
+    private Vec2 NorthOnPaper(View view)
     {
-        foreach (var l in lots)
+        var n = _ctx.Coords.DirectionFromAzimuth(0);
+        var right = view.RightDirection; var up = view.UpDirection;
+        var dir = new Vec2(n.X * right.X + n.Y * right.Y, n.X * up.X + n.Y * up.Y);
+        return dir.LengthSquared < 1e-9 ? new Vec2(0, 1) : dir.Normalized();
+    }
+
+    /// <summary>Move o viewport para o centro do recorte cair exatamente no centro do mapa.</summary>
+    private void AlignViewport(Viewport vp, View view, Vec2 modelCenter, Vec2 paperCenter)
+    {
+        try
+        {
+            var tws = view.GetModelToProjectionTransforms();
+            if (tws.Count == 0) return;
+            var m2p = tws[0].GetModelToProjectionTransform();
+            var p2s = vp.GetProjectionToSheetTransform();
+            var at = p2s.OfPoint(m2p.OfPoint(RvtUnits.ToXyz(modelCenter, ElementUtil.ViewPlaneZ(view))));
+            var delta = new XYZ(paperCenter.X / Ft - at.X, paperCenter.Y / Ft - at.Y, 0);
+            if (delta.GetLength() * Ft > 0.05) vp.SetBoxCenter(vp.GetBoxCenter() + delta);
+        }
+        catch (Exception ex) { Logger.Error("Alinhar viewport", ex); }
+    }
+
+    /// <summary>Linhas da grade como linhas de detalhe na vista (atrás das hachuras e anotações).</summary>
+    private void DrawGridInView(View view, IEnumerable<PLine> lines, Func<Vec2, Vec2> toModel, byte[] rgb)
+    {
+        var list = lines.ToList();
+        if (list.Count == 0) return;
+        var style = RevitStyles.LineStyle(_doc, "GeoPoint - Grade de coordenadas", new Color(rgb[0], rgb[1], rgb[2]), 1);
+        double z = ElementUtil.ViewPlaneZ(view);
+        foreach (var l in list)
         {
             try
             {
-                var v = ctx.Report(l).Vertices.FirstOrDefault(x => x.Internal.DistanceTo(p) < 0.01);
-                if (v is not null) return spec.Detailed ? v.Name : $"PR ({v.Name} do {l.DisplayName})";
-            }
-            catch { }
-        }
-        return spec.Detailed ? "Ponto de referência" : "PR";
-    }
-
-    /// <summary>Triângulo do ponto de referência (e "PR" nas pranchas de visualização). Devolve as áreas ocupadas.</summary>
-    private List<Obb> DrawRefMarker(View view, Vec2 p, bool withLabel, int scale)
-    {
-        var res = new List<Obb>();
-        try
-        {
-            double k = scale / 1000.0;               // mm no papel → m no modelo
-            double r = 2.4 * k;
-            var style = RevitStyles.LineStyle(_doc, "GeoPoint - Ponto de referência", new Color(192, 0, 0), 3);
-            double z = ElementUtil.ViewPlaneZ(view);
-            var pts = Enumerable.Range(0, 3).Select(i => p + Vec2.FromAngle(Math.PI / 2 + i * 2 * Math.PI / 3) * r).ToList();
-            for (int i = 0; i < 3; i++)
-            {
-                var dc = _doc.Create.NewDetailCurve(view, Autodesk.Revit.DB.Line.CreateBound(RvtUnits.ToXyz(pts[i], z), RvtUnits.ToXyz(pts[(i + 1) % 3], z)));
+                var a = toModel(l.A); var b = toModel(l.B);
+                if (a.DistanceTo(b) < 0.01) continue;
+                var dc = _doc.Create.NewDetailCurve(view, Autodesk.Revit.DB.Line.CreateBound(RvtUnits.ToXyz(a, z), RvtUnits.ToXyz(b, z)));
                 if (style is not null) dc.LineStyle = style;
             }
-            res.Add(Obb.Of(p, 0, r * 1.05, r * 1.05));
-            if (withLabel)
-            {
-                double size = _s.Settings.Annotation.TextSizeMm;
-                var type = RevitStyles.TextType(_doc, size, _o.Font, true, true, new Color(192, 0, 0));
-                double hh = RevitStyles.HalfHeightMm(size) * k;
-                double hw = (AnnotationPlanner.TextWidth("PR", size * k, true) / 2) + RevitStyles.TextPadMm * k;
-                var c = p + new Vec2(r + hw + 0.6 * k, r * 0.4);
-                TextNote.Create(_doc, view.Id, RvtUnits.ToXyz(c + new Vec2(0, hh), z), "PR", new TextNoteOptions(type) { HorizontalAlignment = HorizontalTextAlignment.Center });
-                res.Add(Obb.Of(c, 0, hw, hh));
-            }
+            catch (Exception ex) { Logger.Error("Grade de coordenadas", ex); }
         }
-        catch (Exception ex) { Logger.Error("Marcador do ponto de referência", ex); }
-        return res;
+    }
+
+    // ------------------------------------------------------------------ elementos da folha
+
+    private readonly Dictionary<PLineStyle, GraphicsStyle?> _lineStyles = new();
+
+    private GraphicsStyle? Style(PLineStyle s)
+    {
+        if (_lineStyles.TryGetValue(s, out var gs)) return gs;
+        gs = s switch
+        {
+            PLineStyle.Moldura => RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (moldura)", new Color(0, 0, 0), 5),
+            PLineStyle.Bloco => RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (blocos)", new Color(0, 0, 0), 3),
+            PLineStyle.Papel => RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (folha)", new Color(160, 160, 160), 1),
+            PLineStyle.Tracejada => RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (tracejada)", new Color(90, 90, 90), 1, RevitStyles.DashPattern(_doc, "GeoPoint tracejado curto", 1.0, 0.8)),
+            PLineStyle.Vermelha => RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (vermelha)", Annotator.Red, 2),
+            PLineStyle.MeioFio => RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (meio-fio)", new Color(100, 100, 100), 2),
+            PLineStyle.Limite => RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (limite)", new Color(0, 0, 0), 4),
+            PLineStyle.Grade => RevitStyles.LineStyle(_doc, "GeoPoint - Grade de coordenadas", new Color(175, 175, 175), 1),
+            _ => RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (linhas)", new Color(0, 0, 0), 1),
+        };
+        _lineStyles[s] = gs;
+        return gs;
+    }
+
+    private void DrawPrims(ViewSheet sheet, IEnumerable<SheetPrim> prims, string? croqui, string logo)
+    {
+        foreach (var pr in prims)
+        {
+            try
+            {
+                switch (pr)
+                {
+                    case PLine l:
+                        Line(sheet, l.A, l.B, Style(l.Style));
+                        break;
+                    case PFill f:
+                    {
+                        if (f.Pts.Count < 3) break;
+                        ElementId type = f.Hatch
+                            ? Hatcher.TypeFor(_doc, Array.FindIndex(Hatcher.Palette.ToArray(), c => c.R == f.R && c.G == f.G && c.B == f.B) is int ix && ix >= 0 ? ix : 0, f.Cross, gray: f.R == f.G && f.G == f.B)
+                            : RevitStyles.FillType(_doc, LotUse.Lote, $"GeoPoint - Sólido {f.R:X2}{f.G:X2}{f.B:X2}", (f.R, f.G, f.B));
+                        var curves = new List<Curve>();
+                        for (int i = 0; i < f.Pts.Count; i++)
+                        {
+                            var a = f.Pts[i]; var b = f.Pts[(i + 1) % f.Pts.Count];
+                            if (a.DistanceTo(b) > 0.01) curves.Add(Autodesk.Revit.DB.Line.CreateBound(P(a.X, a.Y), P(b.X, b.Y)));
+                        }
+                        var fr = FilledRegion.Create(_doc, type, sheet.Id, new List<CurveLoop> { CurveLoop.Create(curves) });
+                        var inv = RevitStyles.InvisibleLines(_doc);
+                        if (inv != ElementId.InvalidElementId && FilledRegion.IsValidLineStyleIdForFilledRegion(_doc, inv)) fr.SetLineStyleId(inv);
+                        break;
+                    }
+                    case PCircle c:
+                        if (c.Filled)
+                            Annotator.Dot(_doc, sheet, c.C * 0.001, c.Radius * 0.001, 0,
+                                RevitStyles.FillType(_doc, LotUse.Lote, "GeoPoint - Ponto de vértice", (0, 0, 0)));
+                        break;
+                    case PText t:
+                        Text(sheet, t);
+                        break;
+                    case PImage im:
+                        string? path = im.Key == "croqui" ? croqui : im.Key == "logo" ? logo : null;
+                        if (path is not null) PlaceImage(sheet, im.Rect, path);
+                        break;
+                }
+            }
+            catch (Exception ex) { Logger.Error("Elemento da prancha", ex); }
+        }
+    }
+
+    /// <summary>Texto na prancha. O Revit insere pelo topo da caixa (no eixo do texto): converte o alinhamento pedido.</summary>
+    private TextNote Text(View sheet, PText t)
+    {
+        var color = t.R == 0 && t.G == 0 && t.B == 0 ? null : new Color(t.R, t.G, t.B);
+        var type = RevitStyles.TextType(_doc, Math.Round(t.SizeMm, 2), _o.Template.Styles.Font, false, t.Bold, color);
+        var opts = new TextNoteOptions(type)
+        {
+            HorizontalAlignment = t.H switch { PTextH.Center => HorizontalTextAlignment.Center, PTextH.Right => HorizontalTextAlignment.Right, _ => HorizontalTextAlignment.Left },
+            Rotation = t.Rotation,
+            KeepRotatedTextReadable = false,
+        };
+        double boxH = 2 * RevitStyles.HalfHeightMm(t.SizeMm, t.LineCount);
+        double up = t.V switch { PTextV.Middle => boxH / 2, PTextV.Bottom => boxH, _ => 0 };
+        var dirUp = Vec2.FromAngle(t.Rotation).PerpLeft;
+        var at = t.At + dirUp * up;
+        return TextNote.Create(_doc, sheet.Id, P(at.X, at.Y), t.Text.Replace("\n", "\r"), opts);
     }
 
     // ------------------------------------------------------------------ vista
@@ -373,7 +516,7 @@ public sealed class SheetBuilder
         return tb?.Id ?? ElementId.InvalidElementId;
     }
 
-    private ViewSheet CreateSheet(SheetSpec spec, int index, string? reuseNumber)
+    private ViewSheet CreateSheet(SheetSpec spec, string? reuseNumber)
     {
         var tb = string.IsNullOrWhiteSpace(_s.Settings.Sheets.TitleBlock) ? ElementId.InvalidElementId : TitleBlockId();
         if (tb != ElementId.InvalidElementId && _doc.GetElement(tb) is FamilySymbol fs && !fs.IsActive) fs.Activate();
@@ -427,130 +570,9 @@ public sealed class SheetBuilder
         Line(sheet, new Vec2(r.X0, r.Y1), new Vec2(r.X0, r.Y0), style);
     }
 
-    private TextNote Text(View sheet, double x, double y, string text, double sizeMm, bool bold = false, HorizontalTextAlignment h = HorizontalTextAlignment.Left,
-        VerticalTextAlignment v = VerticalTextAlignment.Top, double? widthMm = null)
+    private void PlaceImage(ViewSheet sheet, PaperRect r, string path)
     {
-        var type = RevitStyles.TextType(_doc, sizeMm, _o.Font, false, bold);
-        var opts = new TextNoteOptions(type) { HorizontalAlignment = h };
-        // O Revit insere o texto pela borda superior da caixa: converte o alinhamento pedido.
-        int lines = text.Split('\n').Length;
-        if (widthMm is double ww && ww > 2) lines = Math.Max(lines, (int)Math.Ceiling(AnnotationPlanner.TextWidth(text, sizeMm, bold) / Math.Max(1, ww - 1)));
-        double boxH = 2 * RevitStyles.HalfHeightMm(sizeMm, lines);
-        double top = v switch { VerticalTextAlignment.Middle => y + boxH / 2, VerticalTextAlignment.Bottom => y + boxH, _ => y };
-        text = text.Replace("\n", "\r");
-        return widthMm is double w && w > 2
-            ? TextNote.Create(_doc, sheet.Id, P(x, top), w / Ft, text, opts)
-            : TextNote.Create(_doc, sheet.Id, P(x, top), text, opts);
-    }
-
-    private void DrawFrame(ViewSheet sheet, SheetLayout layout, SheetSpec spec, List<LotRecord> lots, int scale, int index, int count)
-    {
-        var thick = RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (moldura)", new Color(0, 0, 0), 5);
-        var thin = RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (linhas)", new Color(0, 0, 0), 1);
-        var paper = RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (folha)", new Color(160, 160, 160), 1);
-        Rect(sheet, new PaperRect(0, 0, layout.Width, layout.Height), paper);
-        Rect(sheet, layout.Frame, thick);
-        Rect(sheet, layout.TitleBlock, thick);
-        foreach (var (a, b) in layout.Lines) Line(sheet, a, b, thin);
-
-        var info = _s.Project.Info;
-        var tech = _s.Settings.Technician;
-        var reports = lots.Select(l => { try { return _ctx.Report(l); } catch { return null; } }).Where(r => r is not null).Select(r => r!).ToList();
-        double area = reports.Sum(r => r.AreaLocal);
-        string owners = string.Join("; ", lots.Select(l => string.IsNullOrWhiteSpace(l.Proprietario) ? info.Proprietario : l.Proprietario)
-            .Where(x => !string.IsNullOrWhiteSpace(x)).Distinct());
-        string matr = string.Join("; ", lots.Select(l => l.Matricula).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct());
-        if (matr.Length == 0) matr = info.Matricula;
-        if (!string.IsNullOrWhiteSpace(info.InscricaoMunicipal)) matr += (matr.Length > 0 ? " / Insc. " : "Insc. ") + info.InscricaoMunicipal;
-        string endereco = lots.Select(l => l.Endereco).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? info.Endereco;
-        if (!string.IsNullOrWhiteSpace(info.Bairro)) endereco += (endereco.Length > 0 ? " – " : "") + info.Bairro;
-        string lotNames = string.Join(", ", lots.Select(l => l.DisplayName));
-        string imovel = endereco.Length > 0 ? $"{lotNames} – {endereco}" : lotNames;
-
-        var values = new Dictionary<string, string>
-        {
-            ["proprietario"] = owners,
-            ["imovel"] = imovel,
-            ["municipio"] = string.Join("/", new[] { info.Municipio, info.UF }.Where(x => !string.IsNullOrWhiteSpace(x))),
-            ["matricula"] = matr,
-            ["area"] = (lots.Count > 1 ? "Total: " : "") + _fmt.Area(area),
-            ["perimetro"] = reports.Count == 1 ? _fmt.Distance(reports[0].PerimeterLocal) : "ver quadro de áreas",
-            ["coordenada"] = _refText,
-            ["escala"] = $"1:{scale}",
-            ["data"] = DateTime.Now.ToString("dd/MM/yyyy"),
-            ["folha"] = $"{index:00}/{count:00}",
-            ["prancha"] = sheet.SheetNumber,
-        };
-        foreach (var cell in layout.Cells)
-        {
-            var r = cell.Rect;
-            if (cell.Key == "titulo")
-            {
-                Text(sheet, r.X0 + 2, r.Y1 - 1.6, spec.Title, cell.ValueMm, true, widthMm: r.Width - 4);
-                string sit = _s.Project.Situacao;
-                string sub = string.Join(" – ", new[] { spec.Subtitle, sit.Length > 0 && !spec.Subtitle.Contains(sit.ToUpperInvariant()) ? sit.ToUpperInvariant() : "" }.Where(x => x.Length > 0));
-                if (sub.Length > 0) Text(sheet, r.X0 + 2, r.Y0 + 1.2, sub, 1.9, false, v: VerticalTextAlignment.Bottom, widthMm: r.Width - 4);
-                continue;
-            }
-            if (cell.Label.Length > 0) Text(sheet, r.X0 + 1.2, r.Y1 - 0.4, cell.Label, 1.4);
-            switch (cell.Key)
-            {
-                case "localizacao":
-                    PlaceImage(sheet, new PaperRect(r.X0 + 1.5, r.Y0 + 1.5, r.X1 - 1.5, r.Y1 - 4));
-                    break;
-                case "resp":
-                {
-                    double ly = r.Y0 + r.Height * 0.42;
-                    Line(sheet, new Vec2(r.X0 + 4, ly), new Vec2(r.X1 - 4, ly), thin);
-                    string t = string.Join("\n", new[]
-                    {
-                        tech.Nome, string.Join(" – ", new[] { tech.Profissao, tech.Registro.Length > 0 ? $"{tech.Conselho} {tech.Registro}" : "" }.Where(x => x.Length > 0)),
-                        info.RrtArt.Length > 0 ? (tech.Conselho == "CAU" ? "RRT " : "ART ") + info.RrtArt : "",
-                    }.Where(x => !string.IsNullOrWhiteSpace(x)));
-                    if (t.Length > 0) Text(sheet, r.Center.X, ly - 0.8, t, cell.ValueMm, h: HorizontalTextAlignment.Center, widthMm: r.Width - 4);
-                    break;
-                }
-                case "assprop":
-                {
-                    double ly = r.Y0 + r.Height * 0.42;
-                    Line(sheet, new Vec2(r.X0 + 4, ly), new Vec2(r.X1 - 4, ly), thin);
-                    if (owners.Length > 0) Text(sheet, r.Center.X, ly - 0.8, owners, cell.ValueMm, h: HorizontalTextAlignment.Center, widthMm: r.Width - 4);
-                    break;
-                }
-                default:
-                    if (values.TryGetValue(cell.Key, out var val) && !string.IsNullOrWhiteSpace(val))
-                    {
-                        // Texto longo: reduz a altura até caber numa linha (mínimo 1,5 mm); se ainda não couber, quebra a linha.
-                        double size = cell.ValueMm, avail = r.Width - 2.4;
-                        foreach (var line in val.Split('\n'))
-                            while (size > 1.5 && AnnotationPlanner.TextWidth(line, size, cell.Bold) > avail) size = Math.Round(size - 0.1, 2);
-                        if (cell.Centered) Text(sheet, r.Center.X, r.Y0 + 0.6, val, size, cell.Bold, HorizontalTextAlignment.Center, VerticalTextAlignment.Bottom, r.Width - 2);
-                        else Text(sheet, r.X0 + 1.2, r.Y0 + 0.6, val, size, cell.Bold, v: VerticalTextAlignment.Bottom, widthMm: r.Width - 2.4);
-                    }
-                    break;
-            }
-        }
-    }
-
-    private string ReferenceText(Vec2 p, string name)
-    {
-        if (!_s.Project.Reference.IsSet) return $"{name}: coordenadas locais (sem georreferência)";
-        var utm = _ctx.Coords.ToCrs(p, CrsDef.Utm());
-        var g = _ctx.Coords.ToGeodetic(p);
-        string geo = g is { } gg ? $"{_fmt.Lat(gg.LatDeg)}  {_fmt.Lon(gg.LonDeg)}" : "";
-        return utm is { } u
-            ? $"{name}: E {_fmt.Plane(u.A)} m  N {_fmt.Plane(u.B)} m – UTM {u.ZoneLabel} SIRGAS 2000\n{geo}"
-            : $"{name}: {geo} (SIRGAS 2000)";
-    }
-
-    private void PlaceImage(ViewSheet sheet, PaperRect r)
-    {
-        string path = _o.LocationImage;
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-        {
-            Text(sheet, r.Center.X, r.Center.Y, "(inserir imagem de localização)", 1.6, h: HorizontalTextAlignment.Center, v: VerticalTextAlignment.Middle);
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return;
         try
         {
             var type = new FilteredElementCollector(_doc).OfClass(typeof(ImageType)).Cast<ImageType>()
@@ -572,120 +594,11 @@ public sealed class SheetBuilder
         }
         catch (Exception ex)
         {
-            Logger.Error("Imagem de localização", ex);
-            Warnings.Add("Não foi possível inserir a imagem de localização: " + ex.Message);
+            Logger.Error("Imagem da prancha", ex);
+            Warnings.Add("Não foi possível inserir a imagem: " + ex.Message);
         }
     }
 
-    private void DrawQuadro(ViewSheet sheet, PaperRect band, SheetSpec spec)
-    {
-        var thin = RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (linhas)", new Color(0, 0, 0), 1);
-        var lots = spec.QuadroIds.Select(_s.Project.FindLot).Where(l => l is not null).Select(l => l!).ToList();
-        double rowH = 4.6;
-        double x0 = band.X0 + 3, x1 = band.X1 - 3;
-        double top = band.Y1 - 2;
-        double[] cols = { 0, 0.34, 0.52, 0.68, 1.0 };
-        string[] heads = { "LOTE", "ÁREA (m²)", "PERÍMETRO (m)", "PROPRIETÁRIO" };
-        double X(int c) => x0 + (x1 - x0) * cols[c];
-        Text(sheet, x0, top + 0.2, "QUADRO DE ÁREAS", 1.8, true, v: VerticalTextAlignment.Bottom);
-        int rows = lots.Count + 2;
-        double bottom = top - rowH * rows;
-        for (int r = 0; r <= rows; r++) Line(sheet, new Vec2(x0, top - r * rowH), new Vec2(x1, top - r * rowH), thin);
-        for (int c = 0; c < cols.Length; c++) Line(sheet, new Vec2(X(c), top), new Vec2(X(c), bottom), thin);
-        void Row(int r, string[] cells, bool bold)
-        {
-            double y = top - r * rowH - rowH / 2;
-            for (int c = 0; c < 4; c++)
-            {
-                if (string.IsNullOrEmpty(cells[c])) continue;
-                bool left = c == 0 || c == 3;
-                Text(sheet, left ? X(c) + 1 : (X(c) + X(c + 1)) / 2, y, cells[c], 1.8, bold, left ? HorizontalTextAlignment.Left : HorizontalTextAlignment.Center, VerticalTextAlignment.Middle);
-            }
-        }
-        Row(0, heads, true);
-        double total = 0;
-        for (int i = 0; i < lots.Count; i++)
-        {
-            var l = lots[i];
-            LotReport? rep = null;
-            try { rep = _ctx.Report(l); } catch { }
-            total += rep?.AreaLocal ?? 0;
-            string owner = string.IsNullOrWhiteSpace(l.Proprietario) ? _s.Project.Info.Proprietario : l.Proprietario;
-            Row(i + 1, new[] { l.DisplayName, rep is null ? "—" : _fmt.Number(rep.AreaLocal, _s.Settings.Format.AreaDecimals), rep is null ? "—" : _fmt.DistanceValue(rep.PerimeterLocal), owner.Truncate(48) }, l.IsRemanescente);
-        }
-        Row(lots.Count + 1, new[] { "TOTAL", _fmt.Number(total, _s.Settings.Format.AreaDecimals), "", "" }, true);
-    }
-
-    private void DrawCoordTable(ViewSheet sheet, PaperRect band, LotReport rep)
-    {
-        var thin = RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (linhas)", new Color(0, 0, 0), 1);
-        var def = _ctx.Coords.HasGeoreference ? (_s.Settings.Memorial.CoordinateSystems.FirstOrDefault() ?? CrsDef.Utm()) : CrsDef.ProjectLocalDef();
-        var (ta, tb) = _fmt.ColumnTitles(def);
-        string[] heads = { "VÉRTICE", ta.ToUpperInvariant(), tb.ToUpperInvariant(), _s.Settings.Format.AngleStyle == AngleStyle.Rumo ? "RUMO" : "AZIMUTE", "DIST. (m)", "CONFRONTANTE" };
-        double[] cols = { 0, 0.09, 0.25, 0.41, 0.57, 0.67, 1.0 };
-        double rowH = 4.2, x0 = band.X0 + 3, x1 = band.X1 - 3, top = band.Y1 - 2;
-        double X(int c) => x0 + (x1 - x0) * cols[c];
-        Text(sheet, x0, top + 0.2, $"QUADRO DE COORDENADAS – {rep.Lot.DisplayName.ToUpperInvariant()} ({def.ShortName(_ctx.Coords.AutoZone)})", 1.8, true, v: VerticalTextAlignment.Bottom);
-        int n = rep.Vertices.Count;
-        double bottom = top - rowH * (n + 1);
-        for (int r = 0; r <= n + 1; r++) Line(sheet, new Vec2(x0, top - r * rowH), new Vec2(x1, top - r * rowH), thin);
-        for (int c = 0; c < cols.Length; c++) Line(sheet, new Vec2(X(c), top), new Vec2(X(c), bottom), thin);
-        void Row(int r, string[] cells, bool bold)
-        {
-            double y = top - r * rowH - rowH / 2;
-            for (int c = 0; c < cells.Length; c++)
-            {
-                if (string.IsNullOrEmpty(cells[c])) continue;
-                double size = 1.7, avail = (X(c + 1) - X(c)) - 1.5;
-                while (size > 1.3 && AnnotationPlanner.TextWidth(cells[c], size, bold) > avail) size = Math.Round(size - 0.1, 2);
-                bool left = c == cells.Length - 1;
-                Text(sheet, left ? X(c) + 0.8 : (X(c) + X(c + 1)) / 2, y, cells[c], size, bold, left ? HorizontalTextAlignment.Left : HorizontalTextAlignment.Center, VerticalTextAlignment.Middle);
-            }
-        }
-        Row(0, heads, true);
-        for (int i = 0; i < n; i++)
-        {
-            var v = rep.Vertices[i];
-            var sgm = rep.Segments[i];
-            var c = _ctx.Coords.ToCrs(v.Internal, def);
-            var (a, b) = c is { } cc ? _fmt.Columns(cc, def) : ("–", "–");
-            string dist = sgm.IsArc ? $"{_fmt.DistanceValue(sgm.LengthHorizontal)} (R={_fmt.DistanceValue(sgm.Radius ?? 0)})" : _fmt.DistanceValue(sgm.LengthHorizontal);
-            Row(i + 1, new[] { v.Name, a, b, _fmt.Angle(sgm.AzimuthTrue), dist, $"{sgm.From.Name}–{sgm.To.Name}: {(string.IsNullOrWhiteSpace(sgm.Confrontante) ? "–" : sgm.Confrontante)}" }, false);
-        }
-    }
-
-    private void DrawNorth(ViewSheet sheet, View view, Vec2 at)
-    {
-        try
-        {
-            // Direção do norte verdadeiro na folha, a partir da orientação da vista.
-            var n = _ctx.Coords.DirectionFromAzimuth(0);
-            var right = view.RightDirection; var up = view.UpDirection;
-            var dir = new Vec2(n.X * right.X + n.Y * right.Y, n.X * up.X + n.Y * up.Y);
-            dir = dir.LengthSquared < 1e-9 ? new Vec2(0, 1) : dir.Normalized();
-            var side = dir.PerpRight;
-            var tip = at + dir * 6;
-            var tail = at - dir * 6;
-            var notch = at - dir * 3;
-            var baseL = tail - side * 3.2;
-            var baseR = tail + side * 3.2;
-            var solid = RevitStyles.FillType(_doc, LotUse.Lote, "GeoPoint - Ponto de vértice", (0, 0, 0));
-            var loop = CurveLoop.Create(new List<Curve>
-            {
-                Autodesk.Revit.DB.Line.CreateBound(P(tip.X, tip.Y), P(baseR.X, baseR.Y)),
-                Autodesk.Revit.DB.Line.CreateBound(P(baseR.X, baseR.Y), P(notch.X, notch.Y)),
-                Autodesk.Revit.DB.Line.CreateBound(P(notch.X, notch.Y), P(tip.X, tip.Y)),
-            });
-            FilledRegion.Create(_doc, solid, sheet.Id, new List<CurveLoop> { loop });
-            var thin = RevitStyles.LineStyle(_doc, "GeoPoint - Prancha (linhas)", new Color(0, 0, 0), 1);
-            Line(sheet, tip, baseL, thin);
-            Line(sheet, baseL, notch, thin);
-            var label = tip + dir * 1.2;
-            Text(sheet, label.X, label.Y, "N", 3, true, HorizontalTextAlignment.Center, VerticalTextAlignment.Bottom);
-            Text(sheet, at.X, Math.Min(baseL.Y, baseR.Y) - 1.2, "NV", 1.6, false, HorizontalTextAlignment.Center, VerticalTextAlignment.Top);
-        }
-        catch (Exception ex) { Logger.Error("Seta do norte", ex); }
-    }
 }
 
 internal static class StringExt

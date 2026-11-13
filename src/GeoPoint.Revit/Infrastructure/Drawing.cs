@@ -37,12 +37,15 @@ public static class Annotator
         public bool LabelOwner { get; set; } = true;
         public bool LabelMatricula { get; set; } = true;
         public bool LabelPerimeter { get; set; } = true;
+        /// <summary>Chamada com a coordenada do ponto de referência de cada lote.</summary>
+        public bool RefPoints { get; set; } = true;
 
         public static Options From(AnnotationSettings a) => new()
         {
             Vertices = a.Vertices, Edges = a.Edges, Area = a.AreaLabel, EdgeAngle = a.EdgeAzimuth, Dots = a.VertexDots,
             Outside = a.TextOutside, Confrontantes = a.Confrontantes, Opaque = a.OpaqueText, TextMm = a.TextSizeMm, OffsetMm = a.OffsetMm,
             DotMm = a.DotMm, Font = a.Font, LabelOwner = a.LabelOwner, LabelMatricula = a.LabelMatricula, LabelPerimeter = a.LabelPerimeter,
+            RefPoints = a.RefCallout,
         };
     }
 
@@ -100,8 +103,9 @@ public static class Annotator
 
     /// <summary>Anota um conjunto de lotes de uma vez (divisas e vértices compartilhados uma vez só). Dentro de transação.</summary>
     public static int Annotate(Document doc, View view, IReadOnlyList<LotRecord> lots, ProjectContext ctx, ValueFormatter fmt, Options o, IList<string>? failures = null,
-        Func<LotRecord, string>? ownerOf = null, IEnumerable<Obb>? obstacles = null, bool? perLotNames = null)
+        Func<LotRecord, string>? ownerOf = null, IEnumerable<Obb>? obstacles = null, bool? perLotNames = null, Func<LotReport, RefCallout?>? refCallout = null)
     {
+        LastConflicts = 0;
         foreach (var l in lots) Clear(doc, l, view);
         // O que outros lotes já anotaram nesta vista não é repetido.
         var existing = new HashSet<string>();
@@ -133,20 +137,24 @@ public static class Annotator
             PerLotVertexNames = perLotNames ?? (ctx.Settings.Naming.Numbering == VertexNumbering.Lote && lots.Count > 1),
             // Rua desenhada nesta vista: o nome da via já aparece na rua.
             SkipViaNames = ctx.Project.StreetDrawings.Any(d => d.ViewId == view.UniqueId && ElementUtil.ExistingIds(doc, d.ElementIds).Count > 0),
+            RefCallout = refCallout,
         }, existing);
+        LastConflicts = plan.Conflicts;
         if (plan.Conflicts > 0) Logger.Info($"Anotação: {plan.Conflicts} texto(s) sem espaço livre na vista {view.Name} (posição de menor conflito).");
 
         var normal = RevitStyles.TextType(doc, o.TextMm, o.Font, o.Opaque);
         var label = RevitStyles.TextType(doc, Math.Round(o.TextMm * 1.1, 2), o.Font, o.Opaque);
         var red = RevitStyles.TextType(doc, o.TextMm, o.Font, o.Opaque, color: Red);
+        var refName = RevitStyles.TextType(doc, o.TextMm, o.Font, o.Opaque, bold: true);
         var dotType = plan.Dots.Count > 0 ? RevitStyles.FillType(doc, LotUse.Lote, "GeoPoint - Ponto de vértice", (0, 0, 0)) : ElementId.InvalidElementId;
-        GraphicsStyle? tickStyle = null, dimStyle = null, leaderStyle = null;
+        GraphicsStyle? tickStyle = null, dimStyle = null, leaderStyle = null, refStyle = null;
         if (plan.Lines.Count > 0)
         {
             var dash = RevitStyles.DashPattern(doc, "GeoPoint tracejado", 1.5, 1.0);
             tickStyle = RevitStyles.LineStyle(doc, LineConfrontante, Red, 1, dash);
             dimStyle = RevitStyles.LineStyle(doc, LineCotaConfrontante, Red, 1);
             leaderStyle = RevitStyles.LineStyle(doc, LineChamada, new Color(90, 90, 90), 1);
+            refStyle = RevitStyles.LineStyle(doc, "GeoPoint - Chamada da coordenada", new Color(0, 0, 0), 1);
         }
         var byLot = lots.ToDictionary(l => l.Id, l => new List<string>());
         double zDefault = ElementUtil.ViewPlaneZ(view);
@@ -160,7 +168,7 @@ public static class Annotator
         {
             try
             {
-                var type = t.Kind switch { AnnoTextKind.LotLabel => label, AnnoTextKind.Confrontante or AnnoTextKind.Measure => red, _ => normal };
+                var type = t.Kind switch { AnnoTextKind.LotLabel => label, AnnoTextKind.Confrontante or AnnoTextKind.Measure => red, AnnoTextKind.RefName => refName, _ => normal };
                 // O Revit posiciona o texto centralizado pelo meio da borda SUPERIOR da caixa; a rotação já vem legível
                 // e é dada em relação à vista. Depois de criado, a direção real do texto é conferida e corrigida.
                 var opts = new TextNoteOptions(type)
@@ -192,7 +200,7 @@ public static class Annotator
             {
                 if (ln.A.DistanceTo(ln.B) < 0.002) continue;
                 var dc = doc.Create.NewDetailCurve(view, Line.CreateBound(RvtUnits.ToXyz(ln.A, Z(ln.Owner)), RvtUnits.ToXyz(ln.B, Z(ln.Owner))));
-                var st = ln.Kind switch { AnnoLineKind.ConfrontanteTick => tickStyle, AnnoLineKind.Leader => leaderStyle, _ => dimStyle };
+                var st = ln.Kind switch { AnnoLineKind.ConfrontanteTick => tickStyle, AnnoLineKind.Leader => leaderStyle, AnnoLineKind.RefLeader => refStyle, _ => dimStyle };
                 if (st is not null) dc.LineStyle = st;
                 byLot[ln.Owner].Add(dc.UniqueId);
             }
@@ -207,6 +215,9 @@ public static class Annotator
         }
         return total;
     }
+
+    /// <summary>Textos sem posição livre na última anotação (aviso de legibilidade).</summary>
+    public static int LastConflicts { get; private set; }
 
     /// <summary>Garante que a linha de base do texto siga a direção pedida (no desenho), girando em torno do ponto de inserção.</summary>
     public static void AlignText(Document doc, TextNote tn, double desired, XYZ at)
@@ -260,6 +271,18 @@ public static class Hatcher
     {
         (220, 60, 50), (40, 90, 210), (30, 150, 80), (225, 140, 20), (140, 60, 190), (20, 150, 170), (200, 50, 130), (110, 110, 30),
     };
+
+    /// <summary>Tipo de hachura do índice de cor (o mesmo das hachuras dos lotes); cinza = área edificada.</summary>
+    public static ElementId TypeFor(Document doc, int colorIndex, bool cross, double spacingMm = 1.6, bool gray = false)
+    {
+        var pattern = cross
+            ? RevitStyles.HatchPattern(doc, $"GeoPoint hachura cruzada {spacingMm:0.0} mm", 45, spacingMm * 1.4, true)
+            : RevitStyles.HatchPattern(doc, $"GeoPoint hachura 45° {spacingMm:0.0} mm", 45, spacingMm, false);
+        if (gray) return RevitStyles.HatchType(doc, "GeoPoint - Área edificada", pattern, new Color(110, 110, 110), true);
+        int k = Math.Abs(colorIndex) % Palette.Length;
+        var (r, g, b) = Palette[k];
+        return RevitStyles.HatchType(doc, $"GeoPoint - Hachura {(cross ? "remanescente " : "")}{k + 1}", pattern, new Color(r, g, b), true);
+    }
 
     public static void Clear(Document doc, LotRecord lot, View view)
     {

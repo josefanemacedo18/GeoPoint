@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="clr-namespace:GeoPoint.Revit.UI"
-        Title="GeoPoint – Pranchas A4" Width="1000" Height="820" MinWidth="820" MinHeight="640"
+        Title="GeoPoint – Pranchas" Width="1000" Height="820" MinWidth="820" MinHeight="640"
         FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterOwner">
     <Window.Resources>
         <ResourceDictionary>
@@ -12,8 +12,8 @@
         </ResourceDictionary>
     </Window.Resources>
     <DockPanel Margin="14">
-        <TextBlock DockPanel.Dock="Top" Style="{StaticResource H1}" Text="Pranchas A4 por situação"/>
-        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Text="Cada prancha usa uma CÓPIA da planta (o desenho original não é alterado). Pranchas com vários lotes são de visualização (distâncias, áreas, proprietários e confrontantes, sem vértices nem azimutes). Pranchas de um lote têm a numeração própria do lote (P-01…), todos os azimutes e o quadro de coordenadas."/>
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource H1}" Text="Pranchas por situação"/>
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Text="Cada prancha usa uma CÓPIA da planta (o desenho original não é alterado), recortada no mapa do modelo escolhido, com grade de coordenadas, norte e a coordenada do ponto de referência de cada lote. Pranchas com vários lotes são de visualização (distâncias, áreas, proprietários e confrontantes). Pranchas de um lote têm numeração própria (P-01…), todos os azimutes e a tabela de coordenadas."/>
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
             <Button x:Name="OkButton" Content="Gerar pranchas" Style="{StaticResource Primary}" Click="Ok_Click" IsDefault="True"/>
             <Button Content="Cancelar" IsCancel="True"/>
@@ -23,16 +23,16 @@
                 <TextBlock DockPanel.Dock="Top" x:Name="Summary" TextWrapping="Wrap" Margin="0,0,0,4"/>
                 <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
                     <Button Margin="0" Content="Escolher o ponto de referência no desenho…" Click="PickRef_Click"
-                            ToolTip="Selecione a prancha na tabela e clique no vértice (com snap) cuja coordenada vai no carimbo."/>
+                            ToolTip="Selecione a prancha de um lote na tabela e clique no vértice (com snap) cuja coordenada aparece no mapa. Fica guardado no lote e vale para todas as pranchas dele."/>
                 </StackPanel>
                 <DataGrid x:Name="SheetsGrid" Height="190" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Single">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Prancha" Binding="{Binding Title}" Width="*" IsReadOnly="True"/>
                         <DataGridTextColumn Header="Conteúdo" Binding="{Binding Conteudo}" Width="150" IsReadOnly="True"/>
-                        <DataGridTemplateColumn Header="Coordenada de referência" Width="200">
+                        <DataGridTemplateColumn Header="Ponto de referência (coordenada no mapa)" Width="230">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <ComboBox ItemsSource="{Binding RefOptions}" DisplayMemberPath="Text" SelectedValuePath="Id" SelectedValue="{Binding RefKey, UpdateSourceTrigger=PropertyChanged}"/>
+                                    <ComboBox ItemsSource="{Binding RefOptions}" DisplayMemberPath="Text" SelectedValuePath="Id" SelectedValue="{Binding RefKey, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding RefEditable}"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
@@ -91,22 +91,24 @@
                         <CheckBox x:Name="Norte" Content="Girar a cópia para o norte verdadeiro ficar para cima"/>
                     </StackPanel>
                 </GroupBox>
-                <GroupBox Header="Folha A4">
+                <GroupBox Header="Folha">
                     <Grid>
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
-                        <Label Content="Orientação:"/>
-                        <ComboBox Grid.Column="1" x:Name="Orientation">
-                            <ComboBoxItem Content="Retrato (carimbo embaixo)"/>
-                            <ComboBoxItem Content="Paisagem (carimbo à direita)"/>
-                        </ComboBox>
+                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                        <Label Content="Modelo:"/>
+                        <ComboBox Grid.Column="1" x:Name="Template" DisplayMemberPath="Name" SelectionChanged="Template_Changed"
+                                  ToolTip="Modelo de prancha da biblioteca (papel, blocos do carimbo, grade, estilos de texto)."/>
+                        <Button Grid.Column="2" Content="Modelos…" Click="Templates_Click" ToolTip="Biblioteca de modelos de prancha: criar, duplicar, editar, importar e exportar."/>
                         <Label Grid.Row="1" Content="Escala:"/>
                         <ComboBox Grid.Row="1" Grid.Column="1" x:Name="Scale"/>
                         <Label Grid.Row="2" Content="Numeração:"/>
                         <TextBox Grid.Row="2" Grid.Column="1" x:Name="Prefix" ToolTip="Prefixo do número da prancha (ex.: GP → GP-01, GP-02...)."/>
-                        <Label Grid.Row="3" Content="Localização:"/>
-                        <TextBox Grid.Row="3" Grid.Column="1" x:Name="Image" ToolTip="Imagem (PNG/JPG) de localização para o carimbo – ex.: print do Google Earth."/>
-                        <Button Grid.Row="3" Grid.Column="2" Content="Escolher…" Click="Image_Click"/>
+                        <CheckBox Grid.Row="3" Grid.ColumnSpan="3" x:Name="CroquiAuto" Margin="4,6,4,2"
+                                  Content="Croqui de localização automático (imagem de satélite com o lote)"
+                                  ToolTip="O GeoPoint baixa a imagem de satélite da região e desenha o lote por cima. Fornecedor da imagem em Configurações."/>
+                        <Label Grid.Row="4" Content="Croqui (arquivo):"/>
+                        <TextBox Grid.Row="4" Grid.Column="1" x:Name="Image" ToolTip="Imagem (PNG/JPG) usada quando o croqui automático estiver desligado ou não puder ser baixado."/>
+                        <Button Grid.Row="4" Grid.Column="2" Content="Escolher…" Click="Image_Click"/>
                     </Grid>
                 </GroupBox>
             </StackPanel>

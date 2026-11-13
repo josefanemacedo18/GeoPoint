@@ -158,6 +158,8 @@ public sealed class AnnotationSettings
     public bool LabelOwner { get; set; } = true;
     public bool LabelMatricula { get; set; } = true;
     public bool LabelPerimeter { get; set; } = true;
+    /// <summary>Chamada com a coordenada do ponto de referência de cada lote (ponto, linha, nome e coordenadas).</summary>
+    public bool RefCallout { get; set; } = true;
 }
 
 public sealed class StreetSettings
@@ -192,6 +194,10 @@ public sealed class SheetSettings
     public bool AutoScale { get; set; } = true;
     /// <summary>Vista com o norte verdadeiro para cima.</summary>
     public bool NorteParaCima { get; set; } = true;
+    /// <summary>Modelo de prancha (biblioteca de modelos); vazio = padrão.</summary>
+    public string Template { get; set; } = "";
+    /// <summary>Croqui de localização automático (imagem de satélite com o lote).</summary>
+    public bool CroquiAuto { get; set; } = true;
 }
 
 public sealed class KmlSettings
@@ -210,6 +216,7 @@ public sealed class GeoPointSettings
     public NamingSettings Naming { get; set; } = new();
     public FormatSettings Format { get; set; } = new();
     public MemorialSettings Memorial { get; set; } = new();
+    public GeoPoint.Core.Imagery.ImagerySettings Imagery { get; set; } = new();
     public TechnicianSettings Technician { get; set; } = new();
     public AnnotationSettings Annotation { get; set; } = new();
     public KmlSettings Kml { get; set; } = new();
@@ -309,6 +316,7 @@ public static class SettingsStore
         s.Kml ??= new();
         s.Streets ??= new();
         s.Sheets ??= new();
+        s.Imagery ??= new();
         s.Streets.Largura = Math.Clamp(s.Streets.Largura, 1, 200);
         s.Streets.Calcada = Math.Clamp(s.Streets.Calcada, 0, 50);
         s.Streets.RaioEsquina = Math.Clamp(s.Streets.RaioEsquina, 0, 50);

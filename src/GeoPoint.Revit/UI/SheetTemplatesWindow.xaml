@@ -1,0 +1,195 @@
+<Window x:Class="GeoPoint.Revit.UI.SheetTemplatesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:GeoPoint.Revit.UI"
+        Title="GeoPoint – Modelos de prancha" Width="1280" Height="860" MinWidth="1050" MinHeight="680"
+        FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GeoPoint.Revit;component/UI/Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <DockPanel Margin="14">
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource H1}" Text="Biblioteca de modelos de prancha"/>
+        <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" x:Name="FolderHint"
+                   Text="Cada modelo define o papel, os blocos do carimbo, a grade de coordenadas, o norte, a tabela e os tamanhos de texto. Guarde quantos quiser (ex.: um por escritório). Cada gravação guarda a versão anterior no histórico."/>
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="Usar este modelo" Click="Use_Click" ToolTip="Fecha e seleciona este modelo nas pranchas."/>
+                <Button Content="Fechar" IsCancel="True" Click="Close_Click"/>
+            </StackPanel>
+            <TextBlock x:Name="Problems" Foreground="#B00020" TextWrapping="Wrap" VerticalAlignment="Center"/>
+        </DockPanel>
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="230"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="380"/>
+            </Grid.ColumnDefinitions>
+            <!-- Lista -->
+            <DockPanel Grid.Column="0">
+                <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold" Text="Modelos" Margin="0,0,0,4"/>
+                <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                    <Button Content="Novo retrato" Click="NewPortrait_Click" Margin="0,0,4,4"/>
+                    <Button Content="Novo paisagem" Click="NewLandscape_Click" Margin="0,0,4,4"/>
+                    <Button Content="Duplicar" Click="Duplicate_Click" Margin="0,0,4,4"/>
+                    <Button Content="Excluir" Click="Delete_Click" Margin="0,0,4,4"/>
+                    <Button Content="Importar…" Click="Import_Click" Margin="0,0,4,4"/>
+                    <Button Content="Exportar…" Click="Export_Click" Margin="0,0,4,4"/>
+                </WrapPanel>
+                <ListBox x:Name="List" SelectionChanged="List_SelectionChanged">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="2,3">
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                <TextBlock Foreground="Gray" FontSize="11">
+                                    <Run Text="{Binding Paper, Mode=OneWay}"/> <Run Text="{Binding Orientation, Mode=OneWay}"/> – v<Run Text="{Binding Version, Mode=OneWay}"/>
+                                </TextBlock>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+            <!-- Editor -->
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <GroupBox Header="Geral">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                            <Label Content="Nome:"/>
+                            <TextBox Grid.Column="1" Grid.ColumnSpan="3" x:Name="TName"/>
+                            <Label Grid.Row="1" Content="Descrição:"/>
+                            <TextBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" x:Name="TDesc"/>
+                            <Label Grid.Row="2" Content="Papel:"/>
+                            <ComboBox Grid.Row="2" Grid.Column="1" x:Name="TPaper" SelectionChanged="Paper_Changed">
+                                <ComboBoxItem Content="A4"/><ComboBoxItem Content="A3"/><ComboBoxItem Content="A2"/><ComboBoxItem Content="A1"/>
+                            </ComboBox>
+                            <Label Grid.Row="2" Grid.Column="2" Content="Orientação:"/>
+                            <ComboBox Grid.Row="2" Grid.Column="3" x:Name="TOrient" SelectionChanged="Paper_Changed">
+                                <ComboBoxItem Content="Retrato"/><ComboBoxItem Content="Paisagem"/>
+                            </ComboBox>
+                            <Label Grid.Row="3" Content="Margem esq. / demais (mm):"/>
+                            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal">
+                                <TextBox x:Name="TMarginL" Width="55"/><TextBox x:Name="TMargin" Width="55"/>
+                            </StackPanel>
+                            <Label Grid.Row="3" Grid.Column="2" Content="Espaço entre blocos (mm):"/>
+                            <TextBox Grid.Row="3" Grid.Column="3" x:Name="TGap" Width="60" HorizontalAlignment="Left"/>
+                        </Grid>
+                    </GroupBox>
+                    <GroupBox Header="Mapa">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                            <CheckBox Grid.ColumnSpan="2" x:Name="TGrid" Content="Linhas de grade (coordenadas) atrás do desenho" Margin="4,6"/>
+                            <Label Grid.Column="2" Content="Espaçamento (mm):"/>
+                            <TextBox Grid.Column="3" x:Name="TGridMm" Width="60" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="1" Content="Cor da grade (R,G,B):"/>
+                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="TGridColor" Width="110" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="1" Grid.Column="2" Content="Faixa dos valores (mm):"/>
+                            <TextBox Grid.Row="1" Grid.Column="3" x:Name="TBand" Width="60" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="2" Content="Norte:"/>
+                            <ComboBox Grid.Row="2" Grid.Column="1" x:Name="TNorth"/>
+                            <Label Grid.Row="2" Grid.Column="2" Content="Tamanho do norte (mm):"/>
+                            <TextBox Grid.Row="2" Grid.Column="3" x:Name="TNorthMm" Width="60" HorizontalAlignment="Left"/>
+                            <CheckBox Grid.Row="3" Grid.ColumnSpan="2" x:Name="TTables" Content="Tabela de coordenadas / quadro dentro do mapa" Margin="4,6"/>
+                            <Label Grid.Row="3" Grid.Column="2" Content="Canto da tabela:"/>
+                            <ComboBox Grid.Row="3" Grid.Column="3" x:Name="TTableCorner"/>
+                            <Label Grid.Row="4" Content="Folga do desenho (mm):"/>
+                            <TextBox Grid.Row="4" Grid.Column="1" x:Name="TDrawMargin" Width="60" HorizontalAlignment="Left" ToolTip="Espaço em volta dos lotes para distâncias, confrontantes e chamadas."/>
+                            <Label Grid.Row="4" Grid.Column="2" Content="Escalas (1:n):"/>
+                            <TextBox Grid.Row="4" Grid.Column="3" x:Name="TScales" ToolTip="Lista separada por vírgulas. Vazio = escalas usuais (100, 125, 150, 200, 250, 300, 400, 500...)."/>
+                        </Grid>
+                    </GroupBox>
+                    <GroupBox Header="Textos (altura das letras no papel, mm)">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                            <Label Content="Fonte:"/>
+                            <TextBox Grid.Column="1" x:Name="SFont"/>
+                            <Label Grid.Column="2" Content="Título:"/>
+                            <TextBox Grid.Column="3" x:Name="STitulo" Width="55" HorizontalAlignment="Left"/>
+                            <Label Grid.Column="4" Content="Cabeçalho:"/>
+                            <TextBox Grid.Column="5" x:Name="SCab" Width="55" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="1" Content="Rótulos:"/>
+                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="SRot" Width="55" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="1" Grid.Column="2" Content="Valores:"/>
+                            <TextBox Grid.Row="1" Grid.Column="3" x:Name="SVal" Width="55" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="1" Grid.Column="4" Content="Tabelas:"/>
+                            <TextBox Grid.Row="1" Grid.Column="5" x:Name="STab" Width="55" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="2" Content="Grade:"/>
+                            <TextBox Grid.Row="2" Grid.Column="1" x:Name="SGrade" Width="55" HorizontalAlignment="Left"/>
+                            <Label Grid.Row="2" Grid.Column="2" Content="Desenho:"/>
+                            <TextBox Grid.Row="2" Grid.Column="3" x:Name="SDes" Width="55" HorizontalAlignment="Left" ToolTip="Distâncias, confrontantes, rótulos e chamadas no mapa. 0 = o tamanho das Configurações de anotação."/>
+                        </Grid>
+                    </GroupBox>
+                    <GroupBox Header="Escritório">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                            <Label Content="Nome:"/>
+                            <TextBox Grid.Column="1" Grid.ColumnSpan="2" x:Name="TOffice" ToolTip="Aparece no bloco Escritório (ligue o bloco na tabela abaixo)."/>
+                            <Label Grid.Row="1" Content="Logotipo:"/>
+                            <TextBox Grid.Row="1" Grid.Column="1" x:Name="TLogo"/>
+                            <Button Grid.Row="1" Grid.Column="2" Content="Escolher…" Click="Logo_Click"/>
+                        </Grid>
+                    </GroupBox>
+                    <GroupBox Header="Blocos do carimbo (mm, a partir do canto inferior esquerdo da folha)">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                                <Button Margin="0" Content="Reorganizar blocos (padrão para este papel)" Click="ResetBlocks_Click"/>
+                            </StackPanel>
+                            <DataGrid x:Name="Blocks" Height="250" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" CellEditEnding="Blocks_CellEditEnding">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Bloco" Binding="{Binding KindText}" IsReadOnly="True" Width="120"/>
+                                    <DataGridCheckBoxColumn Header="Visível" Binding="{Binding Visible, UpdateSourceTrigger=PropertyChanged}" Width="55"/>
+                                    <DataGridTextColumn Header="Título" Binding="{Binding Title}" Width="*"/>
+                                    <DataGridTextColumn Header="X" Binding="{Binding X, StringFormat=0.#}" Width="55"/>
+                                    <DataGridTextColumn Header="Y" Binding="{Binding Y, StringFormat=0.#}" Width="55"/>
+                                    <DataGridTextColumn Header="Largura" Binding="{Binding W, StringFormat=0.#}" Width="60"/>
+                                    <DataGridTextColumn Header="Altura" Binding="{Binding H, StringFormat=0.#}" Width="60"/>
+                                    <DataGridTextColumn Header="Texto (Obs./Escritório)" Binding="{Binding Text}" Width="140"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </DockPanel>
+                    </GroupBox>
+                    <GroupBox Header="Histórico de versões">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Right" VerticalAlignment="Top">
+                                <Button Content="Restaurar versão" Click="Restore_Click"/>
+                            </StackPanel>
+                            <ListBox x:Name="History" Height="90">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock>v<Run Text="{Binding Version, Mode=OneWay}"/> – <Run Text="{Binding Date, Mode=OneWay, StringFormat=dd/MM/yyyy HH:mm}"/> <Run Text="{Binding Note, Mode=OneWay}" Foreground="Gray"/></TextBlock>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </GroupBox>
+                </StackPanel>
+            </ScrollViewer>
+            <!-- Prévia -->
+            <DockPanel Grid.Column="4">
+                <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold" Text="Prévia (conteúdo de exemplo)" Margin="0,0,0,4"/>
+                <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                    <DockPanel>
+                        <Label Content="Nota da alteração:"/>
+                        <TextBox x:Name="Note" ToolTip="Opcional: descreve o que mudou (aparece no histórico)."/>
+                    </DockPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="Atualizar prévia" Click="Preview_Click"/>
+                        <Button Content="Salvar" Style="{StaticResource Primary}" Click="Save_Click"/>
+                    </StackPanel>
+                </StackPanel>
+                <Border BorderBrush="#DDD" BorderThickness="1" Background="#F4F4F4">
+                    <ui:SheetPreviewControl x:Name="Preview"/>
+                </Border>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</Window>

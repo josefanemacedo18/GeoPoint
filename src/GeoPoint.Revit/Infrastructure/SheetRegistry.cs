@@ -27,7 +27,7 @@ public static class SheetRegistry
         catch { return true; }
     }
 
-    public static void Register(GpSession s, SheetSpec spec, ViewSheet sheet, View view)
+    public static GeneratedSheet Register(GpSession s, SheetSpec spec, ViewSheet sheet, View view)
     {
         var g = new GeneratedSheet
         {
@@ -35,6 +35,7 @@ public static class SheetRegistry
         };
         g.Fingerprint = Fingerprint(s.Doc, g);
         s.Project.Sheets.Add(g);
+        return g;
     }
 
     /// <summary>Apaga a prancha e as vistas copiadas dela. Dentro de transação.</summary>

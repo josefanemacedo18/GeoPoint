@@ -340,6 +340,9 @@ public sealed class LotRecord
     public List<EdgeInfo> EdgeInfos { get; set; } = new();
 
     /// <summary>Vértice inicial escolhido para a descrição (coordenadas internas, m).</summary>
+    /// <summary>Ponto de referência do lote (coordenada mostrada no mapa das pranchas); null = vértice inicial (P-01).</summary>
+    public double? RefX { get; set; }
+    public double? RefY { get; set; }
     public double? StartX { get; set; }
     public double? StartY { get; set; }
     /// <summary>Sentido da descrição (null = padrão das configurações).</summary>
@@ -556,6 +559,8 @@ public sealed class GeneratedSheet
     public string Title { get; set; } = "";
     public string FaseId { get; set; } = "";
     public DateTime Created { get; set; } = DateTime.Now;
+    /// <summary>Número da folha no projeto (FOLHA 01, 02...).</summary>
+    public int Folha { get; set; }
 }
 
 /// <summary>Dados do GeoPoint gravados no documento do Revit.</summary>

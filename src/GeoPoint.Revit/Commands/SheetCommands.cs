@@ -19,7 +19,7 @@ namespace GeoPoint.Revit.Commands;
 [Transaction(TransactionMode.Manual)]
 public sealed class CmdPranchas : CommandBase
 {
-    protected override string Title => "Pranchas A4";
+    protected override string Title => "Pranchas";
 
     protected override Result Run(GpSession s)
     {
@@ -34,7 +34,7 @@ public sealed class CmdPranchas : CommandBase
         var source = SourceView(s);
         if (source is null)
         {
-            Ui.Warn("Vista inadequada", "Abra a vista de planta onde os lotes estão desenhados e use 'Pranchas A4'.");
+            Ui.Warn("Vista inadequada", "Abra a vista de planta onde os lotes estão desenhados e use 'Pranchas'.");
             return false;
         }
         var state = new PranchasState { OpId = op?.Id, UseOp = op is not null };
@@ -45,14 +45,14 @@ public sealed class CmdPranchas : CommandBase
         var local = new ProjectContext(s.Project, localSettings);
         List<IdText> RefOptions(SheetSpec sp)
         {
-            var list = new List<IdText> { new("", sp.Detailed ? "Padrão (P-01 do lote)" : "Padrão (ponto de referência do projeto)") };
+            // Prancha geral: cada lote mostra a coordenada do seu próprio ponto de referência.
+            if (!sp.Detailed) return new List<IdText> { new("", "Cada lote: o seu ponto") };
+            var lot0 = s.Project.FindLot(sp.LotIds[0]);
+            string current = "P-01";
+            if (lot0 is { RefX: double rx, RefY: double ry })
+                try { current = local.Report(lot0).Vertices.OrderBy(v => v.Internal.DistanceTo(new Vec2(rx, ry))).First().Name; } catch { }
+            var list = new List<IdText> { new("", $"Guardado no lote ({current})") };
             var seen = new HashSet<string>();
-            if (!sp.Detailed && s.Project.Reference.IsSet)
-            {
-                var a = new Vec2(s.Project.Reference.AnchorX, s.Project.Reference.AnchorY);
-                points["anchor"] = a;
-                list.Add(new IdText("anchor", "Ponto de referência do projeto" + (s.Project.Reference.AnchorLabel.Length > 0 ? $" ({s.Project.Reference.AnchorLabel})" : "")));
-            }
             foreach (var id in sp.LotIds)
             {
                 var lot = s.Project.FindLot(id);
@@ -87,10 +87,15 @@ public sealed class CmdPranchas : CommandBase
             // Escolher o ponto de referência no desenho.
             var spec = w.Specs.FirstOrDefault(x => x.Key == state.PickKey);
             if (spec is null) continue;
+            if (!spec.Detailed)
+            {
+                Ui.Info("Ponto de referência", "Nas pranchas gerais cada lote mostra a coordenada do seu próprio ponto. Escolha o ponto numa prancha de um lote (ele fica guardado no lote).");
+                continue;
+            }
             try
             {
                 var pick = RvtUnits.ToVec(s.UiDoc.Selection.PickPoint(Autodesk.Revit.UI.Selection.ObjectSnapTypes.Endpoints | Autodesk.Revit.UI.Selection.ObjectSnapTypes.Intersections,
-                    $"GeoPoint: clique no vértice de referência para \"{spec.Title}\""));
+                    $"GeoPoint: clique no vértice cuja coordenada aparece no mapa de \"{spec.Title}\""));
                 var opts = RefOptions(spec).Where(o => o.Id.Length > 0 && points.ContainsKey(o.Id)).ToList();
                 var best = opts.OrderBy(o => points[o.Id].DistanceTo(pick)).FirstOrDefault();
                 if (best is null || points[best.Id].DistanceTo(pick) > 1.0)
@@ -103,21 +108,52 @@ public sealed class CmdPranchas : CommandBase
         try { s.SaveSettings(); } catch { }
         var st = s.Settings.Sheets;
         var specs = w.Specs;
+        // Ponto de referência escolhido numa prancha de um lote: fica guardado no lote (vale para todas as pranchas dele).
+        foreach (var sp in specs.Where(x => x.Detailed))
+            if (state.RefByKey.TryGetValue(sp.Key, out var k) && k.Length > 0 && points.TryGetValue(k, out var pt) && s.Project.FindLot(sp.LotIds[0]) is { } lot)
+            {
+                lot.RefX = pt.X;
+                lot.RefY = pt.Y;
+            }
+        var template = w.SelectedTemplate ?? SheetTemplateLibrary.Find(st.Template);
+
+        // Conferência antes de emitir: dados que faltam ou diferem da matrícula.
+        var pend = new List<string>();
+        var fmtC = new ValueFormatter(s.Settings.Format);
+        var defC = s.Settings.Memorial.CoordinateSystems.FirstOrDefault() ?? GeoPoint.Core.Geodesy.CrsDef.Utm();
         foreach (var sp in specs)
-            if (state.RefByKey.TryGetValue(sp.Key, out var k) && k.Length > 0 && points.TryGetValue(k, out var pt)) sp.RefPoint = pt;
+        {
+            var ls = sp.LotIds.Select(s.Project.FindLot).Where(l => l is not null).Select(l => l!).ToList();
+            try { pend.AddRange(SheetContent.Build(s.NewContext(), fmtC, sp, ls, defC).Pendencias); } catch { }
+        }
+        foreach (var warn in template.Validate()) pend.Add("Modelo de prancha: " + warn);
+        pend = pend.Distinct().ToList();
+        if (pend.Count > 0)
+        {
+            var td = new TaskDialog("GeoPoint – Conferência antes de emitir")
+            {
+                MainInstruction = $"{pend.Count} pendência(s) encontrada(s)",
+                MainContent = "• " + string.Join("\n• ", pend.Take(15)) + (pend.Count > 15 ? $"\n… e mais {pend.Count - 15}." : ""),
+                CommonButtons = TaskDialogCommonButtons.Cancel,
+            };
+            td.AddCommandLink(TaskDialogCommandLinkId.CommandLink1, "Gerar as pranchas mesmo assim", "Os campos vazios ficam com \"—\" no carimbo; você pode completar depois e gerar de novo.");
+            td.AddCommandLink(TaskDialogCommandLinkId.CommandLink2, "Voltar e corrigir", "Abra Dados do Imóvel, Gerenciar Lotes ou Configurações.");
+            if (td.Show() != TaskDialogResult.CommandLink1) return false;
+        }
         if (s.Project.Fases.Count > 1)
             foreach (var sp in specs) sp.Subtitle = string.Join(" – ", new[] { sp.Subtitle, s.Project.Fase.Label.ToUpperInvariant() }.Where(x => x.Length > 0));
         var chosenOp = w.Operation;
 
         var builder = new SheetBuilder(s, source, new SheetBuildOptions
         {
-            Orientation = st.Orientation == 1 ? SheetOrientation.Paisagem : SheetOrientation.Retrato,
+            Template = template,
             Scale = st.AutoScale ? 0 : st.Scale,
+            Croqui = st.CroquiAuto && CroquiService.EnsureTerms(s) ? CroquiService.ForSheets(s, template) : null,
             Anotacoes = st.Anotacoes, Vias = st.Vias, NorteParaCima = st.NorteParaCima,
             LocationImage = s.Project.Info.ImagemLocalizacao, NumberPrefix = st.NumberPrefix, Font = s.Settings.Annotation.Font,
         });
         List<ViewSheet> sheets;
-        using (var t = new Transaction(s.Doc, "GeoPoint: pranchas A4"))
+        using (var t = new Transaction(s.Doc, "GeoPoint: pranchas"))
         {
             t.Start();
             sheets = builder.Build(specs);
@@ -132,7 +168,7 @@ public sealed class CmdPranchas : CommandBase
         string msg = $"{sheets.Count} prancha(s) criada(s): {string.Join(", ", sheets.Select(x => x.SheetNumber))}." +
                      (builder.Kept > 0 ? $"\n{builder.Kept} prancha(s) existente(s) mantida(s) como estavam." : "");
         if (builder.Warnings.Count > 0) Ui.Warn("Pranchas geradas com avisos", msg + "\n\n" + string.Join("\n", builder.Warnings.Distinct().Take(20)));
-        else Ui.Info("Pranchas geradas", msg + "\n\nAs pranchas ficam editáveis no Revit. Depois de revisar, exporte em PDF pelo recurso nativo (Arquivo › Exportar › PDF), em folha A4.");
+        else Ui.Info("Pranchas geradas", msg + "\n\nAs pranchas ficam editáveis no Revit. Depois de revisar, use 'Exportar PDF' (ou Arquivo › Exportar › PDF do Revit).");
         return sheets.Count > 0 || builder.Kept > 0;
     }
 

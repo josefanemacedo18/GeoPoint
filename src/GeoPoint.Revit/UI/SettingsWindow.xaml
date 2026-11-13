@@ -212,6 +212,35 @@
                     </Grid>
                 </StackPanel>
             </TabItem>
+            <TabItem Header="Croqui (satélite)">
+                <StackPanel Margin="10">
+                    <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap"
+                               Text="O croqui de localização das pranchas é montado automaticamente: o GeoPoint baixa a imagem de satélite da região do imóvel e desenha o lote por cima. Escolha o fornecedor e confira a licença de uso das imagens."/>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="230"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                        <Label Content="Fornecedor da imagem:"/>
+                        <ComboBox Grid.Column="1" x:Name="ImgProvider" SelectionChanged="ImgProvider_Changed">
+                            <ComboBoxItem Content="Esri World Imagery (sem chave)"/>
+                            <ComboBoxItem Content="Google Maps Static API (precisa de chave)"/>
+                            <ComboBoxItem Content="Servidor de tiles personalizado (XYZ)"/>
+                            <ComboBoxItem Content="Nenhum (usar imagem escolhida)"/>
+                        </ComboBox>
+                        <Label Grid.Row="1" Content="Chave Google (Static Maps):"/>
+                        <PasswordBox Grid.Row="1" Grid.Column="1" x:Name="ImgGoogleKey" Margin="4,3"/>
+                        <Label Grid.Row="2" Content="URL de tiles ({z}, {x}, {y} ou {q}):"/>
+                        <TextBox Grid.Row="2" Grid.Column="1" x:Name="ImgUrl" ToolTip="Ex.: https://servidor/tiles/{z}/{x}/{y}.jpg"/>
+                        <Label Grid.Row="3" Content="Atribuição (servidor personalizado):"/>
+                        <TextBox Grid.Row="3" Grid.Column="1" x:Name="ImgAttr" ToolTip="Texto impresso no canto do croqui (ex.: 'Imagem: Prefeitura de ...')."/>
+                        <Label Grid.Row="4" Content="Vizinhança (× tamanho do imóvel):"/>
+                        <TextBox Grid.Row="4" Grid.Column="1" x:Name="ImgContext" Width="70" HorizontalAlignment="Left" ToolTip="3 = a imagem mostra uma área 3 vezes maior que o imóvel."/>
+                        <Label Grid.Row="5" Content="Resolução (dpi):"/>
+                        <TextBox Grid.Row="5" Grid.Column="1" x:Name="ImgDpi" Width="70" HorizontalAlignment="Left"/>
+                        <CheckBox Grid.Row="6" Grid.ColumnSpan="2" x:Name="ImgTerms" Margin="4,8" Content="Confirmo que tenho direito de uso das imagens do fornecedor escolhido (termos de uso/licença)"/>
+                        <TextBlock Grid.Row="7" Grid.ColumnSpan="2" x:Name="ImgLicense" TextWrapping="Wrap" Foreground="#555" Margin="4,0"/>
+                    </Grid>
+                </StackPanel>
+            </TabItem>
             <TabItem Header="Perfis urbanísticos">
                 <DockPanel Margin="10">
                     <StackPanel DockPanel.Dock="Left" Width="240">

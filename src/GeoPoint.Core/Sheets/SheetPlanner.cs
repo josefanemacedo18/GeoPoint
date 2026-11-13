@@ -15,6 +15,8 @@ public sealed class SheetSpec
     public SheetKind Kind { get; init; }
     /// <summary>Identifica a prancha entre gerações (fase/operação, tipo e lotes).</summary>
     public string Key { get; set; } = "";
+    /// <summary>Operação de origem (vazio = lotes sem operação).</summary>
+    public string OperationId { get; set; } = "";
     /// <summary>Prancha de um lote só: vértices com numeração própria (P-01…), todos os azimutes e quadro de coordenadas.
     /// Pranchas com vários lotes são de visualização: distâncias, confrontantes, áreas e proprietários.</summary>
     public bool Detailed => LotIds.Count == 1;
@@ -92,7 +94,11 @@ public static class SheetPlanner
                     Kind = SheetKind.IndividualProposta, Title = "SITUAÇÃO PROPOSTA – " + l.DisplayName.ToUpperInvariant(), Subtitle = subParents,
                     LotIds = { l.Id }, Hatch = r.Hachuras, Colors = colors, CoordTable = r.Coordenadas,
                 });
-        foreach (var x in res) x.Key = $"op:{op.Id}|{x.Kind}|{string.Join(",", x.LotIds.OrderBy(i => i, StringComparer.Ordinal))}";
+        foreach (var x in res)
+        {
+            x.Key = $"op:{op.Id}|{x.Kind}|{string.Join(",", x.LotIds.OrderBy(i => i, StringComparer.Ordinal))}";
+            x.OperationId = op.Id;
+        }
         return res;
     }
 
