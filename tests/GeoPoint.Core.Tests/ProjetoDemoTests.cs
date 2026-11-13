@@ -174,7 +174,7 @@ public class ProjetoDemoTests
     }
 
     /// <summary>Desenho da rua: lotes, meio-fio, alinhamento e nome da via (SVG, norte para cima).</summary>
-    private static string StreetSvg(IReadOnlyList<LotRecord> lots, StreetDrawing d)
+    internal static string StreetSvg(IReadOnlyList<LotRecord> lots, StreetDrawing d)
     {
         var all = lots.SelectMany(l => l.ToRegion().Outer.ToPolygon(0.05)).Concat(d.Curbs.SelectMany(c => c)).ToList();
         var bb = BBox.Of(all).Expand(6);
