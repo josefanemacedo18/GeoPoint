@@ -108,14 +108,14 @@ public static class SheetPreview
         foreach (var t in plan.Texts)
         {
             bool red = t.Kind is AnnoTextKind.Confrontante or AnnoTextKind.Measure;
-            double size = t.Kind == AnnoTextKind.LotLabel ? annoTextMm * 1.1 : annoTextMm;
+            double size = t.Kind == AnnoTextKind.LotLabel ? annoTextMm * 1.1 * t.SizeFactor : annoTextMm;
             var lines = t.Text.Split('\n');
             // Primeira linha em negrito (rótulo do lote e nome do ponto de referência): uma linha por texto.
             var up = Vec2.FromAngle(t.Rotation + rot).PerpLeft;
             double lh = size * 1.5;
             var top = ToPaper(t.At) + up * (lines.Length * lh / 2);
             for (int i = 0; i < lines.Length; i++)
-                mapPrims.Add(new PText(top - up * (i * lh + lh / 2), lines[i], size, t.BoldFirstLine && i == 0, PTextH.Center, PTextV.Middle,
+                mapPrims.Add(new PText(top - up * (i * lh + lh / 2), lines[i], size, t.BoldFirstLine && i < t.BoldLines, PTextH.Center, PTextV.Middle,
                     t.Rotation + rot, (byte)(red ? 192 : 0), 0, 0));
         }
         var comp = new SheetComposition

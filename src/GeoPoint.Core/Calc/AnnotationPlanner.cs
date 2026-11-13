@@ -76,6 +76,10 @@ public sealed class AnnoText
     public int Lines { get; init; } = 1;
     /// <summary>Primeira linha em negrito (rótulo do lote).</summary>
     public bool BoldFirstLine { get; init; }
+    /// <summary>Quantas linhas do início ficam em negrito (nome do lote quebrado em duas linhas).</summary>
+    public int BoldLines { get; init; } = 1;
+    /// <summary>Fator do tamanho do texto (rótulo reduzido para caber no lote).</summary>
+    public double SizeFactor { get; init; } = 1;
     public Obb Box => Obb.Of(At, Rotation, HalfW, HalfH);
     /// <summary>Ponto de inserção do Revit para texto centralizado: meio da borda superior da caixa.</summary>
     public Vec2 TopCenter => At + Vec2.FromAngle(Rotation).PerpLeft * HalfH;
@@ -302,14 +306,34 @@ public static class AnnotationPlanner
                     string owner = o.OwnerOf?.Invoke(rep.Lot)?.Trim() ?? "";
                     if (owner.Length > 0) label += "\nProp.: " + (owner.Length > 42 ? owner[..41] + "…" : owner);
                 }
-                var lines = label.Split('\n');
-                double h = o.TextM * 1.1;
-                double hw = lines.Select((l, i) => TextWidth(l, h, i == 0)).Max() / 2 + o.PadM;
-                double lh = lines.Length * h * o.LineFactor / 2 + o.PadM;
-                var at = BestInterior(rep.Region, hw, lh, cx, o.ViewAngle);
-                var box = Obb.Of(at, o.ViewAngle, hw, lh);
+                // Rótulo que não cabe no lote: quebra o nome ("Lote 03" / "Quadra A"), quebra linhas longas e reduz até 70%.
+                var variants = LabelVariants(label);
+                (string Text, double F, int Bold, Vec2 At, double Hw, double Lh)? chosen = null, fallback = null;
+                foreach (double f in new[] { 1.0, 0.9, 0.8, 0.7 })
+                {
+                    foreach (var (text, bold) in variants)
+                    {
+                        var ls = text.Split('\n');
+                        double h = o.TextM * 1.1 * f;
+                        double hw0 = ls.Select((l, i) => TextWidth(l, h, i < bold)).Max() / 2 + o.PadM;
+                        double lh0 = ls.Length * h * o.LineFactor / 2 + o.PadM;
+                        var at0 = BestInterior(rep.Region, hw0, lh0, cx, o.ViewAngle);
+                        var b0 = Obb.Of(at0, o.ViewAngle, hw0, lh0);
+                        if (Corners(b0).All(rep.Region.Contains) && cx.Free(b0)) { chosen = (text, f, bold, at0, hw0, lh0); break; }
+                        fallback = (text, f, bold, at0, hw0, lh0);   // o mais compacto, se nada couber
+                    }
+                    if (chosen is not null) break;
+                }
+                chosen ??= fallback;
+                if (chosen is null) continue;
+                var (ct, cf, cb, cat, chw, clh) = chosen!.Value;
+                var box = Obb.Of(cat, o.ViewAngle, chw, clh);
                 cx.Placed.Add(box);
-                plan.Texts.Add(new AnnoText { Owner = rep.Lot.Id, Key = "a:" + rep.Lot.Id, Kind = AnnoTextKind.LotLabel, At = at, Text = label, Rotation = o.ViewAngle, HalfW = hw, HalfH = lh, Lines = lines.Length, BoldFirstLine = true });
+                plan.Texts.Add(new AnnoText
+                {
+                    Owner = rep.Lot.Id, Key = "a:" + rep.Lot.Id, Kind = AnnoTextKind.LotLabel, At = cat, Text = ct, Rotation = o.ViewAngle,
+                    HalfW = chw, HalfH = clh, Lines = ct.Split('\n').Length, BoldFirstLine = true, BoldLines = cb, SizeFactor = cf,
+                });
             }
 
         // 3) Divisas: distância (junto da linha) e azimute (logo depois), do lado de fora.
@@ -410,7 +434,9 @@ public static class AnnotationPlanner
                 double cosv = Math.Abs(dir.Dot(u));
                 if (cosv < 0.25 || cosv > 0.97) continue;
                 var elbow = p + dir * (dist * o.TextM);
-                double sx = dir.Dot(u) >= 0 ? 1 : -1;
+                double natural = dir.Dot(u) >= 0 ? 1 : -1;
+                foreach (double sx in new[] { natural, -natural })
+                {
                 var far = elbow + u * (sx * 2 * halfW);
                 var mid = (elbow + far) * 0.5;
                 var nameBox = Obb.Of(mid + v * (nameHh + o.TextM * 0.08), o.ViewAngle, halfW, nameHh);
@@ -420,8 +446,9 @@ public static class AnnotationPlanner
                 double cost = cx.Cost(nameBox) + cx.Cost(coordBox) + cx.Cost(leaderBox) * 0.6;
                 if (cx.InsideAny(mid)) cost += 3;
                 if (outward.LengthSquared > 0) cost += (1 - dir.Dot(outward)) * 0.8;
-                cost += dist * 0.15;
+                cost += dist * 0.15 + (sx == natural ? 0 : 0.5);
                 if (cost < best) { best = cost; pick = (nameBox, coordBox, elbow, far); }
+                }
             }
             
         if (pick is null) return;
@@ -436,6 +463,48 @@ public static class AnnotationPlanner
         plan.Texts.Add(new AnnoText { Owner = owner, Key = "ref:" + owner, Kind = AnnoTextKind.RefName, At = nb.C, Text = rc.Name, Rotation = o.ViewAngle, HalfW = nb.Hw, HalfH = nb.Hh, BoldFirstLine = true });
         if (rc.Lines.Count > 0)
             plan.Texts.Add(new AnnoText { Owner = owner, Key = "ref:" + owner + ":c", Kind = AnnoTextKind.RefCoord, At = cb.C, Text = string.Join("\n", rc.Lines), Rotation = o.ViewAngle, HalfW = cb.Hw, HalfH = cb.Hh, Lines = rc.Lines.Count });
+    }
+
+    private static IEnumerable<Vec2> Corners(Obb b)
+    {
+        yield return b.C + b.U * b.Hw + b.V * b.Hh;
+        yield return b.C - b.U * b.Hw + b.V * b.Hh;
+        yield return b.C - b.U * b.Hw - b.V * b.Hh;
+        yield return b.C + b.U * b.Hw - b.V * b.Hh;
+    }
+
+    /// <summary>Formas do rótulo: como veio; nome quebrado em " – "; e com as linhas longas quebradas ao meio.</summary>
+    private static List<(string Text, int Bold)> LabelVariants(string label)
+    {
+        var res = new List<(string, int)> { (label, 1) };
+        var ls = label.Split('\n').ToList();
+        int bold = 1;
+        if (ls[0].Contains(" – "))
+        {
+            var parts = ls[0].Split(" – ", 2);
+            ls[0] = parts[1];
+            ls.Insert(0, parts[0]);
+            bold = 2;
+            res.Add((string.Join("\n", ls), bold));
+        }
+        // Linhas longas (ex.: nome do proprietário) quebradas no espaço mais perto do meio.
+        var wrapped = new List<string>();
+        int boldW = bold;
+        for (int i = 0; i < ls.Count; i++)
+        {
+            var l = ls[i];
+            int mid = l.Length / 2, best = -1;
+            if (l.Length > 22)
+                for (int d = 0; d < mid; d++)
+                {
+                    if (mid + d < l.Length && l[mid + d] == ' ') { best = mid + d; break; }
+                    if (mid - d > 0 && l[mid - d] == ' ') { best = mid - d; break; }
+                }
+            if (best > 0) { wrapped.Add(l[..best]); wrapped.Add(l[(best + 1)..]); if (i < bold) boldW++; }
+            else wrapped.Add(l);
+        }
+        if (wrapped.Count > ls.Count) res.Add((string.Join("\n", wrapped), boldW));
+        return res;
     }
 
     private static Vec2 BestInterior(Region r, double hw, double hh, Ctx cx, double angle)

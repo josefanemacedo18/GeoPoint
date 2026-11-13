@@ -168,7 +168,11 @@ public static class Annotator
         {
             try
             {
-                var type = t.Kind switch { AnnoTextKind.LotLabel => label, AnnoTextKind.Confrontante or AnnoTextKind.Measure => red, AnnoTextKind.RefName => refName, _ => normal };
+                var type = t.Kind switch
+                {
+                    AnnoTextKind.LotLabel => Math.Abs(t.SizeFactor - 1) < 1e-6 ? label : RevitStyles.TextType(doc, Math.Round(o.TextMm * 1.1 * t.SizeFactor, 2), o.Font, o.Opaque),
+                    AnnoTextKind.Confrontante or AnnoTextKind.Measure => red, AnnoTextKind.RefName => refName, _ => normal,
+                };
                 // O Revit posiciona o texto centralizado pelo meio da borda SUPERIOR da caixa; a rotação já vem legível
                 // e é dada em relação à vista. Depois de criado, a direção real do texto é conferida e corrigida.
                 var opts = new TextNoteOptions(type)
@@ -180,7 +184,7 @@ public static class Annotator
                 var at = RvtUnits.ToXyz(t.TopCenter, Z(t.Owner));
                 var tn = TextNote.Create(doc, view.Id, at, t.Text.Replace("\n", "\r"), opts);
                 AlignText(doc, tn, t.Rotation, at);
-                if (t.BoldFirstLine) BoldFirstLine(tn);
+                if (t.BoldFirstLine) BoldFirstLine(tn, t.BoldLines);
                 byLot[t.Owner].Add(tn.UniqueId);
             }
             catch (Exception ex) { Logger.Error("Texto de anotação", ex); }
@@ -233,13 +237,19 @@ public static class Annotator
     }
 
     /// <summary>Primeira linha em negrito (nome do lote).</summary>
-    public static void BoldFirstLine(TextNote tn)
+    public static void BoldFirstLine(TextNote tn, int lines = 1)
     {
         try
         {
             var ft = tn.GetFormattedText();
             string text = ft.GetPlainText();
-            int n = text.IndexOf('\r');
+            int n = -1;
+            for (int k = 0; k < Math.Max(1, lines); k++)
+            {
+                int next = text.IndexOf('\r', n + 1);
+                if (next < 0) { n = text.Length; break; }
+                n = next;
+            }
             if (n < 0) n = text.Length;
             ft.SetBoldStatus(new TextRange(0, n), true);
             tn.SetFormattedText(ft);

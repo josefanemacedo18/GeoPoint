@@ -146,7 +146,8 @@
                         <StackPanel>
                             <CheckBox x:Name="Tables" Content="Quadros de coordenadas e de segmentos"/>
                             <CheckBox x:Name="Notes" Visibility="Collapsed"/>
-                            <CheckBox x:Name="Altitudes" Content="Altitudes dos vértices (quando calculadas pelo Toposolid)"/>
+                            <CheckBox x:Name="Buildings" Content="Área edificada (edificações e distâncias até as divisas)"/>
+                            <CheckBox x:Name="Altitudes" Visibility="Collapsed" Content="Altitudes dos vértices"/>
                             <CheckBox x:Name="OnePerLot" Content="Um arquivo por lote (tipo Lote(s))"/>
                             <CheckBox x:Name="OpenAfter" Content="Abrir no Word depois de gerar"/>
                             <StackPanel Orientation="Horizontal">

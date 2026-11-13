@@ -122,7 +122,7 @@ public sealed class CmdAnotar : CommandBase
             foreach (var t in plan.Texts)
                 items.Add(new PreviewItem
                 {
-                    Label = t.Text, LabelAt = t.At, LabelAngle = t.Rotation, LabelSizeM = t.Kind == AnnoTextKind.LotLabel ? po.TextM * 1.1 : po.TextM,
+                    Label = t.Text, LabelAt = t.At, LabelAngle = t.Rotation, LabelSizeM = t.Kind == AnnoTextKind.LotLabel ? po.TextM * 1.1 * t.SizeFactor : po.TextM,
                     LabelBoldFirst = t.BoldFirstLine,
                     LabelColor = t.Kind is AnnoTextKind.Confrontante or AnnoTextKind.Measure ? System.Windows.Media.Color.FromRgb(192, 0, 0) : System.Windows.Media.Colors.Black,
                 });

@@ -54,6 +54,7 @@ public partial class MemorialWindow : Window
         Digits.Text = settings.Naming.VertexDigits.ToString();
         Numbering.SelectedIndex = (int)settings.Naming.Numbering;
         Tables.IsChecked = m.IncludeVertexTable;
+        Buildings.IsChecked = m.IncludeBuildings;
         Notes.IsChecked = m.IncludeSystemDeclaration;
         Altitudes.IsChecked = m.IncludeAltitude;
         OnePerLot.IsChecked = m.OneFilePerLot;
@@ -163,6 +164,7 @@ public partial class MemorialWindow : Window
         _settings.Naming.VertexDigits = digits;
         _settings.Naming.Numbering = (VertexNumbering)Math.Max(0, Numbering.SelectedIndex);
         m.IncludeVertexTable = Tables.IsChecked == true;
+        m.IncludeBuildings = Buildings.IsChecked == true;
         m.IncludeSystemDeclaration = false;
         m.IncludeAltitude = Altitudes.IsChecked == true;
         m.OneFilePerLot = OnePerLot.IsChecked == true;
