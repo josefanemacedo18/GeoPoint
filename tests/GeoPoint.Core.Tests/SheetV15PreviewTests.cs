@@ -123,6 +123,8 @@ public class SheetV15PreviewTests
                         PLineStyle.Vermelha => (0.25, "#c00000", ""),
                         PLineStyle.MeioFio => (0.25, "#666", ""),
                         PLineStyle.Limite => (0.35, "black", ""),
+                        PLineStyle.Hachura => (0.1, $"rgb({l.Cr},{l.Cg},{l.Cb})", ""),
+                        PLineStyle.Preenchimento => (0.2, $"rgb({l.Cr},{l.Cg},{l.Cb})", ""),
                         _ => (0.15, "black", ""),
                     };
                     sb.Append($"<line x1='{X(l.A.X)}' y1='{Y(l.A.Y)}' x2='{X(l.B.X)}' y2='{Y(l.B.Y)}' stroke='{col}' stroke-width='{F(w * px)}' {dash}/>");
@@ -200,6 +202,8 @@ public class SheetV15PreviewTests
                         PLineStyle.Divisao => (0.4, "#aa0000", ""),
                         PLineStyle.MeioFio => (0.25, "#666", ""),
                         PLineStyle.Limite => (0.35, "black", ""),
+                        PLineStyle.Hachura => (0.1, $"rgb({l.Cr},{l.Cg},{l.Cb})", ""),
+                        PLineStyle.Preenchimento => (0.2, $"rgb({l.Cr},{l.Cg},{l.Cb})", ""),
                         _ => (0.15, "#333", ""),
                     };
                     sb.Append($"<line x1='{X(l.A.X)}' y1='{Y(l.A.Y)}' x2='{X(l.B.X)}' y2='{Y(l.B.Y)}' stroke='{col}' stroke-width='{F(w * px)}' {dash}/>");

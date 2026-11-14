@@ -23,6 +23,16 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 
 ---
 
+## Ajustes da versão 1.7.1
+
+- **Grade só no fundo**: as linhas da grade de coordenadas não passam mais por cima do desenho – param antes da área dos lotes
+  (inclusive os vizinhos que aparecem no recorte), das divisas, dos pontos dos vértices, das edificações e do desenho das vias, além da
+  tabela, do norte e dos textos, como já era.
+- **Convenções topográficas iguais ao desenho**: a amostra da área tem a hachura a 45° na cor de cada lote (cruzada no remanescente),
+  o limite do imóvel tem a mesma linha fina das divisas e os vértices e a coordenada de referência têm o ponto cheio. Os símbolos são
+  desenhados com linhas, então aparecem em qualquer Revit (antes, em alguns casos, a hachura e os pontos não apareciam na folha). A
+  seta do norte e a escala gráfica também ganham o preenchimento em linhas.
+
 ## Novidades da versão 1.7
 
 - **Imagens de satélite guardadas no projeto**: na janela de *Pranchas*, botão **Imagens…** ao lado de *Imagem de satélite*. Escolha o

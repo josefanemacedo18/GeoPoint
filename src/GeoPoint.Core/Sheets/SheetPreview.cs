@@ -31,6 +31,21 @@ public static class SheetPreview
     /// Monta a prancha de <paramref name="lots"/> pelo modelo, com o norte para cima (como o Revit faz com "norte para cima").
     /// <paramref name="annoTextMm"/> = altura dos textos do desenho no papel.
     /// </summary>
+    /// <summary>Formas do desenho (papel) por onde a grade de coordenadas não passa.</summary>
+    public static List<IReadOnlyList<Vec2>> GridShapesOf(IEnumerable<Region> regions, Func<Vec2, Vec2> toPaper, double dotPadMm = 1.5)
+    {
+        var res = new List<IReadOnlyList<Vec2>>();
+        foreach (var reg in regions)
+            foreach (var ring in reg.AllRings())
+            {
+                List<Vec2> pts;
+                try { pts = ring.ToPolygon(0.05).Select(toPaper).ToList(); } catch { continue; }
+                if (pts.Count > 1 && pts[0].DistanceTo(pts[^1]) < 1e-9) pts.RemoveAt(pts.Count - 1);
+                res.AddRange(SheetRenderer.ShapesOfRing(pts, 0.6, dotPadMm));
+            }
+        return res;
+    }
+
     private static HashSet<string> Imgs(bool logo, bool croqui)
     {
         var h = new HashSet<string>();
@@ -99,6 +114,8 @@ public static class SheetPreview
             Images = Imgs(tpl.HasLogo, croqui), LogoAspect = tpl.LogoAspect(), Placeholders = true,
             // A grade não passa por cima dos textos do desenho (chamadas de coordenada, rótulos, nomes).
             GridHoles = plan.Texts.Select(t => SheetRenderer.HoleOf(Corners(t.Box).Select(ToPaper))).ToList(),
+            // Nem por cima do desenho: área dos lotes, divisas e pontos dos vértices.
+            GridShapes = GridShapesOf(reps.Select(r => r.Region), ToPaper),
         };
         var mapPrims = new List<SheetPrim>();
         for (int i = 0; i < reps.Count; i++)

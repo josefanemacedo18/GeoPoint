@@ -262,6 +262,7 @@ public sealed class SheetBuilder
             Table = fit.Table is null ? null : table, TableRect = fit.Table, North = northDir, FrameAndBlocks = !customTitleBlock,
             Palette = Hatcher.Palette, Images = images, LogoAspect = logo is null ? 0 : tpl.LogoAspect(),
             GridHoles = textHoles,
+            GridShapes = DrawingShapes(view, buildings, ToPaper),
         });
 
         // ---- Grade na vista, recortada pelos textos e mandada para trás das hachuras e do desenho.
@@ -309,6 +310,42 @@ public sealed class SheetBuilder
     }
 
     /// <summary>Linhas da grade como linhas de detalhe na vista (atrás das hachuras e anotações).</summary>
+    /// <summary>
+    /// Formas do desenho na folha por onde a grade não passa: área, divisas e pontos de todos os lotes da fase (os vizinhos que
+    /// aparecem no recorte também), edificações e o desenho das vias desta vista.
+    /// </summary>
+    private List<IReadOnlyList<Vec2>> DrawingShapes(View view, IReadOnlyList<GeoPoint.Core.Urban.BuildingReport> buildings, Func<Vec2, Vec2> ToPaper)
+    {
+        double dotPad = Math.Max(0.8, _s.Settings.Annotation.DotMm / 2 + 0.4);
+        var regions = new List<Region>();
+        foreach (var l in _s.Project.PhaseLots) { try { regions.Add(l.ToRegion()); } catch { } }
+        foreach (var b in buildings) { try { regions.Add(b.Building.ToRegion()); } catch { } }
+        var shapes = SheetPreview.GridShapesOf(regions, ToPaper, dotPad);
+        // Vias desenhadas nesta vista: meio-fio e alinhamentos (faixa em volta das linhas) e nomes das ruas.
+        foreach (var rec in _s.Project.StreetDrawings.Where(r => r.ViewId == view.UniqueId))
+            foreach (var uid in rec.ElementIds)
+            {
+                try
+                {
+                    var e = ElementUtil.ByUniqueId(_doc, uid);
+                    if (e is CurveElement ce && ce.GeometryCurve is Curve c)
+                    {
+                        var pts = c.Tessellate().Select(p => ToPaper(RvtUnits.ToVec(p))).ToList();
+                        for (int k = 0; k + 1 < pts.Count; k++) shapes.Add(SheetRenderer.ShapeOfLine(pts[k], pts[k + 1], 0.6));
+                    }
+                    else if (e is TextNote tn && tn.get_BoundingBox(view) is BoundingBoxXYZ bb)
+                    {
+                        var corners = new[] { new XYZ(bb.Min.X, bb.Min.Y, 0), new XYZ(bb.Max.X, bb.Min.Y, 0), new XYZ(bb.Max.X, bb.Max.Y, 0), new XYZ(bb.Min.X, bb.Max.Y, 0) }
+                            .Select(p => ToPaper(RvtUnits.ToVec(p))).ToList();
+                        var h = SheetRenderer.HoleOf(corners, 0.4);
+                        shapes.Add(new[] { new Vec2(h.X0, h.Y0), new Vec2(h.X1, h.Y0), new Vec2(h.X1, h.Y1), new Vec2(h.X0, h.Y1) });
+                    }
+                }
+                catch { }
+            }
+        return shapes;
+    }
+
     private void DrawGridInView(View view, IEnumerable<PLine> lines, Func<Vec2, Vec2> toModel, byte[] rgb)
     {
         var list = lines.ToList();
@@ -366,7 +403,7 @@ public sealed class SheetBuilder
                 switch (pr)
                 {
                     case PLine l:
-                        Line(sheet, l.A, l.B, Style(l.Style));
+                        Line(sheet, l.A, l.B, l.Style is PLineStyle.Hachura or PLineStyle.Preenchimento ? ColorStyle(l.Style, l.Cr, l.Cg, l.Cb) : Style(l.Style));
                         break;
                     case PFill f:
                     {
@@ -380,15 +417,24 @@ public sealed class SheetBuilder
                             var a = f.Pts[i]; var b = f.Pts[(i + 1) % f.Pts.Count];
                             if (a.DistanceTo(b) > 0.01) curves.Add(Autodesk.Revit.DB.Line.CreateBound(P(a.X, a.Y), P(b.X, b.Y)));
                         }
-                        var fr = FilledRegion.Create(_doc, type, sheet.Id, new List<CurveLoop> { CurveLoop.Create(curves) });
-                        var inv = RevitStyles.InvisibleLines(_doc);
-                        if (inv != ElementId.InvalidElementId && FilledRegion.IsValidLineStyleIdForFilledRegion(_doc, inv)) fr.SetLineStyleId(inv);
+                        // Preenchimento sólido (seta do norte, escala gráfica) também em linhas: aparece mesmo se a região preenchida
+                        // não puder ser criada na folha.
+                        if (!f.Hatch && !(f.R == 255 && f.G == 255 && f.B == 255))
+                        {
+                            var fill = ColorStyle(PLineStyle.Preenchimento, f.R, f.G, f.B);
+                            foreach (var (a, b) in SheetRenderer.ScanLines(f.Pts, 0, 0.18)) Line(sheet, a, b, fill);
+                        }
+                        try
+                        {
+                            var fr = FilledRegion.Create(_doc, type, sheet.Id, new List<CurveLoop> { CurveLoop.Create(curves) });
+                            var inv = RevitStyles.InvisibleLines(_doc);
+                            if (inv != ElementId.InvalidElementId && FilledRegion.IsValidLineStyleIdForFilledRegion(_doc, inv)) fr.SetLineStyleId(inv);
+                        }
+                        catch (Exception fex) { Logger.Error("Região preenchida na prancha", fex); }
                         break;
                     }
                     case PCircle c:
-                        if (c.Filled)
-                            Annotator.Dot(_doc, sheet, c.C * 0.001, c.Radius * 0.001, 0,
-                                RevitStyles.FillType(_doc, LotUse.Lote, "GeoPoint - Ponto de vértice", (0, 0, 0)));
+                        if (c.Filled) DotOnSheet(sheet, c.C, c.Radius);
                         break;
                     case PText t:
                         Text(sheet, t);
@@ -590,9 +636,52 @@ public sealed class SheetBuilder
         catch (Exception ex) { Logger.Error("Viewport sem título", ex); }
     }
 
-    private void Line(View sheet, Vec2 a, Vec2 b, GraphicsStyle? style)
+    /// <summary>Ponto cheio na folha feito de círculos concêntricos (aparece em qualquer Revit, igual ao ponto dos vértices).</summary>
+    private void DotOnSheet(View sheet, Vec2 c, double radiusMm)
     {
-        if (a.DistanceTo(b) < 0.5) return;
+        var style = ColorStyle(PLineStyle.Preenchimento, 0, 0, 0);
+        var center = P(c.X, c.Y);
+        // Raio mínimo: o Revit não cria curvas com menos de ~0,8 mm.
+        for (double r = radiusMm; r >= 0.3; r -= 0.12)
+        {
+            try
+            {
+                double rf = r / Ft;
+                var a1 = Arc.Create(center, rf, 0, Math.PI, XYZ.BasisX, XYZ.BasisY);
+                var a2 = Arc.Create(center, rf, Math.PI, 2 * Math.PI, XYZ.BasisX, XYZ.BasisY);
+                foreach (var arc in new[] { a1, a2 })
+                {
+                    var dc = _doc.Create.NewDetailCurve(sheet, arc);
+                    if (style is not null) dc.LineStyle = style;
+                }
+            }
+            catch (Exception ex) { Logger.Error("Ponto na prancha", ex); break; }
+        }
+        // Miolo: uma cruz curta fecha o centro.
+        if (radiusMm >= 0.3)
+        {
+            Line(sheet, c - new Vec2(0.45, 0), c + new Vec2(0.45, 0), style, 0.8);
+            Line(sheet, c - new Vec2(0, 0.45), c + new Vec2(0, 0.45), style, 0.8);
+        }
+    }
+
+    private readonly Dictionary<string, GraphicsStyle?> _colorStyles = new();
+
+    /// <summary>Estilo de linha colorido (hachura das convenções, preenchimento em linhas).</summary>
+    private GraphicsStyle? ColorStyle(PLineStyle s, byte r, byte g, byte b)
+    {
+        string key = $"{s}-{r:X2}{g:X2}{b:X2}";
+        if (_colorStyles.TryGetValue(key, out var gs)) return gs;
+        gs = s == PLineStyle.Preenchimento
+            ? RevitStyles.LineStyle(_doc, $"GeoPoint - Prancha (preenchimento {r:X2}{g:X2}{b:X2})", new Color(r, g, b), 2)
+            : RevitStyles.LineStyle(_doc, $"GeoPoint - Prancha (hachura {r:X2}{g:X2}{b:X2})", new Color(r, g, b), 1);
+        _colorStyles[key] = gs;
+        return gs;
+    }
+
+    private void Line(View sheet, Vec2 a, Vec2 b, GraphicsStyle? style, double minMm = 0.5)
+    {
+        if (a.DistanceTo(b) < minMm) return;
         var dc = _doc.Create.NewDetailCurve(sheet, Autodesk.Revit.DB.Line.CreateBound(P(a.X, a.Y), P(b.X, b.Y)));
         if (style is not null) dc.LineStyle = style;
     }

@@ -4,13 +4,14 @@ using GeoPoint.Core.Geometry;
 namespace GeoPoint.Core.Sheets;
 
 /// <summary>Estilos de linha. <see cref="Grade"/> fica ATRÁS do desenho (no Revit vai para a vista, antes das hachuras).</summary>
-public enum PLineStyle { Moldura, Bloco, Fina, Grade, Tracejada, Vermelha, MeioFio, Limite, Papel, Divisao }
+public enum PLineStyle { Moldura, Bloco, Fina, Grade, Tracejada, Vermelha, MeioFio, Limite, Papel, Divisao, Hachura, Preenchimento }
 public enum PTextH { Left, Center, Right }
 public enum PTextV { Top, Middle, Bottom }
 
 /// <summary>Elemento gráfico da prancha, em mm no papel (origem no canto inferior esquerdo).</summary>
 public abstract record SheetPrim;
-public sealed record PLine(Vec2 A, Vec2 B, PLineStyle Style) : SheetPrim;
+/// <summary>Linha; <see cref="PLineStyle.Hachura"/> e <see cref="PLineStyle.Preenchimento"/> usam a cor (Cr, Cg, Cb).</summary>
+public sealed record PLine(Vec2 A, Vec2 B, PLineStyle Style, byte Cr = 0, byte Cg = 0, byte Cb = 0) : SheetPrim;
 public sealed record PFill(IReadOnlyList<Vec2> Pts, byte R, byte G, byte B, bool Hatch = false, bool Cross = false) : SheetPrim;
 public sealed record PText(Vec2 At, string Text, double SizeMm, bool Bold = false, PTextH H = PTextH.Left, PTextV V = PTextV.Top, double Rotation = 0, byte R = 0, byte G = 0, byte B = 0) : SheetPrim
 {
@@ -48,6 +49,11 @@ public sealed class SheetRenderInput
     public bool Placeholders { get; init; }
     /// <summary>Áreas (papel, mm) onde a grade não passa: caixas dos textos do desenho (chamadas de coordenada, rótulos, nomes).</summary>
     public IReadOnlyList<PaperRect> GridHoles { get; init; } = Array.Empty<PaperRect>();
+    /// <summary>
+    /// Formas (papel, mm) onde a grade não passa: área dos lotes, faixas das divisas e dos pontos dos vértices, edificações e vias
+    /// (<see cref="SheetRenderer.ShapesOfRing"/>, <see cref="SheetRenderer.ShapeOfLine"/>). A grade é só fundo: não cruza o desenho.
+    /// </summary>
+    public IReadOnlyList<IReadOnlyList<Vec2>> GridShapes { get; init; } = Array.Empty<IReadOnlyList<Vec2>>();
 }
 
 /// <summary>Monta os elementos gráficos da prancha (moldura, blocos, grade, tabela, norte, escala, convenções).</summary>
@@ -94,7 +100,8 @@ public static class SheetRenderer
             holes.AddRange(i.GridHoles);
             foreach (var g in MapGrid.Build(map, i.CrsAt, i.Geographic, t.GridSpacingMm, i.WestAsO))
             {
-                foreach (var (a, b) in Clip(g.P0, g.P1, holes)) res.Add(new PLine(a, b, PLineStyle.Grade));
+                foreach (var (a0, b0) in Clip(g.P0, g.P1, holes))
+                    foreach (var (a, b) in ClipShapes(a0, b0, i.GridShapes)) res.Add(new PLine(a, b, PLineStyle.Grade));
                 foreach (var lb in g.Labels)
                 {
                     // Valores perto dos cantos se atropelam: ficam de fora.
@@ -182,6 +189,131 @@ public static class SheetRenderer
                     if (b.Text.Length > 0) FitText(res, body.Inset(1.2), b.Text, st.ValorMm, false, PTextH.Left);
                     break;
             }
+        }
+        return res;
+    }
+
+    /// <summary>
+    /// Formas que tiram a grade de cima de um contorno (lote, edificação): a área do contorno, uma faixa de <paramref name="pad"/> mm em
+    /// volta de cada divisa (a grade para antes da linha) e um quadrado em cada vértice (o ponto do vértice).
+    /// </summary>
+    public static List<IReadOnlyList<Vec2>> ShapesOfRing(IReadOnlyList<Vec2> ring, double pad = 0.6, double vertexPad = 1.5)
+    {
+        var res = new List<IReadOnlyList<Vec2>>();
+        if (ring.Count < 2) return res;
+        if (ring.Count >= 3) res.Add(ring);
+        for (int k = 0; k < ring.Count; k++)
+        {
+            var a = ring[k]; var b = ring[(k + 1) % ring.Count];
+            if (ring.Count == 2 && k == 1) break;
+            if (a.DistanceTo(b) > 1e-6) res.Add(ShapeOfLine(a, b, pad));
+        }
+        if (vertexPad > 0)
+            foreach (var v in RingCorners(ring))
+                res.Add(new[] { v + new Vec2(-vertexPad, -vertexPad), v + new Vec2(vertexPad, -vertexPad), v + new Vec2(vertexPad, vertexPad), v + new Vec2(-vertexPad, vertexPad) });
+        return res;
+    }
+
+    /// <summary>Vértices de um contorno densificado: só os cantos (mudança de direção acima de 8°), não os pontos dos arcos.</summary>
+    private static IEnumerable<Vec2> RingCorners(IReadOnlyList<Vec2> ring)
+    {
+        int n = ring.Count;
+        for (int k = 0; k < n; k++)
+        {
+            var p = ring[(k - 1 + n) % n]; var c = ring[k]; var q = ring[(k + 1) % n];
+            var u = c - p; var w = q - c;
+            if (u.Length < 1e-9 || w.Length < 1e-9) continue;
+            double cos = (u.X * w.X + u.Y * w.Y) / (u.Length * w.Length);
+            if (n <= 4 || cos < Math.Cos(8 * Math.PI / 180)) yield return c;
+        }
+    }
+
+    /// <summary>Faixa de <paramref name="pad"/> mm em volta de uma linha (a grade não passa por ela).</summary>
+    public static IReadOnlyList<Vec2> ShapeOfLine(Vec2 a, Vec2 b, double pad = 0.6)
+    {
+        var d = b - a;
+        double len = d.Length;
+        var u = len < 1e-9 ? new Vec2(1, 0) : d * (1 / len);
+        var nrm = new Vec2(-u.Y, u.X) * pad;
+        var a2 = a - u * pad; var b2 = b + u * pad;
+        return new[] { a2 + nrm, b2 + nrm, b2 - nrm, a2 - nrm };
+    }
+
+    /// <summary>Partes do segmento fora de todas as formas (recorte por polígonos quaisquer, côncavos inclusive).</summary>
+    public static List<(Vec2, Vec2)> ClipShapes(Vec2 a, Vec2 b, IReadOnlyList<IReadOnlyList<Vec2>> shapes)
+    {
+        var d = b - a;
+        if (shapes.Count == 0 || d.Length < 1e-9) return new List<(Vec2, Vec2)> { (a, b) };
+        var segBox = BBox.Of(new[] { a, b });
+        var ts = new List<double> { 0, 1 };
+        var relevant = new List<IReadOnlyList<Vec2>>();
+        foreach (var sh in shapes)
+        {
+            if (sh.Count < 3) continue;
+            var bb = BBox.Of(sh);
+            if (bb.MaxX < segBox.MinX || bb.MinX > segBox.MaxX || bb.MaxY < segBox.MinY || bb.MinY > segBox.MaxY) continue;
+            relevant.Add(sh);
+            for (int k = 0; k < sh.Count; k++)
+            {
+                var p = sh[k]; var q = sh[(k + 1) % sh.Count];
+                var e = q - p;
+                double den = d.X * e.Y - d.Y * e.X;
+                if (Math.Abs(den) < 1e-12) continue;
+                var ap = p - a;
+                double t = (ap.X * e.Y - ap.Y * e.X) / den;
+                double s = (ap.X * d.Y - ap.Y * d.X) / den;
+                if (t > 0 && t < 1 && s >= 0 && s <= 1) ts.Add(t);
+            }
+        }
+        if (relevant.Count == 0) return new List<(Vec2, Vec2)> { (a, b) };
+        ts.Sort();
+        var res = new List<(Vec2, Vec2)>();
+        double? start = null;
+        for (int k = 0; k < ts.Count - 1; k++)
+        {
+            double t0 = ts[k], t1 = ts[k + 1];
+            if (t1 - t0 < 1e-9) continue;
+            var mid = a + d * ((t0 + t1) / 2);
+            bool covered = relevant.Any(sh => PolygonUtil.PointInPolygon(sh, mid));
+            if (!covered) start ??= t0;
+            else if (start is double s0) { res.Add((a + d * s0, a + d * t0)); start = null; }
+        }
+        if (start is double s1) res.Add((a + d * s1, b));
+        return res.Where(x => x.Item1.DistanceTo(x.Item2) > 0.3).ToList();
+    }
+
+    /// <summary>
+    /// Linhas paralelas (ângulo em graus, espaçamento em mm) dentro de um polígono: hachura e preenchimento feitos só com linhas,
+    /// que aparecem em qualquer Revit (os símbolos das convenções ficam iguais aos do desenho).
+    /// </summary>
+    public static List<(Vec2, Vec2)> ScanLines(IReadOnlyList<Vec2> poly, double angleDeg, double spacing)
+    {
+        var res = new List<(Vec2, Vec2)>();
+        if (poly.Count < 3 || spacing <= 0) return res;
+        double ang = angleDeg * Math.PI / 180;
+        var dir = new Vec2(Math.Cos(ang), Math.Sin(ang));
+        var nrm = new Vec2(-dir.Y, dir.X);
+        double minN = poly.Min(p => p.X * nrm.X + p.Y * nrm.Y), maxN = poly.Max(p => p.X * nrm.X + p.Y * nrm.Y);
+        double minD = poly.Min(p => p.X * dir.X + p.Y * dir.Y) - 1, maxD = poly.Max(p => p.X * dir.X + p.Y * dir.Y) + 1;
+        for (double off = minN + spacing / 2; off < maxN; off += spacing)
+        {
+            var a = dir * minD + nrm * off; var b = dir * maxD + nrm * off;
+            // Intersecções da reta com as arestas, em ordem: os trechos alternados ficam dentro.
+            var ts = new List<double>();
+            var d = b - a;
+            for (int k = 0; k < poly.Count; k++)
+            {
+                var p = poly[k]; var q = poly[(k + 1) % poly.Count];
+                var e = q - p;
+                double den = d.X * e.Y - d.Y * e.X;
+                if (Math.Abs(den) < 1e-12) continue;
+                var ap = p - a;
+                double t = (ap.X * e.Y - ap.Y * e.X) / den, s = (ap.X * d.Y - ap.Y * d.X) / den;
+                if (s >= 0 && s < 1) ts.Add(t);
+            }
+            ts.Sort();
+            for (int k = 0; k + 1 < ts.Count; k += 2)
+                if ((ts[k + 1] - ts[k]) * d.Length > 0.05) res.Add((a + d * ts[k], a + d * ts[k + 1]));
         }
         return res;
     }
@@ -346,22 +478,21 @@ public static class SheetRenderer
             double sx = inner.X0, cy = y, sh = Math.Min(rowH * 0.6, 2.6);
             var sym = new PaperRect(sx, cy - sh / 2, sx + symW, cy + sh / 2);
             var col = palette.Count == 0 ? ((byte)220, (byte)60, (byte)50) : palette[Math.Abs(it.ColorIndex) % palette.Count];
+            // Os símbolos repetem o desenho: hachura a 45° na cor do lote (cruzada no remanescente) com o contorno fino das divisas,
+            // a mesma linha das divisas e o ponto cheio dos vértices.
             switch (it.Kind)
             {
                 case LegendKind.AreaImovel:
-                    res.Add(new PFill(Corners(sym), col.Item1, col.Item2, col.Item3, Hatch: true));
-                    Rect(res, sym, PLineStyle.Limite);
+                    Swatch(res, sym, col, cross: false);
                     break;
                 case LegendKind.Remanescente:
-                    res.Add(new PFill(Corners(sym), col.Item1, col.Item2, col.Item3, Hatch: true, Cross: true));
-                    Rect(res, sym, PLineStyle.Limite);
+                    Swatch(res, sym, col, cross: true);
                     break;
                 case LegendKind.AreaEdificada:
-                    res.Add(new PFill(Corners(sym), 150, 150, 150, Hatch: true, Cross: true));
-                    Rect(res, sym, PLineStyle.Fina);
+                    Swatch(res, sym, ((byte)110, (byte)110, (byte)110), cross: true);
                     break;
                 case LegendKind.Limite:
-                    res.Add(new PLine(new Vec2(sym.X0, cy), new Vec2(sym.X1, cy), PLineStyle.Limite));
+                    res.Add(new PLine(new Vec2(sym.X0, cy), new Vec2(sym.X1, cy), PLineStyle.Fina));
                     break;
                 case LegendKind.Vertice:
                     res.Add(new PLine(new Vec2(sym.X0, cy), new Vec2(sym.X1, cy), PLineStyle.Fina));
@@ -373,7 +504,7 @@ public static class SheetRenderer
                     res.Add(new PLine(new Vec2(sym.X0 + 3.4, cy + 0.9), new Vec2(sym.X1, cy + 0.9), PLineStyle.Fina));
                     break;
                 case LegendKind.MudancaConfrontante:
-                    res.Add(new PLine(new Vec2(sym.X0, cy), new Vec2(sym.X1, cy), PLineStyle.Limite));
+                    res.Add(new PLine(new Vec2(sym.X0, cy), new Vec2(sym.X1, cy), PLineStyle.Fina));
                     res.Add(new PCircle(new Vec2(sym.Center.X, cy), Math.Min(0.6, sh / 3), true));
                     res.Add(new PLine(new Vec2(sym.Center.X, cy), new Vec2(sym.Center.X, cy + sh * 0.9), PLineStyle.Divisao));
                     break;
@@ -391,6 +522,17 @@ public static class SheetRenderer
             res.Add(new PText(new Vec2(tx, cy), it.Text, s2, false, PTextH.Left, PTextV.Middle));
             y -= rowH;
         }
+    }
+
+    /// <summary>Amostra da área: fundo claro + hachura em linhas na cor do lote + contorno fino (como as divisas no desenho).</summary>
+    private static void Swatch(List<SheetPrim> res, PaperRect sym, (byte R, byte G, byte B) col, bool cross)
+    {
+        var pts = Corners(sym);
+        res.Add(new PFill(pts, col.R, col.G, col.B, Hatch: true, Cross: cross));
+        double sp = 1.1;
+        foreach (var (a, b) in ScanLines(pts, 45, sp)) res.Add(new PLine(a, b, PLineStyle.Hachura, col.R, col.G, col.B));
+        if (cross) foreach (var (a, b) in ScanLines(pts, -45, sp)) res.Add(new PLine(a, b, PLineStyle.Hachura, col.R, col.G, col.B));
+        Rect(res, sym, PLineStyle.Fina);
     }
 
     private static IReadOnlyList<Vec2> Corners(PaperRect r) => new[] { new Vec2(r.X0, r.Y0), new Vec2(r.X1, r.Y0), new Vec2(r.X1, r.Y1), new Vec2(r.X0, r.Y1) };

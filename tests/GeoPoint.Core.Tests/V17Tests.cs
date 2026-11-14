@@ -2,6 +2,7 @@ using System.Xml.Linq;
 using GeoPoint.Core.Export;
 using GeoPoint.Core.Model;
 using GeoPoint.Core.Settings;
+using GeoPoint.Core.Geometry;
 using GeoPoint.Core.Sheets;
 
 namespace GeoPoint.Core.Tests;
@@ -194,5 +195,80 @@ public class V17Tests
             }
         }
         finally { SheetV15PreviewTests.CroquiForSvg = null; }
+    }
+
+    [Fact]
+    public void ClipShapes_RemovesTheSegmentInsideAPolygon()
+    {
+        var tri = new[] { new Vec2(0, 0), new Vec2(10, 0), new Vec2(5, 10) };
+        var parts = SheetRenderer.ClipShapes(new Vec2(-5, 5), new Vec2(15, 5), new[] { (IReadOnlyList<Vec2>)tri });
+        Assert.Equal(2, parts.Count);
+        Assert.Equal(2.5, parts[0].Item2.X, 6);
+        Assert.Equal(7.5, parts[1].Item1.X, 6);
+        // Fora do polígono: inteiro.
+        Assert.Single(SheetRenderer.ClipShapes(new Vec2(-5, 20), new Vec2(15, 20), new[] { (IReadOnlyList<Vec2>)tri }));
+        // Côncavo (forma de U): a linha que atravessa as duas pernas fica com o vão do meio.
+        var u = new[] { new Vec2(0, 0), new Vec2(9, 0), new Vec2(9, 9), new Vec2(6, 9), new Vec2(6, 3), new Vec2(3, 3), new Vec2(3, 9), new Vec2(0, 9) };
+        var mid = SheetRenderer.ClipShapes(new Vec2(-2, 6), new Vec2(11, 6), new[] { (IReadOnlyList<Vec2>)u });
+        Assert.Equal(3, mid.Count);
+        Assert.Equal(3, mid[1].Item1.X, 6);
+        Assert.Equal(6, mid[1].Item2.X, 6);
+    }
+
+    [Fact]
+    public void Grid_DoesNotCrossTheDrawing()
+    {
+        // Triângulo como o da prancha do usuário: nenhuma linha da grade passa dentro do lote nem encosta nas divisas.
+        var lot = TestProjects.Poly("01", new Vec2(19.021, 1.366), new Vec2(-0.979, 1.366), new Vec2(5.496, 22.392));
+        var p = TestProjects.Project(lot);
+        var ctx = TestProjects.Context(p);
+        var spec = new SheetSpec { Kind = SheetKind.Atual, Title = "PLANTA DE SITUAÇÃO", LotIds = { lot.Id }, CoordTable = true };
+        var comp = SheetPreview.Compose(ctx, new[] { lot }, spec, SheetTemplate.Default(), crs: GeoPoint.Core.Geodesy.CrsDef.Utm());
+        var shapes = comp.Input.GridShapes;
+        Assert.NotEmpty(shapes);
+        var grid = comp.Sheet.OfType<PLine>().Where(l => l.Style == PLineStyle.Grade).ToList();
+        Assert.NotEmpty(grid);
+        var area = shapes[0];   // a área do lote (no papel)
+        foreach (var g in grid)
+            for (int k = 1; k < 20; k++)
+            {
+                var q = g.A + (g.B - g.A) * (k / 20.0);
+                Assert.False(GeoPoint.Core.Geometry.PolygonUtil.PointInPolygon(area, q), "grade dentro do lote");
+            }
+    }
+
+    [Fact]
+    public void Legend_SymbolsMatchTheDrawing()
+    {
+        var lot = TestProjects.Rect(0, 0, 12, 30, "01");
+        var ctx = TestProjects.Context(TestProjects.Project(lot));
+        var spec = new SheetSpec { Kind = SheetKind.Atual, Title = "SITUAÇÃO", LotIds = { lot.Id }, Hatch = true };
+        var comp = SheetPreview.Compose(ctx, new[] { lot }, spec, SheetTemplate.Default(), crs: GeoPoint.Core.Geodesy.CrsDef.Utm());
+        var conv = SheetTemplate.Default().Block(SheetBlockKind.Convencoes)!.Rect;
+        var inLegend = comp.Sheet.Where(x => x switch
+        {
+            PLine l => conv.Contains(l.A) && conv.Contains(l.B) && !(Math.Abs(l.A.Y - l.B.Y) < 1e-9 && (Math.Abs(l.A.Y - conv.Y0) < 1e-6 || Math.Abs(l.A.Y - conv.Y1) < 1e-6)),
+            PCircle c => conv.Contains(c.C),
+            _ => false,
+        }).ToList();
+        // Hachura em linhas na cor do lote (a mesma paleta do desenho), sem linha grossa (as divisas são finas) e ponto cheio do vértice.
+        Assert.Contains(inLegend, x => x is PLine { Style: PLineStyle.Hachura });
+        Assert.DoesNotContain(inLegend, x => x is PLine { Style: PLineStyle.Limite });
+        Assert.Contains(inLegend, x => x is PCircle { Filled: true });
+    }
+
+    [Fact]
+    public void ScanLines_StayInsideThePolygon()
+    {
+        var r = new[] { new Vec2(0, 0), new Vec2(8, 0), new Vec2(8, 2.6), new Vec2(0, 2.6) };
+        var lines = SheetRenderer.ScanLines(r, 45, 1.1);
+        Assert.InRange(lines.Count, 6, 14);
+        foreach (var (a, b) in lines)
+            foreach (var q in new[] { a, b, (a + b) * 0.5 })
+            {
+                Assert.InRange(q.X, -1e-6, 8 + 1e-6);
+                Assert.InRange(q.Y, -1e-6, 2.6 + 1e-6);
+            }
+        Assert.Equal(14, SheetRenderer.ScanLines(r, 0, 0.18).Count);   // 2,6 mm a cada 0,18 mm
     }
 }
