@@ -129,4 +129,43 @@ public class V161Tests
         Assert.Equal(4, d.Courses.Count);
         Assert.Equal(new[] { "Avenida Brasil", "Ana Lima", "área remanescente", "lote 07" }, d.Confrontantes);
     }
+
+    [Fact]
+    public void OldCertidao_FrenteFundosLados_WithCom()
+    {
+        var d = CertidaoParser.Parse("IMÓVEL: UM lote urbano na Rua G, n° 08, com a área de 360,00m² (trezentos e sessenta metros quadrados), limitando-se: Frente com a Rua G, medindo 12,00 metros; ao fundo limitando-se com o Lote 07, medindo 12,00 metros; pelo lado direito limitando-se com Ana Souza, medindo 30 metros, e por fim limitando-se pelo lado esquerdo com Bruno Lima, medindo 30 metros, totalizando um perímetro de 84,00 metros. PROPRIETÁRIAS: FULANA");
+        Assert.True(d.FromSides);
+        Assert.Equal(new double[] { 12, 30, 12, 30 }, d.Courses.Select(c => Math.Round(c.Distance, 3)));
+        Assert.Equal(new[] { "Rua G", "Ana Souza", "Lote 07", "Bruno Lima" }, d.Confrontantes);
+        Assert.Equal(360, d.Area);
+        Assert.Equal(84, d.Perimetro);
+    }
+
+    [Fact]
+    public void OldCertidao_Cardinal_Rectangle_AndTrapezoid()
+    {
+        var r = CertidaoParser.Parse("IMOVEL: - Um terreno que limita-se ao Norte, com Avenida Central, medindo 76 metros; ao Sul, com a Rua Um, medindo 76 metros, a Leste, com Lotes de Fulano e Beltrano, medindo 85 metros, e a Oeste, com a Rua Dois, medindo 85 metros, situado a Rua Dois, nesta cidade. PROPRIETÁRIO:- Alguém");
+        Assert.True(r.FromSides);
+        Assert.Equal(new double[] { 90, 0, 270, 180 }, r.Courses.Select(c => Math.Round(c.AzimuthDeg, 4)));
+        Assert.Equal(new double[] { 76, 85, 76, 85 }, r.Courses.Select(c => c.Distance));
+        // Ordem das divisas: sul, leste, norte, oeste.
+        Assert.Equal(new[] { "Rua Um", "Lotes de Fulano e Beltrano", "Avenida Central", "Rua Dois" }, r.Confrontantes);
+        var t = Traverse.Compute(r.Courses, adjust: false);
+        Assert.Equal(76 * 85, t.Area, 6);
+
+        // Lado sul citado duas vezes (erro comum de digitação): vale o primeiro, com aviso; o norte de 34,60 fecha com os lados de 15,50 e 16.
+        var z = CertidaoParser.Parse("IMÓVEL: Um terreno que limite-se ao Norte, com a casa de Lourival, medindo 34,60 metros; ao sul, com a rua Hermes, medindo 34,60 metros, ao sul, com a rua Hermes, medindo 34 metros, a leste, com a casa de Hélbio, medindo 15,50 metros, e a Oeste, com a Travessa Tocantins, medindo 16 metros, situado à Travessa Tocantins, nesta cidade. Proprietária: Maria");
+        Assert.True(z.FromSides);
+        Assert.Contains(z.Warnings, w => w.Contains("duas vezes"));
+        Assert.DoesNotContain(z.Warnings, w => w.Contains("não são retos"));
+        Assert.Equal(34.6, z.Courses[2].Distance, 2);
+    }
+
+    [Fact]
+    public void OldCertidao_OcrLookalikes_AreTolerated()
+    {
+        var d = CertidaoParser.Parse("Um terreno que limita-se ao Norte, com Avenida Central, mcdindo 76 mctros; ao Sul, com a Rua Um, medindo 76 metros, a Lcste, com Lotes de Fulano, medindo 85 mctros, e a Ocste, com a Rua Dois, medindo 85 metros, situado a Rua Dois, nesta cidade.");
+        Assert.True(d.FromSides);
+        Assert.Equal(4, d.Courses.Count);
+    }
 }

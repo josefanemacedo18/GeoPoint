@@ -120,8 +120,17 @@ public static class CertidaoParser
             // Só as medidas dos lados (frente, fundos, laterais).
             if (!d.HasCourses)
             {
-                ReadSides(desc.Length > 0 ? desc : flat, d);
+                // Certidões antigas: só as medidas dos lados. Sem descrição marcada, vale o texto até o proprietário/registro anterior.
+                string sideText = desc;
+                if (sideText.Length == 0)
+                {
+                    var stop = DescStopRx.Match(flat);
+                    sideText = stop.Success && stop.Index > 40 ? flat[..stop.Index] : flat;
+                }
+                ReadSides(sideText, d);
+                if (d.Sides.Count < 3) ReadSidesClauses(sideText, d);
                 if (d.Sides.Any(s => s.Lado == "frente") && d.Sides.Any(s => s.Lado is "direito" or "esquerdo")) BuildFromSides(d);
+                else if (d.Sides.Any(s => s.Lado is "sul" or "norte") && d.Sides.Any(s => s.Lado is "leste" or "oeste")) BuildFromCardinal(d);
             }
         }
 
@@ -324,6 +333,80 @@ public static class CertidaoParser
             else if (Regex.Match(rest, @"^\s*,?\s*(?:para|com|de\s+frente\s+para)\s+(?<c>[^,;]+)", Opt) is { Success: true } pm) conf = CleanConfrontante(pm.Groups["c"].Value);
             d.Sides.Add(new CertidaoSide(lado, v, conf));
         }
+    }
+
+    private static readonly Regex SideKeyRx = new(
+        @"\b(?:(?:ao|a|à)\s+(?<c>norte|sul|l[ec]ste|o[ec]ste|[ec]ste)\b|(?<f>frente)\b|(?:ao\s+)?(?<u>fundos?)\b|(?:pel[oa]\s+)?(?:lado|lateral)\s+(?<l>direit[oa]|esquerd[oa])\b)", Opt);
+    private static string NormCard(string c)
+    {
+        c = c.ToLowerInvariant();
+        return c.EndsWith("ste") ? (c.StartsWith("o") ? "oeste" : "leste") : c;
+    }
+    private static readonly Regex SideValueRx = new(@"(?:m[ec]dindo|m[ec]de|medida\s+de|com\s+extens[ãa]o\s+de)?\s*" + Num + @"\s*(?:m\b|m[ec]tros)", Opt);
+    private static readonly Regex SideConfRx = new(@"^\s*[,:]?\s*(?:limitando-se\s+|limita-se\s+|confrontando\s+)?(?:com|para)\s+(?<c>.+?)(?=\s*,?\s*(?:m[ec]dindo|m[ec]de)\b|\s*,?\s*" + Num + @"\s*(?:m\b|m[ec]tros)|$)", Opt);
+
+    /// <summary>
+    /// Lados escritos por cláusula: "Frente com a Rua G, medindo 12,00 metros; ao fundo … medindo 12,00 metros; pelo lado direito …" ou
+    /// "limita-se ao Norte, com …, medindo 76 metros; ao Sul, com …". Cada palavra de lado abre uma cláusula que vai até a próxima.
+    /// </summary>
+    private static void ReadSidesClauses(string text, CertidaoData d)
+    {
+        d.Sides.Clear();
+        var keys = SideKeyRx.Matches(text).Cast<Match>().ToList();
+        for (int i = 0; i < keys.Count; i++)
+        {
+            var k = keys[i];
+            int end = i + 1 < keys.Count ? keys[i + 1].Index : text.Length;
+            string clause = text[(k.Index + k.Length)..end];
+            // A cláusula acaba onde o texto sai da descrição ("situado a…", "nesta cidade", "totalizando…").
+            var cut = Regex.Match(clause, @"\b(?:situad[oa]|nesta\s+cidade|totalizando|perfazendo|nos\s+termos)\b", Opt);
+            if (cut.Success) clause = clause[..cut.Index];
+            var vm = SideValueRx.Match(clause);
+            if (!vm.Success || CoordinateTableReader.Num(vm.Groups["v"].Value) is not double v || v <= 0) continue;
+            string lado = k.Groups["c"].Success ? (NormCard(k.Groups["c"].Value))
+                : k.Groups["f"].Success ? "frente"
+                : k.Groups["u"].Success ? "fundos"
+                : k.Groups["l"].Value.StartsWith("d", StringComparison.OrdinalIgnoreCase) ? "direito" : "esquerdo";
+            string conf = SideConfRx.Match(clause) is { Success: true } cm ? CleanConfrontante(cm.Groups["c"].Value) : "";
+            if (d.Sides.Any(x => x.Lado == lado))
+            {
+                var first = d.Sides.First(x => x.Lado == lado);
+                if (Math.Abs(first.Medida - v) > 0.005)
+                    d.Warnings.Add($"O documento cita o lado {lado} duas vezes (com {first.Medida:0.##} m e {v:0.##} m): foi usado o primeiro. Confira o texto.");
+                continue;
+            }
+            d.Sides.Add(new CertidaoSide(lado, v, conf));
+        }
+    }
+
+    /// <summary>
+    /// Lados pelos pontos cardeais (norte, sul, leste, oeste): o lado sul na horizontal, o oeste e o leste na vertical (ângulos retos
+    /// nos cantos do sul) e o norte ligando as pontas – a direção é a real (o desenho já fica com o norte para cima).
+    /// </summary>
+    private static void BuildFromCardinal(CertidaoData d)
+    {
+        var sul = d.Sides.FirstOrDefault(s => s.Lado == "sul");
+        var norte = d.Sides.FirstOrDefault(s => s.Lado == "norte");
+        var leste = d.Sides.FirstOrDefault(s => s.Lado == "leste");
+        var oeste = d.Sides.FirstOrDefault(s => s.Lado == "oeste");
+        double B = (sul ?? norte)!.Medida, E = (leste ?? oeste)!.Medida, W = (oeste ?? leste)!.Medida;
+        var back = new Geometry.Vec2(-B, W - E);
+        d.Courses.Clear();
+        d.Courses.Add(new Course { AzimuthDeg = 90, Distance = B, Source = "lado sul" });
+        d.Courses.Add(new Course { AzimuthDeg = 0, Distance = E, Source = "lado leste" });
+        d.Courses.Add(new Course { AzimuthDeg = CoordinateService.AzimuthOfEnuVector(back), Distance = back.Length, Source = "lado norte" });
+        d.Courses.Add(new Course { AzimuthDeg = 180, Distance = W, Source = "lado oeste" });
+        d.Confrontantes.Clear();
+        d.Confrontantes.Add((sul ?? norte)!.Confrontante == "" ? "" : (sul ?? norte)!.Confrontante);
+        d.Confrontantes.Add(leste?.Confrontante ?? "");
+        d.Confrontantes.Add(norte?.Confrontante ?? "");
+        d.Confrontantes.Add(oeste?.Confrontante ?? "");
+        if (sul is null) { d.Confrontantes[0] = ""; d.Confrontantes[2] = norte!.Confrontante; }
+        d.FromSides = true;
+        d.Warnings.Add("O documento traz só as medidas dos lados (norte, sul, leste e oeste), sem ângulos: o desenho supõe ângulos retos nos cantos do lado sul e já fica orientado (norte para cima). Confira os ângulos.");
+        double nm = norte?.Medida ?? back.Length;
+        if (sul is not null && norte is not null && Math.Abs(back.Length - nm) > Math.Max(0.1, nm * 0.005))
+            d.Warnings.Add($"Com esses lados, o lado norte mediria {back.Length:0.00} m e o documento diz {nm:0.00} m: os ângulos não são retos – ajuste os azimutes na tabela.");
     }
 
     /// <summary>Perímetro pelas medidas: frente no sentido leste (azimute 90°), laterais perpendiculares à frente, fundos ligando as laterais.</summary>

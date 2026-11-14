@@ -23,6 +23,17 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 
 ---
 
+## Ajustes da versão 1.6.2
+
+- **Certidões antigas (só com as medidas dos lados)**: o *Importar certidão* agora entende os lados escritos como nas certidões mais
+  antigas – *"limita-se ao Norte, com a Avenida X, medindo 76 metros; ao Sul, com a Rua Y, medindo 76 metros, a Leste, … e a Oeste, …"*
+  e *"Frente com a Rua G, medindo 12,00 metros; ao fundo limitando-se com o Lote 07, …; pelo lado direito limitando-se com …"*. Cada
+  lado vai para a tabela de azimutes com o seu confrontante (ruas marcadas como testada).
+- **Norte, sul, leste e oeste**: o desenho já sai orientado (norte para cima), com ângulos retos nos cantos do lado sul; o lado norte
+  liga as pontas e é conferido com a medida do documento. Lado citado duas vezes (erro de digitação do cartório) gera aviso.
+- Essas certidões não trazem ângulos: o desenho supõe cantos retos e avisa para conferir. Letras trocadas pela digitalização
+  ("mctros", "Lcste") são aceitas.
+
 ## Ajustes da versão 1.6.1
 
 - **Certidão: só o perímetro e os confrontantes.** A importação lê apenas a **descrição do perímetro** ("DESCRIÇÃO DA PROPRIEDADE:
