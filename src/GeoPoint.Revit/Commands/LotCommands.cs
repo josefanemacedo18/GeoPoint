@@ -156,6 +156,13 @@ public sealed class CmdReconhecer : CommandBase
         var numberer = new Numberer(win.StartNumberText);
         string NextName() => win.SelectedUse == LotUse.Lote ? numberer.Next() : $"{LotUseInfo.Label(win.SelectedUse)} {numberer.Next()}";
         var created = new List<LotRecord>();
+        // Confrontantes guardados pelo Desenhar Perímetro (certidão): vão para as divisas dos lotes criados agora.
+        int confApplied = 0;
+        void ApplyPending()
+        {
+            GeoPoint.Core.Operations.PendingConfrontantes.Prune(s.Project, uid => ElementUtil.ByUniqueId(doc, uid) is not null);
+            confApplied = GeoPoint.Core.Operations.PendingConfrontantes.Apply(s.Project, created);
+        }
 
         if (!win.ClickMode)
         {
@@ -169,6 +176,7 @@ public sealed class CmdReconhecer : CommandBase
             using var t = new Transaction(doc, "GeoPoint: reconhecer lotes");
             t.Start();
             s.Project.Lots.AddRange(created);
+            ApplyPending();
             ProjectStore.Save(doc, s.Project);
             t.Commit();
         }
@@ -238,6 +246,7 @@ public sealed class CmdReconhecer : CommandBase
                     try { doc.Delete(tempType); } catch { }
                 }
                 s.Project.Lots.AddRange(created);
+                ApplyPending();
                 ProjectStore.Save(doc, s.Project);
                 t.Commit();
             }
@@ -249,7 +258,10 @@ public sealed class CmdReconhecer : CommandBase
             Ui.Info("Nenhum lote criado", "Não havia áreas novas para cadastrar.");
             return Result.Succeeded;
         }
-        if (Ui.Confirm($"{created.Count} lote(s) criado(s)", "Deseja abrir o Gerenciador de Lotes agora para informar nomes, confrontantes e testadas?",
+        string confNote = confApplied > 0
+            ? $"{confApplied} divisa(s) já receberam o confrontante informado no Desenhar Perímetro (certidão).\n\n"
+            : "";
+        if (Ui.Confirm($"{created.Count} lote(s) criado(s)", confNote + "Deseja abrir o Gerenciador de Lotes agora para informar nomes, confrontantes e testadas?",
                 "Abrir o Gerenciador de Lotes", "Agora não"))
             CmdGerenciar.OpenManager(s, created.Select(c => c.Id));
         return Result.Succeeded;

@@ -272,17 +272,12 @@ public sealed class CmdCaminhamento : CommandBase
         var target = CurveTarget.ForActiveView(s.Doc, view, w.UseDetailLines, w.UseDetailLines ? null : z);
         // Linhas com o estilo padrão: elas servem de base para o reconhecimento dos lotes.
         var created = target.Create(s.Doc, curves, null);
-        // Certidão: Dados do Imóvel e lote cadastrado com os confrontantes de cada divisa.
-        int filled = d.FillInfo ? FillInfo(s.Project.Info, d.Fields, d.ReplaceInfo) : 0;
-        LotRecord? lot = null;
-        if (d.RegisterLot && d.Closed && created.Count == curves.Count)
-        {
-            lot = BuildLot(s, d, curves, created, target, view, w.UseDetailLines);
-            s.Project.Lots.Add(lot);
-            VertexRegistry.Register(s.NewContext(), new[] { lot });
-        }
+        // Confrontantes (da certidão ou digitados) guardados com as linhas: o Reconhecer Lotes aplica no lote deste contorno.
+        int pending = d.Closed && created.Count == curves.Count
+            ? GeoPoint.Core.Operations.PendingConfrontantes.Store(s.Project, curves, created.Select(c => c.UniqueId).ToList(), d.Confrontantes, d.SourceFile)
+            : 0;
         if (refChanged) ControlPointDrawer.RedrawAll(s);
-        if (refChanged || filled > 0 || lot is not null) ProjectStore.Save(s.Doc, s.Project);
+        if (refChanged || pending > 0) ProjectStore.Save(s.Doc, s.Project);
         t.Commit();
         var ids = created.Select(c => c.Id).ToList();
         if (ids.Count > 0)
@@ -296,80 +291,13 @@ public sealed class CmdCaminhamento : CommandBase
             PerimeterPlacement.ProjectReference => "a partir do ponto de referência do projeto",
             _ => $"a partir do ponto clicado ({d.StartName})",
         };
-        int confs = lot?.EdgeInfos.Count(e => e.Confrontante.Length > 0) ?? 0;
         Ui.Info("Perímetro desenhado",
             $"{ids.Count} linha(s) criada(s) {where} e selecionada(s).\n\n{d.Summary}" +
             (refChanged ? $"\n\nO vértice {d.StartName} passou a ser o ponto de referência do projeto (o topo da vista é o norte)." : "") +
-            (filled > 0 ? $"\n\nDados do Imóvel: {filled} campo(s) preenchido(s) com a certidão." : "") +
-            (lot is not null
-                ? $"\n\n{lot.DisplayName} cadastrado" + (confs > 0 ? $", com {confs} confrontante(s)." : ".") + " Confira em Gerenciar Lotes."
+            (pending > 0
+                ? $"\n\n{pending} confrontante(s) ficaram guardados com as linhas. Use 'Reconhecer Lotes' neste contorno: o lote já sai com eles (confira em Gerenciar Lotes)."
                 : "\n\nUse 'Reconhecer Lotes' para transformar o contorno em lote."));
         return Result.Succeeded;
-    }
-
-    /// <summary>Preenche os Dados do Imóvel com os campos lidos da certidão (só os vazios, ou todos com <paramref name="replace"/>).</summary>
-    private static int FillInfo(GeoPoint.Core.Model.ProjectInfo info, IReadOnlyDictionary<string, string> f, bool replace)
-    {
-        int n = 0;
-        void Set(string key, Func<string> get, Action<string> set)
-        {
-            if (!f.TryGetValue(key, out var v) || v.Trim().Length == 0) return;
-            if (!replace && get().Trim().Length > 0) return;
-            if (get() == v) return;
-            set(v.Trim());
-            n++;
-        }
-        Set("Proprietario", () => info.Proprietario, v => info.Proprietario = v);
-        Set("Documento", () => info.Documento, v => info.Documento = v);
-        Set("Matricula", () => info.Matricula, v => info.Matricula = v);
-        Set("Endereco", () => info.Endereco, v => info.Endereco = v);
-        Set("Bairro", () => info.Bairro, v => info.Bairro = v);
-        Set("Cep", () => info.Cep, v => info.Cep = v);
-        Set("Municipio", () => info.Municipio, v => info.Municipio = v);
-        Set("UF", () => info.UF, v => info.UF = v);
-        Set("Comarca", () => info.Comarca, v => info.Comarca = v);
-        Set("Cartorio", () => info.Cartorio, v => info.Cartorio = v);
-        return n;
-    }
-
-    /// <summary>Lote cadastrado direto pelas linhas desenhadas (como no Gerar Lote), com os dados e os confrontantes da certidão.</summary>
-    private static LotRecord BuildLot(GpSession s, PerimeterDrawingData d, List<Curve2> curves, List<CurveElement> created, CurveTarget target, View view, bool detail)
-    {
-        var f = d.Fields;
-        var info = s.Project.Info;
-        string name = f.TryGetValue("Lote", out var ln) && ln.Length > 0 ? ln : Numberer.Suggest(s.Project);
-        string quadra = f.TryGetValue("Quadra", out var q) && q.Length > 0 ? q : s.Settings.Recognition.DefaultQuadra;
-        var lot = new LotRecord
-        {
-            Nome = name, Numero = name, Quadra = quadra, Uso = LotUse.Lote,
-            Outer = curves.Select((c, i) => EdgeDto.FromCurve(c, new[] { created[i].UniqueId })).ToList(),
-            ZFeet = target.ZFeet,
-            SourceKind = detail ? "DetailLine" : "ModelLine",
-            SourceViewId = detail ? view.UniqueId : "",
-            SketchPlaneId = target.Sketch?.UniqueId ?? "",
-            Created = DateTime.Now,
-            FaseId = s.Project.Fase.Id,
-        };
-        // Matrícula, proprietário e CPF no lote só quando diferem dos Dados do Imóvel (iguais: o lote usa os do imóvel).
-        if (f.TryGetValue("Matricula", out var m) && !string.Equals(m, info.Matricula, StringComparison.OrdinalIgnoreCase)) lot.Matricula = m;
-        if (f.TryGetValue("Proprietario", out var o) && !string.Equals(o, info.Proprietario, StringComparison.OrdinalIgnoreCase)) lot.Proprietario = o;
-        if (f.TryGetValue("Documento", out var doc) && lot.Proprietario.Length > 0) lot.Documento = doc;
-        if (f.TryGetValue("Area", out var a) && Fmt.TryNum(a, out double av) && av > 0) lot.AreaTitulo = av;
-        if (f.TryGetValue("Perimetro", out var p) && Fmt.TryNum(p, out double pv) && pv > 0) lot.PerimetroTitulo = pv;
-        for (int i = 0; i < curves.Count && i < d.Confrontantes.Count; i++)
-        {
-            var (conf, testada) = d.Confrontantes[i];
-            if (conf.Length == 0 && !testada) continue;
-            var mid = curves[i].Mid;
-            lot.EdgeInfos.Add(new EdgeInfo { MX = mid.X, MY = mid.Y, Confrontante = conf, Testada = testada });
-        }
-        var reg = lot.ToRegion();
-        lot.History.Add(new HistoryEntry
-        {
-            Description = d.SourceFile.Length > 0 ? $"Desenhado pela certidão \"{d.SourceFile}\"" : "Desenhado pelo Desenhar Perímetro",
-            Area = reg.Area, Perimeter = reg.Outer.Perimeter,
-        });
-        return lot;
     }
 }
 

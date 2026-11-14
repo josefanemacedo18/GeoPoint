@@ -2,7 +2,7 @@
 
 Plugin para **Revit 2027** (uso interno) de georreferenciamento de lotes urbanos e rurais: reconhece lotes a partir das linhas
 do desenho, calcula azimutes/rumos, distâncias, áreas e coordenadas (UTM, geográficas, SAD 69, Córrego Alegre, Plano Topográfico
-Local, RTM/LTM), desenha lotes por azimutes ou coordenadas – inclusive lendo a certidão de inteiro teor em PDF ou imagem (OCR), com confrontantes e dados do imóvel, faz desmembramento (inclusive desenhando com a ferramenta Linha, com prévia ao vivo), remembramento e simulação de parcelamento,
+Local, RTM/LTM), desenha lotes por azimutes ou coordenadas – inclusive lendo o perímetro e os confrontantes da certidão de inteiro teor em PDF ou imagem (OCR), faz desmembramento (inclusive desenhando com a ferramenta Linha, com prévia ao vivo), remembramento e simulação de parcelamento,
 calcula recuos, construções existentes e afastamentos, e gera memorial descritivo em Word, pranchas por modelo (grade de coordenadas, tabela,
 coordenada de referência, espaço para a imagem de localização, carimbo e logomarca do escritório), PDF, planilha Excel e arquivos KMZ/KML/GeoJSON para Google Earth e QGIS.
 

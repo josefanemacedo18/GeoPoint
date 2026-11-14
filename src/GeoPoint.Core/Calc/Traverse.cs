@@ -116,6 +116,20 @@ public static class MemorialTextParser
 
     public static List<Course> Parse(string text) => ParseDetailed(text).Select(f => f.Course).ToList();
 
+    /// <summary>Primeiro azimute (ou rumo, convertido em azimute) escrito no texto; null = nenhum.</summary>
+    public static double? FirstAzimuth(string text)
+    {
+        var found = new List<(int Pos, double Az)>();
+        if (AzRx.Match(text) is { Success: true } a && TryAngle(a, out double av)) found.Add((a.Index, av));
+        if (RumoRx.Match(text) is { Success: true } r && TryAngle(r, out double rv)) found.Add((r.Index, BearingToAzimuth(rv, r.Groups["q"].Value)));
+        if (RumoRx2.Match(text) is { Success: true } r2 && TryAngle(r2, out double r2v)) found.Add((r2.Index, BearingToAzimuth(r2v, r2.Groups["q1"].Value + r2.Groups["q2"].Value)));
+        return found.Count == 0 ? null : found.OrderBy(f => f.Pos).First().Az;
+    }
+
+    /// <summary>Primeira distância escrita no texto ("distância de 7,35m", "medindo 12,00 m"); null = nenhuma.</summary>
+    public static double? FirstDistance(string text) =>
+        DistRx.Match(text) is { Success: true } m && AngleText.TryParseNumber(m.Groups["v"].Value, out double d) && d > 0 ? d : null;
+
     public static List<Found> ParseDetailed(string text)
     {
         var tokens = new List<Token>();

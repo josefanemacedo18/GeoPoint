@@ -32,6 +32,10 @@ public sealed class ExtractedDocument
 /// <summary>Monta o texto em linhas a partir das palavras (ordem de leitura; colunas distantes separadas por tabulação).</summary>
 public static class DocumentText
 {
+    /// <summary>Palavra escrita na vertical (texto girado na margem): caixa invertida ou bem mais alta que larga.</summary>
+    public static bool IsVertical(DocWord w) =>
+        w.Y1 <= w.Y0 || w.X1 <= w.X0 || (w.Text.Trim().Length >= 3 && (w.Y1 - w.Y0) > 1.8 * (w.X1 - w.X0));
+
     public static string BuildText(IEnumerable<DocWord> words)
     {
         var sb = new StringBuilder();
@@ -39,7 +43,7 @@ public static class DocumentText
         {
             if (sb.Length > 0) sb.Append("\n\n");
             var lines = new List<List<DocWord>>();
-            foreach (var w in page.Where(w => w.Text.Trim().Length > 0).OrderBy(w => w.CenterY).ThenBy(w => w.X0))
+            foreach (var w in page.Where(w => w.Text.Trim().Length > 0 && !IsVertical(w)).OrderBy(w => w.CenterY).ThenBy(w => w.X0))
             {
                 // Mesma linha: centro vertical dentro de 60% da altura da palavra da linha.
                 var line = lines.LastOrDefault(l => Math.Abs(l.Average(x => x.CenterY) - w.CenterY) < Math.Max(w.Height, l.Average(x => x.Height)) * 0.6);
@@ -50,14 +54,12 @@ public static class DocumentText
             {
                 var ws = line.OrderBy(x => x.X0).ToList();
                 double h = ws.Average(x => x.Height);
+                // Espaço muito maior que o normal entre palavras = outra coluna de tabela. Texto justificado tem espaços largos
+                // mas parecidos entre si: linha longa (muitas palavras) só separa coluna com espaço enorme.
+                double colGap = ws.Count >= 8 ? h * 4 : h * 2.2;
                 for (int i = 0; i < ws.Count; i++)
                 {
-                    if (i > 0)
-                    {
-                        double gap = ws[i].X0 - ws[i - 1].X1;
-                        // Espaço grande entre palavras = outra coluna da tabela.
-                        sb.Append(gap > h * 1.6 ? '\t' : ' ');
-                    }
+                    if (i > 0) sb.Append(ws[i].X0 - ws[i - 1].X1 > colGap ? '\t' : ' ');
                     sb.Append(ws[i].Text.Trim());
                 }
                 sb.Append('\n');

@@ -8,120 +8,199 @@ namespace GeoPoint.Core.Documents;
 /// <summary>Medida de um lado sem ângulo (certidões antigas: "12,00 m de frente para a Rua X").</summary>
 public sealed record CertidaoSide(string Lado, double Medida, string Confrontante);
 
-/// <summary>O que foi lido da certidão (matrícula/inteiro teor) ou de um memorial.</summary>
+/// <summary>Um trecho da descrição: do vértice <see cref="From"/> até o vértice <see cref="To"/>.</summary>
+public sealed class CertidaoTrecho
+{
+    public string From { get; set; } = "";
+    public string To { get; set; } = "";
+    public double? Distance { get; set; }
+    public double? Azimuth { get; set; }
+    public string Confrontante { get; set; } = "";
+    public string Text { get; set; } = "";
+}
+
+/// <summary>Perímetro lido de uma certidão (matrícula / inteiro teor) ou memorial: vértices, trechos e confrontantes.</summary>
 public sealed class CertidaoData
 {
-    public string Matricula { get; set; } = "";
-    public string Proprietario { get; set; } = "";
-    public string Documento { get; set; } = "";
-    public string Endereco { get; set; } = "";
-    public string Bairro { get; set; } = "";
-    public string Municipio { get; set; } = "";
-    public string UF { get; set; } = "";
-    public string Comarca { get; set; } = "";
-    public string Cartorio { get; set; } = "";
-    public string Cep { get; set; } = "";
-    public string Lote { get; set; } = "";
-    public string Quadra { get; set; } = "";
-    public double? Area { get; set; }
-    public double? Perimetro { get; set; }
-    public int? UtmZone { get; set; }
-    public bool South { get; set; } = true;
-    /// <summary>Azimutes/rumos e distâncias, na ordem do texto (ou montados das medidas dos lados).</summary>
-    public List<Course> Courses { get; } = new();
-    /// <summary>Confrontante de cada trecho (mesmo índice de <see cref="Courses"/> ou dos trechos entre vértices); "" = não achado.</summary>
-    public List<string> Confrontantes { get; } = new();
+    /// <summary>Trecho do documento com a descrição do perímetro (o resto – partes, registros, selos – é ignorado).</summary>
+    public string Description { get; set; } = "";
     public CoordinateTextResult Coordinates { get; set; } = new();
+    public List<CertidaoTrecho> Trechos { get; } = new();
+    /// <summary>Azimutes/rumos e distâncias, na ordem (para a aba de azimutes, quando não há coordenadas).</summary>
+    public List<Course> Courses { get; } = new();
+    /// <summary>
+    /// Confrontante de cada divisa: com coordenadas, na ordem dos vértices (vértice i → i+1); sem coordenadas, na ordem de <see cref="Courses"/>.
+    /// </summary>
+    public List<string> Confrontantes { get; } = new();
     public List<CertidaoSide> Sides { get; } = new();
     /// <summary>Trechos montados das medidas dos lados (ângulos supostos de 90° na frente).</summary>
     public bool FromSides { get; set; }
+    /// <summary>Área e perímetro escritos no documento (só para conferir o desenho).</summary>
+    public double? Area { get; set; }
+    public double? Perimetro { get; set; }
+    /// <summary>Fuso UTM escrito no documento (null = não informado).</summary>
+    public int? UtmZone { get; set; }
+    public bool South { get; set; } = true;
     public List<string> Warnings { get; } = new();
 
     public bool HasCoordinates => Coordinates.Vertices.Count >= 3;
     public bool HasCourses => Courses.Count >= 3;
-
-    /// <summary>Campos lidos, para mostrar na revisão.</summary>
-    public IEnumerable<(string Key, string Label, string Value)> Fields()
-    {
-        var inv = CultureInfo.GetCultureInfo("pt-BR");
-        yield return ("Matricula", "Matrícula", Matricula);
-        yield return ("Proprietario", "Proprietário", Proprietario);
-        yield return ("Documento", "CPF/CNPJ", Documento);
-        yield return ("Lote", "Lote", Lote);
-        yield return ("Quadra", "Quadra", Quadra);
-        yield return ("Endereco", "Endereço", Endereco);
-        yield return ("Bairro", "Bairro", Bairro);
-        yield return ("Cep", "CEP", Cep);
-        yield return ("Municipio", "Município", Municipio);
-        yield return ("UF", "UF", UF);
-        yield return ("Comarca", "Comarca", Comarca);
-        yield return ("Cartorio", "Cartório", Cartorio);
-        yield return ("Area", "Área (m²)", Area is double a ? a.ToString("N2", inv) : "");
-        yield return ("Perimetro", "Perímetro (m)", Perimetro is double p ? p.ToString("N2", inv) : "");
-    }
 }
 
 /// <summary>
-/// Lê uma certidão de matrícula / inteiro teor (texto já extraído do PDF ou do OCR): perímetro (coordenadas, azimutes e distâncias,
-/// tabela ou só as medidas dos lados), confrontantes de cada trecho e os dados do imóvel.
+/// Lê só a descrição do perímetro de uma certidão de matrícula / inteiro teor (texto do PDF ou do OCR):
+/// coordenadas dos vértices, ou azimutes e distâncias, e o confrontante de cada divisa. Dados das partes, registros,
+/// selos e emolumentos ficam de fora.
 /// </summary>
 public static class CertidaoParser
 {
     private const RegexOptions Opt = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
     private const string Num = @"(?<v>\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?)";
-    private const string Ufs = "AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO";
+    private const string Name = @"(?<n>[A-Za-z]{0,6}[-\s]?\d+[A-Za-z0-9\-_./]*|[A-Za-z0-9][A-Za-z0-9\-_./]*\d)";
 
-    private static readonly Regex MatriculaRx = new(@"matr[íi]cula\s*(?:n[º°o.]*\s*)?[:\-–]?\s*(?<m>\d{1,3}(?:\.\d{3})+|\d{1,7})(?![\d,])", Opt);
-    private static readonly Regex OwnerRx = new(@"propriet[áa]ri[oa]s?(?:\s*\(\w+\))*\s*[:\-–]\s*(?<n>[^,;\n]{3,120})", Opt);
-    private static readonly Regex BuyerRx = new(@"(?:adquirentes?|outorgad[oa]s?[\s-]+comprador(?:a|es)?|compradore?s?|compradora)(?:\s*\(\w+\))*\s*[:\-–]\s*(?<n>[^,;\n]{3,120})", Opt);
-    private static readonly Regex CpfRx = new(@"(?<!\d)(?:\d{3}\.?\d{3}\.?\d{3}\s*[-–]\s*\d{2}|\d{2}\.?\d{3}\.?\d{3}\s*/\s*\d{4}\s*[-–]\s*\d{2})(?!\d)", Opt);
+    /// <summary>Início da descrição do perímetro.</summary>
+    private static readonly Regex DescStartRx = new(
+        @"descri[çc][ãa]o\s+(?:da\s+propriedade|do\s+im[óo]vel|do\s+per[íi]metro)|limites\s+e\s+confronta[çc][õo]es|" +
+        @"partindo\s+(?:do|de\s+um)\s+(?:v[ée]rtice|ponto|marco)|inicia-se|in[íi]cio\s+(?:no|do)\s+(?:v[ée]rtice|ponto|marco)|" +
+        @"come[çc]a\s+no\s+(?:v[ée]rtice|ponto|marco)|tem\s+in[íi]cio\s+no", Opt);
+    /// <summary>Fim da descrição: "fechando (assim) …", "ponto inicial (da descrição)…".</summary>
+    private static readonly Regex DescEndRx = new(@"fechando\s+(?:assim\s+)?(?:o\s+per[íi]metro|a\s+poligonal|uma\s+[áa]rea|o\s+pol[íi]gono|a\s+[áa]rea)[^.;]*|ponto\s+inicial\s+da\s+descri[çc][ãa]o[^.;]*", Opt);
+    /// <summary>O que vem depois da descrição (quando ela não termina com "fechando…").</summary>
+    private static readonly Regex DescStopRx = new(
+        @"propriet[áa]ri[oa]s?\s*(?:atual\s*)?:|registro\s+anterior|respons[áa]vel\s+t[ée]cnico|adquirente\s*:|\b(?:R|AV)[-.]\s?\d+\s*[/-]", Opt);
+    /// <summary>Chegada de um trecho: "até o vértice P-02".</summary>
+    private static readonly Regex ToRx = new(@"at[ée]\s+(?:o\s+|ao\s+|a\s+)?(?:v[ée]rtice|ponto|marco)\s+" + Name, Opt);
+    /// <summary>Saída de um trecho: "do vértice P-02", "partindo do vértice P-01", "inicia-se no vértice P-01".</summary>
+    private static readonly Regex FromRx = new(@"(?:\bdo|\bno|\bnum|partindo\s+do|a\s+partir\s+do)\s+(?:v[ée]rtice|ponto|marco)\s+" + Name, Opt);
+    /// <summary>Fim do texto de um trecho (depois da chegada).</summary>
+    private static readonly Regex TrechoEndRx = new(@";|\.\s+(?=\p{Lu})|\bdeste\b|\bda[íi]\b|\bdali\b|\bfinalmente\b|\bdo\s+(?:v[ée]rtice|ponto|marco)\b", Opt);
+    private static readonly Regex ConfRx = new(
+        @"(?:confrontando|confronta(?:-se)?|limitando-se|limita-se|fazendo\s+divisa|divisando|lindeiro)\s+(?:com|a)\s+(?<c>.+?)" +
+        @"(?=\s*(?:,\s*(?:com\s+(?:o\s+|um\s+)?(?:azimute|rumo)|medindo|mede|na\s+extens|com\s+(?:a\s+)?dist|e\s+dist|em\s+(?:uma\s+)?dist|at[ée]\b|fechando|segue)|;|\.\s|\n|$))", Opt);
     private static readonly Regex AreaRx = new(@"[áa]rea\s+(?:total\s+|superficial\s+|de\s+terreno\s+|do\s+terreno\s+)?(?:de\s+|com\s+|:\s*|=\s*|igual\s+a\s+)?" + Num + @"\s*(?<u>m²|m2|metros\s+quadrados|ha\b|hectares?)", Opt);
     private static readonly Regex PerimRx = new(@"per[íi]metro\s+(?:total\s+)?(?:de\s+|com\s+|:\s*|=\s*|igual\s+a\s+)?" + Num + @"\s*(?:m\b|metros)", Opt);
-    private static readonly Regex LoteRx = new(@"\blote\s+(?:de\s+terreno\s+)?(?:urbano\s+)?(?:sob\s+(?:o\s+)?)?(?:n[º°o.]*\s*)?(?<l>\d{1,4}[A-Z]?)\b", Opt);
-    private static readonly Regex QuadraRx = new(@"\bquadra\s+(?:n[º°o.]*\s*)?(?<q>[\dA-Z]{1,4})\b", Opt);
-    private static readonly Regex StreetRx = new(@"(?:situad[oa]|localizad[oa]|sito)\s+(?:na|no|à|a|em)\s+(?<e>(?:Rua|R\.|Avenida|Av\.|Travessa|Tv\.|Estrada|Rodovia|Alameda|Praça|Via)\s[^,;\n]{2,80})(?:,\s*(?:n[º°o.]*\s*)?(?<n>\d+[A-Z]?|s/?n))?", Opt);
-    private static readonly Regex BairroRx = new(@"\bbairro\s+(?:de\s+|do\s+|da\s+)?(?<b>[^,;\n.]{2,60})", Opt);
-    private static readonly Regex CityRx = new(@"(?i:munic[íi]pio|cidade)\s+(?i:de)\s+(?<m>[\p{Lu}][\p{L}' ]{2,40}?)\s*(?:[-/–,]\s*|\s+)\(?(?<uf>" + Ufs + @")\)?(?![\p{L}])", RegexOptions.CultureInvariant);
-    private static readonly Regex CityRx2 = new(@"(?i:munic[íi]pio|cidade)\s+(?i:de)\s+(?<m>[\p{Lu}][\p{L}' ]{2,40}?)(?=\s*[,.;\n])", RegexOptions.CultureInvariant);
-    private static readonly Regex ComarcaRx = new(@"(?i:comarca)\s+(?i:de)\s+(?<c>[\p{Lu}][\p{L}' ]{2,40}?)(?=\s*(?:[-/–,.;\n(]|\s+(?:" + Ufs + @")\b|\s+Estado))", RegexOptions.CultureInvariant);
-    private static readonly Regex CartorioRx = new(@"(?<c>(?:cart[óo]rio|of[íi]cio\s+de\s+registro|registro\s+de\s+im[óo]veis|serventia\s+(?:extrajudicial|registral))[^\n;]{3,140})", Opt);
-    private static readonly Regex CepRx = new(@"\bCEP\s*:?\s*(?<c>\d{2}\.?\d{3}\s*-?\s*\d{3})", Opt);
     private static readonly Regex ZoneRx = new(@"(?:fuso|zona)\s*(?:UTM\s*)?:?\s*(?<z>\d{1,2})\s*(?<h>[NS])?(?![\d\p{L}])|\bUTM\s*(?:zona\s*)?(?<z>\d{2})\s*(?<h>[NS])\b", Opt);
     private static readonly Regex McRx = new(@"(?:\bMC\b|meridiano\s+central)\s*:?\s*(?<mc>-?\d{2})\s*°?\s*(?<w>W|O|WGr)?", Opt);
     private static readonly Regex NorthHemiRx = new(@"hemisf[ée]rio\s+norte", Opt);
-
-    private static readonly Regex ConfRx = new(
-        @"(?:confrontando|confronta(?:-se)?|limitando-se|limita-se|fazendo\s+divisa|divisando|lindeiro)\s+(?:com|a)\s+(?<c>.+?)(?=\s*(?:,\s*(?:com\s+(?:o\s+|um\s+)?(?:azimute|rumo)|medindo|mede|na\s+extens|com\s+(?:a\s+)?dist|e\s+dist|at[ée]\b)|;|\.\s|\n|$))", Opt);
-    private static readonly Regex BoundaryRx = new(@";|\bdeste\b|\bda[íi]\b|\bdali\b", Opt);
 
     public static CertidaoData Parse(string text)
     {
         var d = new CertidaoData();
         text = OcrCleanup.Normalize(text ?? "");
         if (text.Trim().Length == 0) return d;
-        // Parágrafos em uma linha só (o PDF e o OCR quebram as linhas no meio dos nomes); as linhas de tabela ficam.
+        // Parágrafos em uma linha só (o PDF e o OCR quebram as linhas no meio das frases); as linhas de tabela ficam.
         string flat = Flatten(text);
+        string desc = Description(flat);
+        d.Description = desc;
 
-        ReadPropertyData(flat, d);
-        // Cartório: a linha do cabeçalho (sem juntar com as linhas seguintes).
-        if (CartorioRx.Match(text) is { Success: true } ca) d.Cartorio = Regex.Replace(ca.Groups["c"].Value, @"\s+", " ").Trim().TrimEnd(',', '.', '-', '–');
+        // ---- Vértices com coordenadas (memorial, SIGEF; tabela só com cabeçalho).
+        d.Coordinates = PerimeterText.ParseCoordinates(desc.Length > 0 ? desc : text, tableNeedsHeader: true);
+        if (d.Coordinates.Vertices.Count < 3 && desc.Length > 0)
+        {
+            var whole = PerimeterText.ParseCoordinates(text, tableNeedsHeader: true);
+            if (whole.Vertices.Count >= 3) d.Coordinates = whole;
+        }
+        d.Coordinates.Datum ??= CoordinateTableReader.DetectDatum(flat);
 
-        // ---- Perímetro: coordenadas (memorial/SIGEF/tabela) e azimutes/distâncias.
-        d.Coordinates = PerimeterText.ParseCoordinates(text);
-        var found = MemorialTextParser.ParseDetailed(flat);
-        d.Courses.AddRange(found.Select(f => f.Course));
-        d.Confrontantes.AddRange(ConfrontantesOf(flat, found));
-        if (d.Coordinates.Vertices.Count >= 3 && d.Confrontantes.Count == 0)
-            d.Confrontantes.AddRange(Enumerable.Repeat("", d.Coordinates.Vertices.Count));
+        // ---- Trechos: saída, chegada, distância, azimute e confrontante.
+        d.Trechos.AddRange(ReadTrechos(desc.Length > 0 ? desc : flat));
 
-        // ---- Só as medidas dos lados (sem ângulos).
-        ReadSides(flat, d);
-        if (!d.HasCourses && !d.HasCoordinates && d.Sides.Any(s => s.Lado == "frente") && d.Sides.Any(s => s.Lado is "direito" or "esquerdo"))
-            BuildFromSides(d);
+        if (d.HasCoordinates)
+        {
+            // Conferência e confrontantes na ordem dos vértices (vértice i → i+1, fechando no primeiro).
+            d.Confrontantes.AddRange(ApplyTrechos(d.Coordinates, d.Trechos));
+        }
+        else
+        {
+            foreach (var t in d.Trechos.Where(t => t.Azimuth is not null && t.Distance is not null))
+            {
+                d.Courses.Add(new Course { AzimuthDeg = t.Azimuth!.Value, Distance = t.Distance!.Value, Source = $"{t.From} → {t.To}" });
+                d.Confrontantes.Add(t.Confrontante);
+            }
+            // Só as medidas dos lados (frente, fundos, laterais).
+            if (!d.HasCourses)
+            {
+                ReadSides(desc.Length > 0 ? desc : flat, d);
+                if (d.Sides.Any(s => s.Lado == "frente") && d.Sides.Any(s => s.Lado is "direito" or "esquerdo")) BuildFromSides(d);
+            }
+        }
 
-        if (!d.HasCourses && !d.HasCoordinates)
-            d.Warnings.Add("Não foi encontrada a descrição do perímetro (coordenadas, azimutes e distâncias ou as medidas dos lados).");
+        // ---- Área e perímetro do documento (conferência do desenho).
+        var areaM = DescEndRx.Match(flat) is { Success: true } end && AreaRx.Match(end.Value) is { Success: true } ae ? ae : AreaRx.Match(flat);
+        if (areaM.Success && CoordinateTableReader.Num(areaM.Groups["v"].Value) is double av)
+            d.Area = areaM.Groups["u"].Value.StartsWith("h", StringComparison.OrdinalIgnoreCase) ? av * 10000 : av;
+        if (PerimRx.Match(flat) is { Success: true } p && CoordinateTableReader.Num(p.Groups["v"].Value) is double pv) d.Perimetro = pv;
+
+        // ---- Fuso (ou meridiano central) e hemisfério.
+        (d.UtmZone, bool? south) = ReadZone(flat);
+        if (south is bool sh) d.South = sh;
+
+        if (!d.HasCoordinates && !d.HasCourses)
+            d.Warnings.Add(d.Trechos.Count > 0 && d.Trechos.All(t => t.Azimuth is null)
+                ? "A descrição traz distâncias, mas não traz coordenadas nem azimutes: não dá para desenhar só com as distâncias."
+                : "Não foi encontrada a descrição do perímetro (coordenadas, azimutes e distâncias ou as medidas dos lados).");
         return d;
+    }
+
+    // ------------------------------------------------------------------ descrição e trechos
+
+    /// <summary>Recorta a descrição do perímetro (do início – "Partindo do vértice…", "DESCRIÇÃO DA PROPRIEDADE" – até "fechando…").</summary>
+    public static string Description(string flat)
+    {
+        var s = DescStartRx.Match(flat);
+        if (!s.Success) return "";
+        var e = DescEndRx.Match(flat, s.Index);
+        // Sem "fechando…": vai até o que vem depois da descrição (proprietário, responsável técnico, registros).
+        var stop = DescStopRx.Match(flat, s.Index);
+        int end = e.Success ? e.Index + e.Length : stop.Success ? stop.Index : flat.Length;
+        return flat[s.Index..end].Trim();
+    }
+
+    /// <summary>
+    /// Trechos da descrição. Cada "até o vértice X" é a chegada de um trecho; o texto do trecho vai do fim do trecho anterior
+    /// até o primeiro ";" (ou "deste", "do vértice"…) depois da chegada – assim o confrontante e a distância escritos antes
+    /// ("segue confrontando com…, distância…, até o vértice") ou depois ("até o vértice P-02 em uma distância de…, confrontando com…")
+    /// ficam no trecho certo.
+    /// </summary>
+    public static List<CertidaoTrecho> ReadTrechos(string desc)
+    {
+        var res = new List<CertidaoTrecho>();
+        var arrivals = ToRx.Matches(desc).Cast<Match>().ToList();
+        int start = 0;
+        string prevTo = "";
+        foreach (var a in arrivals)
+        {
+            if (a.Index < start) continue;
+            var endM = TrechoEndRx.Match(desc, a.Index + a.Length);
+            int end = endM.Success ? endM.Index : desc.Length;
+            string seg = desc[start..end];
+            string beforeArrival = desc[start..a.Index];
+            var from = FromRx.Matches(beforeArrival).Cast<Match>().LastOrDefault();
+            var conf = ConfRx.Match(seg);
+            res.Add(new CertidaoTrecho
+            {
+                From = from is not null ? CleanVertexName(from.Groups["n"].Value) : prevTo,
+                To = CleanVertexName(a.Groups["n"].Value),
+                Distance = MemorialTextParser.FirstDistance(seg),
+                Azimuth = MemorialTextParser.FirstAzimuth(seg),
+                Confrontante = conf.Success ? CleanConfrontante(conf.Groups["c"].Value) : "",
+                Text = seg.Trim(),
+            });
+            prevTo = res[^1].To;
+            start = end;
+        }
+        return res;
+    }
+
+    private static string CleanVertexName(string n) => Regex.Replace(n.Trim().TrimEnd('.', ',', ';', ':', '/'), @"\s+", "");
+
+    /// <summary>Trecho que vai de <paramref name="from"/> a <paramref name="to"/> (pelos nomes; senão o de mesma posição).</summary>
+    private static CertidaoTrecho? MatchTrecho(IReadOnlyList<CertidaoTrecho> ts, string from, string to, int index)
+    {
+        static bool Eq(string a, string b) => string.Equals(a.Replace(" ", ""), b.Replace(" ", ""), StringComparison.OrdinalIgnoreCase);
+        return ts.FirstOrDefault(t => Eq(t.To, to) && Eq(t.From, from))
+               ?? ts.FirstOrDefault(t => Eq(t.To, to))
+               ?? (index < ts.Count && !ts.Any(t => Eq(t.To, to)) ? ts[index] : null);
     }
 
     /// <summary>Junta as linhas de cada parágrafo; mantém a quebra nas linhas de tabela (com tabulação) e entre parágrafos.</summary>
@@ -140,89 +219,70 @@ public static class CertidaoParser
         return sb.ToString();
     }
 
-    // ------------------------------------------------------------------ dados do imóvel
+    // ------------------------------------------------------------------ vértices × trechos
 
-    private static void ReadPropertyData(string text, CertidaoData d)
+    /// <summary>
+    /// Liga os trechos da descrição aos vértices com coordenadas (pelos nomes "do vértice X até o vértice Y"): devolve o confrontante
+    /// de cada divisa (vértice i → i+1) e, quando a descrição traz distâncias, troca a conferência pelos valores de cada trecho
+    /// (distância e, se houver, azimute). Serve para a certidão e para o texto colado na aba Coordenadas.
+    /// </summary>
+    public static List<string> ApplyTrechos(CoordinateTextResult c, IReadOnlyList<CertidaoTrecho> trechos)
     {
-        if (MatriculaRx.Match(text) is { Success: true } m) d.Matricula = m.Groups["m"].Value.Replace(".", "");
-
-        // Proprietário atual: o último adquirente (registros de compra e venda) ou o proprietário do cabeçalho.
-        Match? owner = BuyerRx.Matches(text).Cast<Match>().LastOrDefault();
-        if (owner is null && OwnerRx.Match(text) is { Success: true } o) owner = o;
-        if (owner is not null)
+        var names = c.Vertices.Select(v => v.Name).ToList();
+        var confs = new List<string>();
+        var stated = new List<Course>();
+        for (int i = 0; i < names.Count; i++)
         {
-            d.Proprietario = CleanName(owner.Groups["n"].Value);
-            var cpf = CpfRx.Match(text, owner.Index);
-            if (cpf.Success && cpf.Index - owner.Index < 400) d.Documento = FormatDoc(cpf.Value);
+            var t = MatchTrecho(trechos, names[i], names[(i + 1) % names.Count], i);
+            confs.Add(t?.Confrontante ?? "");
+            stated.Add(new Course
+            {
+                AzimuthDeg = t?.Azimuth ?? double.NaN, Distance = t?.Distance ?? double.NaN,
+                Source = t is null ? "" : $"{t.From} → {t.To}",
+            });
         }
-        if (d.Documento.Length == 0 && CpfRx.Match(text) is { Success: true } c0) d.Documento = FormatDoc(c0.Value);
-
-        if (AreaRx.Match(text) is { Success: true } a && CoordinateTableReader.Num(a.Groups["v"].Value) is double av)
-            d.Area = a.Groups["u"].Value.StartsWith("h", StringComparison.OrdinalIgnoreCase) ? av * 10000 : av;
-        if (PerimRx.Match(text) is { Success: true } p && CoordinateTableReader.Num(p.Groups["v"].Value) is double pv) d.Perimetro = pv;
-
-        // Lote e quadra: os do imóvel (primeiros citados, antes da descrição dos confrontantes).
-        int descStart = Regex.Match(text, @"im[óo]vel\s*:|descri[çc][ãa]o\s+do\s+im[óo]vel|um\s+(?:lote|terreno)", Opt) is { Success: true } im ? im.Index : 0;
-        if (LoteRx.Match(text, descStart) is { Success: true } l) d.Lote = l.Groups["l"].Value;
-        if (QuadraRx.Match(text, descStart) is { Success: true } q) d.Quadra = q.Groups["q"].Value.ToUpperInvariant();
-        if (StreetRx.Match(text) is { Success: true } st)
+        // Só substitui a conferência quando os trechos trazem pelo menos tantos valores quanto a leitura anterior.
+        int mine = stated.Count(x => !double.IsNaN(x.Distance));
+        int before = c.StatedCourses.Count(x => !double.IsNaN(x.Distance));
+        if (mine > 0 && mine >= before)
         {
-            string e = CleanName(st.Groups["e"].Value);
-            string n = st.Groups["n"].Success ? st.Groups["n"].Value : "";
-            d.Endereco = n.Length == 0 ? e : n.StartsWith("s", StringComparison.OrdinalIgnoreCase) ? e + ", s/n" : $"{e}, nº {n}";
+            c.StatedCourses.Clear();
+            c.StatedCourses.AddRange(stated);
         }
-        if (BairroRx.Match(text) is { Success: true } b) d.Bairro = CleanName(b.Groups["b"].Value);
-        if (CityRx.Match(text) is { Success: true } ci) { d.Municipio = CleanName(ci.Groups["m"].Value); d.UF = ci.Groups["uf"].Value.ToUpperInvariant(); }
-        else if (CityRx2.Match(text) is { Success: true } ci2) d.Municipio = CleanName(ci2.Groups["m"].Value);
-        if (ComarcaRx.Match(text) is { Success: true } co) d.Comarca = CleanName(co.Groups["c"].Value);
-        if (CepRx.Match(text) is { Success: true } ce)
+        return confs;
+    }
+
+    /// <summary>Trechos de um texto qualquer (memorial colado, certidão): limpa o OCR, junta as linhas e recorta a descrição.</summary>
+    public static List<CertidaoTrecho> TrechosOf(string text)
+    {
+        string flat = Flatten(OcrCleanup.Normalize(text ?? ""));
+        string desc = Description(flat);
+        return ReadTrechos(desc.Length > 0 ? desc : flat);
+    }
+
+    /// <summary>Fuso UTM (ou pelo meridiano central) e hemisfério escritos no texto (null = não informado).</summary>
+    public static (int? Zone, bool? South) ReadZone(string text)
+    {
+        int? zone = null;
+        bool? south = null;
+        if (ZoneRx.Match(text) is { Success: true } z && int.TryParse(z.Groups["z"].Value, out int zn) && zn is >= 1 and <= 60)
         {
-            var digits = Regex.Replace(ce.Groups["c"].Value, @"\D", "");
-            if (digits.Length == 8) d.Cep = digits[..5] + "-" + digits[5..];
-        }
-        // Fuso UTM (e hemisfério) ou meridiano central.
-        if (ZoneRx.Match(text) is { Success: true } z && int.TryParse(z.Groups["z"].Value, out int zone) && zone is >= 1 and <= 60)
-        {
-            d.UtmZone = zone;
-            if (z.Groups["h"].Success) d.South = z.Groups["h"].Value.Equals("S", StringComparison.OrdinalIgnoreCase);
+            zone = zn;
+            if (z.Groups["h"].Success) south = z.Groups["h"].Value.Equals("S", StringComparison.OrdinalIgnoreCase);
         }
         else if (McRx.Match(text) is { Success: true } mc && int.TryParse(mc.Groups["mc"].Value, out int cm))
         {
-            if (mc.Groups["w"].Success || cm > 0 && cm >= 30) cm = -Math.Abs(cm);
+            if (mc.Groups["w"].Success || cm >= 30) cm = -Math.Abs(cm);
             int zz = (int)Math.Floor((cm + 183) / 6.0);
-            if (zz is >= 1 and <= 60) d.UtmZone = zz;
+            if (zz is >= 1 and <= 60) zone = zz;
         }
-        if (NorthHemiRx.IsMatch(text)) d.South = false;
+        if (NorthHemiRx.IsMatch(text)) south = false;
+        return (zone, south);
     }
 
     // ------------------------------------------------------------------ confrontantes
 
-    /// <summary>
-    /// Confrontante de cada trecho: o texto de cada trecho vai do fim do trecho anterior ("; deste...") até o próximo;
-    /// dentro dele, a primeira expressão "confrontando com ..." (antes ou depois do azimute e da distância).
-    /// </summary>
-    private static List<string> ConfrontantesOf(string text, IReadOnlyList<MemorialTextParser.Found> found)
-    {
-        var res = new List<string>();
-        if (found.Count == 0) return res;
-        var bounds = new List<int> { 0 };
-        for (int k = 1; k < found.Count; k++)
-        {
-            var b = BoundaryRx.Match(text, found[k - 1].End);
-            bounds.Add(b.Success && b.Index < found[k].Start ? b.Index : found[k - 1].End);
-        }
-        bounds.Add(text.Length);
-        for (int k = 0; k < found.Count; k++)
-        {
-            int s0 = bounds[k], s1 = Math.Max(bounds[k + 1], found[k].End);
-            var block = text[s0..Math.Min(s1, text.Length)];
-            var m = ConfRx.Match(block);
-            res.Add(m.Success ? CleanConfrontante(m.Groups["c"].Value) : "");
-        }
-        return res;
-    }
-
-    /// <summary>"o Lote 06 de propriedade de João da Silva" → "João da Silva"; "a Rua das Flores" → "Rua das Flores".</summary>
+    /// <summary>"o Lote 06 de propriedade de João da Silva" → "João da Silva"; "a RUA A" → "Rua A".</summary>
     public static string CleanConfrontante(string c)
     {
         c = Regex.Replace(c, @"\s+", " ").Trim().Trim(',', ';', '.', ':');
@@ -231,7 +291,7 @@ public static class CertidaoParser
         c = Regex.Replace(c, @"^(?:o|a|os|as|um|uma)\s+", "", Opt);
         c = Regex.Replace(c, @",?\s*(?:brasileir[oa]|casad[oa]|solteir[oa]|portador|inscrit[oa]|CPF|RG)\b.*$", "", Opt).Trim().TrimEnd(',');
         if (c.Length > 90) c = c[..90].TrimEnd();
-        return CleanName(c, keepCase: !IsAllCaps(c) || Regex.IsMatch(c, @"^(?:Rua|Avenida|Travessa|Estrada|Rodovia|Alameda|Praça|Lote)\b", Opt) && !IsAllCaps(c));
+        return CleanName(c);
     }
 
     /// <summary>Confrontante que é uma via pública (vira testada).</summary>
@@ -266,9 +326,7 @@ public static class CertidaoParser
         }
     }
 
-    /// <summary>
-    /// Perímetro pelas medidas: frente no sentido leste (azimute 90°), laterais perpendiculares à frente, fundos ligando as laterais.
-    /// </summary>
+    /// <summary>Perímetro pelas medidas: frente no sentido leste (azimute 90°), laterais perpendiculares à frente, fundos ligando as laterais.</summary>
     private static void BuildFromSides(CertidaoData d)
     {
         double F = d.Sides.First(s => s.Lado == "frente").Medida;
@@ -276,13 +334,11 @@ public static class CertidaoParser
         var esq = d.Sides.FirstOrDefault(s => s.Lado == "esquerdo");
         var fun = d.Sides.FirstOrDefault(s => s.Lado == "fundos");
         double R = (dir ?? esq)!.Medida, L = (esq ?? dir)!.Medida;
-        // P1 (0,0) canto frente-esquerda → P2 (F,0) → P3 (F,R) → P4 (0,L).
         var back = new Geometry.Vec2(-F, L - R);
-        double backAz = CoordinateService.AzimuthOfEnuVector(back);
         d.Courses.Clear();
         d.Courses.Add(new Course { AzimuthDeg = 90, Distance = F, Source = "frente" });
         d.Courses.Add(new Course { AzimuthDeg = 0, Distance = R, Source = "lado direito" });
-        d.Courses.Add(new Course { AzimuthDeg = backAz, Distance = back.Length, Source = "fundos" });
+        d.Courses.Add(new Course { AzimuthDeg = CoordinateService.AzimuthOfEnuVector(back), Distance = back.Length, Source = "fundos" });
         d.Courses.Add(new Course { AzimuthDeg = 180, Distance = L, Source = "lado esquerdo" });
         d.Confrontantes.Clear();
         d.Confrontantes.Add(d.Sides.First(s => s.Lado == "frente").Confrontante);
@@ -290,38 +346,32 @@ public static class CertidaoParser
         d.Confrontantes.Add(fun?.Confrontante ?? "");
         d.Confrontantes.Add(esq?.Confrontante ?? "");
         d.FromSides = true;
-        d.Warnings.Add("A certidão traz só as medidas dos lados, sem ângulos: o desenho supõe as laterais perpendiculares à frente (frente para o sul). Confira e gire o desenho no Revit para a posição real.");
+        d.Warnings.Add("O documento traz só as medidas dos lados, sem ângulos: o desenho supõe as laterais perpendiculares à frente (frente para o sul). Confira e gire o desenho no Revit para a posição real.");
         if (fun is not null && Math.Abs(back.Length - fun.Medida) > 0.05)
-            d.Warnings.Add($"Com as laterais perpendiculares, os fundos dariam {back.Length:0.00} m e a certidão diz {fun.Medida:0.00} m: os ângulos não são retos – ajuste os azimutes na tabela.");
+            d.Warnings.Add($"Com as laterais perpendiculares, os fundos dariam {back.Length:0.00} m e o documento diz {fun.Medida:0.00} m: os ângulos não são retos – ajuste os azimutes na tabela.");
     }
 
-    // ------------------------------------------------------------------ utilitários
+    // ------------------------------------------------------------------ nomes
 
     private static bool IsAllCaps(string s) => s.Any(char.IsLetter) && s.Where(char.IsLetter).All(char.IsUpper);
 
-    /// <summary>Nome limpo; em maiúsculas vira "Fulano de Tal".</summary>
-    public static string CleanName(string s, bool keepCase = false)
+    /// <summary>Nome limpo; em maiúsculas vira "Fulano de Tal" ("RESIDENCIAL ESPERANÇA B – ÁREA PÚBLICA" → "Residencial Esperança B – Área Pública").</summary>
+    public static string CleanName(string s)
     {
         s = Regex.Replace(s, @"\s+", " ").Trim().Trim(',', ';', '.', ':', '-', '–').Trim();
-        s = Regex.Replace(s, @"\s+(?:brasileir[oa]s?|casad[oa]s?|solteir[oa]s?|vi[úu]v[oa]|divorciad[oa]|portador[a]?|inscrit[oa]|residente|domiciliad[oa]|maior|menor)\b.*$", "", Opt).Trim();
-        if (keepCase || !IsAllCaps(s)) return s;
+        if (!IsAllCaps(s)) return s;
+        var pt = CultureInfo.GetCultureInfo("pt-BR");
         var small = new HashSet<string> { "de", "da", "do", "das", "dos", "e" };
-        var words = s.ToLower(CultureInfo.GetCultureInfo("pt-BR")).Split(' ');
+        var words = s.ToLower(pt).Split(' ');
         for (int i = 0; i < words.Length; i++)
-            if (words[i].Length > 0 && (i == 0 || !small.Contains(words[i])))
-                words[i] = char.ToUpper(words[i][0], CultureInfo.GetCultureInfo("pt-BR")) + words[i][1..];
-        return string.Join(" ", words);
-    }
-
-    private static string FormatDoc(string raw)
-    {
-        var d = Regex.Replace(raw, @"\D", "");
-        return d.Length switch
         {
-            11 => $"{d[..3]}.{d[3..6]}.{d[6..9]}-{d[9..]}",
-            14 => $"{d[..2]}.{d[2..5]}.{d[5..8]}/{d[8..12]}-{d[12..]}",
-            _ => raw.Trim(),
-        };
+            var w = words[i];
+            if (w.Length == 0 || (i > 0 && small.Contains(w))) continue;
+            // Números romanos e letras soltas ficam em maiúsculas (Residencial Jardim Porto Franco I, Quadra B).
+            if (w.Length == 1 || Regex.IsMatch(w, "^(?:ii|iii|iv|vi|vii|viii|ix|xi|xii)$")) { words[i] = w.ToUpper(pt); continue; }
+            words[i] = char.ToUpper(w[0], pt) + w[1..];
+        }
+        return string.Join(" ", words);
     }
 }
 
@@ -330,18 +380,25 @@ public static class DocumentHighlight
 {
     public static List<DocWord> Find(IEnumerable<DocWord> words, IEnumerable<double> angles, IEnumerable<double> values)
     {
-        var angs = angles.ToList();
-        var vals = values.Where(v => Math.Abs(v) >= 1).ToList();   // números pequenos demais destacariam datas e números soltos
+        var angs = angles.Where(a => !double.IsNaN(a)).ToList();
+        var vals = values.Where(v => !double.IsNaN(v) && Math.Abs(v) >= 1).ToList();
         var res = new List<DocWord>();
         foreach (var w in words)
         {
-            var n = OcrCleanup.Number(w.Text);
-            if (n is not double v) continue;
             bool angle = w.Text.Contains('°') || w.Text.Contains('º');
             // Coordenadas e distâncias vêm com casas decimais: "12," (quadra 12) ou "2026" não são destacados.
             if (!angle && !Regex.IsMatch(w.Text, @"\d[.,]\d")) continue;
-            if (angle ? angs.Any(a => PerimeterText.AngleDiff(a, v) < 1.5 / 3600) : vals.Any(x => Math.Abs(x - v) < 0.0006 + Math.Abs(x) * 1e-9))
-                res.Add(w);
+            // "236184,12/N" e "7,35m," trazem letras grudadas: compara cada número da palavra.
+            foreach (Match m in Regex.Matches(w.Text, angle ? @"-?\d{1,3}\s*°[^A-Za-z]*" : @"\d[\d.,]*\d"))
+            {
+                var n = OcrCleanup.Number(m.Value);
+                if (n is not double v) continue;
+                if (angle ? angs.Any(a => PerimeterText.AngleDiff(a, v) < 1.5 / 3600) : vals.Any(x => Math.Abs(x - v) < 0.0006 + Math.Abs(x) * 1e-9))
+                {
+                    res.Add(w);
+                    break;
+                }
+            }
         }
         return res;
     }

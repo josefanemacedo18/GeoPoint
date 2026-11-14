@@ -587,6 +587,24 @@ public sealed class GeneratedSheet
     public int Folha { get; set; }
 }
 
+/// <summary>
+/// Confrontante lido da certidão para uma linha desenhada pelo Desenhar Perímetro. Fica guardado até o Reconhecer Lotes
+/// criar o lote desse contorno; aí vai para a divisa do lote (e sai desta lista).
+/// </summary>
+public sealed class PendingConfrontante
+{
+    /// <summary>A linha desenhada (coordenadas do modelo, m) com o UniqueId dela no Revit em <see cref="EdgeDto.Src"/>.</summary>
+    public EdgeDto Line { get; set; } = new();
+    /// <summary>Ponto dentro do perímetro desenhado: escolhe o lote certo quando a linha é divisa de dois lotes.</summary>
+    public double IX { get; set; }
+    public double IY { get; set; }
+    public string Confrontante { get; set; } = "";
+    public bool Testada { get; set; }
+    /// <summary>Arquivo de onde veio (certidão ou memorial).</summary>
+    public string SourceFile { get; set; } = "";
+    public DateTime Created { get; set; } = DateTime.Now;
+}
+
 /// <summary>Dados do GeoPoint gravados no documento do Revit.</summary>
 public sealed class ParcelProject
 {
@@ -612,6 +630,8 @@ public sealed class ParcelProject
     public List<GeneratedSheet> Sheets { get; set; } = new();
     /// <summary>Edificações (área edificada) desenhadas dentro dos lotes.</summary>
     public List<BuildingRecord> Buildings { get; set; } = new();
+    /// <summary>Confrontantes das linhas desenhadas pela certidão, à espera do Reconhecer Lotes.</summary>
+    public List<PendingConfrontante> PendingConfrontantes { get; set; } = new();
 
     /// <summary>Edificações da fase ativa.</summary>
     [JsonIgnore] public IEnumerable<BuildingRecord> PhaseBuildings => Buildings.Where(b => b.FaseId == Fase.Id);

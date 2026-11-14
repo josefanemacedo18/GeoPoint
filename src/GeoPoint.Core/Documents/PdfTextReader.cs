@@ -26,14 +26,24 @@ public static class PdfTextReader
             {
                 int idx = page.Number - 1;
                 res.Pages.Add(new DocPage(idx, page.Width, page.Height, false));
-                int letters = page.Letters.Count(l => !string.IsNullOrWhiteSpace(l.Value));
+                // Só o texto na horizontal: o texto vertical da margem (código de validação da assinatura digital) fica de fora.
+                var words = page.GetWords()
+                    .Where(w => !string.IsNullOrWhiteSpace(w.Text) && w.TextOrientation == UglyToad.PdfPig.Content.TextOrientation.Horizontal)
+                    .Select(w => (Word: w, Size: w.Letters.Count == 0 ? w.BoundingBox.Height : w.Letters.Max(l => l.PointSize)))
+                    .ToList();
+                int letters = words.Sum(x => x.Word.Text.Length);
                 if (letters < MinLettersPerPage) { res.PagesWithoutText.Add(idx); continue; }
-                foreach (var w in page.GetWords())
+                // Letras bem menores que as do texto (selos, rodapés de emolumentos) ficam de fora.
+                var sizes = words.Select(x => x.Size).OrderBy(v => v).ToList();
+                double body = sizes[sizes.Count / 2];
+                foreach (var (w, size) in words)
                 {
-                    if (string.IsNullOrWhiteSpace(w.Text)) continue;
+                    if (size < body * 0.72) continue;
                     var b = w.BoundingBox;
-                    // PDF: origem embaixo à esquerda (pontos) → origem em cima à esquerda.
-                    res.Words.Add(new DocWord(idx, w.Text, b.Left, page.Height - b.Top, b.Right, page.Height - b.Bottom));
+                    // Caixa pela linha de base e pelo tamanho da fonte (altura igual para todas as palavras da linha – a altura do
+                    // desenho das letras varia: "uma" é mais baixa que "distância"). Origem em cima à esquerda.
+                    double baseY = w.Letters.Count > 0 ? w.Letters.Average(l => l.StartBaseLine.Y) : b.Bottom;
+                    res.Words.Add(new DocWord(idx, w.Text, b.Left, page.Height - (baseY + size * 0.78), b.Right, page.Height - (baseY - size * 0.22)));
                 }
             }
         }

@@ -107,7 +107,11 @@ public static class PerimeterText
     private sealed record Tok(int Pos, int End, char Type, double Value);
 
     /// <summary>Lê as coordenadas dos vértices. Primeiro procura coordenadas no meio do texto (memorial/SIGEF); senão, uma tabela.</summary>
-    public static CoordinateTextResult ParseCoordinates(string text)
+    /// <param name="tableNeedsHeader">
+    /// Documento importado (certidão): só aceita tabela de vértices com cabeçalho (Vértice | E | N…). Sem isso, números soltos do
+    /// documento (datas, protocolos, valores) virariam vértices.
+    /// </param>
+    public static CoordinateTextResult ParseCoordinates(string text, bool tableNeedsHeader = false)
     {
         var res = new CoordinateTextResult();
         text ??= "";
@@ -117,7 +121,8 @@ public static class PerimeterText
         var memorial = FromMemorial(text, out var memKind);
         var tableWarnings = new List<string>();
         var tableStated = new List<Course>();
-        var (table, tableKind) = memorial.Count >= 2 ? (new List<PerimeterVertex>(), PerimeterCoordKind.Utm) : FromTable(text, tableWarnings, tableStated);
+        var (table, tableKind) = memorial.Count >= 2 || (tableNeedsHeader && HeaderOrder(text) is null)
+            ? (new List<PerimeterVertex>(), PerimeterCoordKind.Utm) : FromTable(text, tableWarnings, tableStated);
         if (memorial.Count >= 2 || (memorial.Count == 1 && table.Count < 2))
         {
             // Coordenadas no meio do texto (memorial, SIGEF). Com uma só, é a do ponto de partida.
@@ -393,12 +398,24 @@ public static class PerimeterText
 
     private static void Check(PerimeterResult res, IReadOnlyList<Course> stated)
     {
-        if (stated.Count != res.Segments.Count)
+        if (stated.Count != res.Segments.Count && stated.Any(x => !double.IsNaN(x.AzimuthDeg)))
             res.Warnings.Add($"O texto tem {stated.Count} trecho(s) com azimute e distância e as coordenadas formam {res.Segments.Count}: a conferência compara na ordem.");
         for (int k = 0; k < Math.Min(stated.Count, res.Segments.Count); k++)
         {
             var s = res.Segments[k];
             var st = stated[k];
+            if (double.IsNaN(st.Distance) || st.Distance <= 0) continue;
+            if (double.IsNaN(st.AzimuthDeg))
+            {
+                // Só a distância escrita (certidões que descrevem por coordenadas e distâncias, sem azimute).
+                double dd = Math.Min(Math.Abs(st.Distance - s.Distance), s.GridDistance is double g0 ? Math.Abs(st.Distance - g0) : double.MaxValue);
+                s.Stated = st;
+                s.DistanceDiff = dd;
+                s.Basis = "distância";
+                // Distâncias de certidão costumam ser arredondadas em relação às coordenadas: 10 cm ou 0,5%.
+                s.Matches = dd <= Math.Max(0.10, s.Distance * 0.005);
+                continue;
+            }
             double dTrue = AngleDiff(st.AzimuthDeg, s.Azimuth);
             double dGrid = s.GridAzimuth is double ga ? AngleDiff(st.AzimuthDeg, ga) : double.MaxValue;
             bool grid = dGrid < dTrue;

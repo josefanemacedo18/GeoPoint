@@ -23,15 +23,34 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 
 ---
 
+## Ajustes da versão 1.6.1
+
+- **Certidão: só o perímetro e os confrontantes.** A importação lê apenas a **descrição do perímetro** ("DESCRIÇÃO DA PROPRIEDADE:
+  Partindo do vértice P-01 de coordenadas E …/N … segue até o vértice P-02 em uma distância de 7,35 m, confrontando com RUA A; …
+  fechando assim uma área de 761,46 m²"): as **coordenadas** (ou os azimutes e distâncias) de cada trecho e o **confrontante de cada
+  divisa**. Partes, registros, CPF, selos e emolumentos ficam de fora – os Dados do Imóvel e o cadastro do lote continuam com você.
+- **Leitura certa do modelo mais comum de certidão de inteiro teor**: o texto vertical da margem (código da assinatura digital), os
+  rodapés em letra miúda e o espaçamento do texto justificado não confundem mais a leitura; números soltos (protocolo, CEP, valores)
+  não viram vértices.
+- **Conferência só pelas distâncias**: certidões que trazem coordenadas e distâncias, sem azimutes, são conferidas trecho a trecho
+  pela distância (10 cm ou 0,5%), além da área do desenho × a da certidão.
+- **Fuso e datum não informados**: o GeoPoint usa SIRGAS 2000 e o fuso do projeto (23 S na região) e avisa para conferir se o imóvel é
+  da região.
+- **Confrontantes nas tabelas**: as colunas *Testada* e *Confrontante* ficam nas próprias tabelas de azimutes e de coordenadas (lidos do
+  texto – inclusive de memorial colado – e corrigíveis). Ao desenhar, eles ficam **guardados com as linhas**; quando você usa
+  **Reconhecer Lotes** nesse contorno, o **lote já sai com o confrontante de cada divisa** (ruas como testada). Divisas que já tinham
+  confrontante não são alteradas; se você apagar as linhas, os confrontantes guardados delas são descartados.
+- A aba *Dados da certidão* saiu; a barra da aba *Documento* foi corrigida (botões do tamanho certo, explicação embaixo); a janela abre
+  mais larga (até a largura da tela).
+
 ## Novidades da versão 1.6
 
 - **Certidão em PDF ou imagem no Desenhar Perímetro**: botão *Importar certidão ou memorial*. O GeoPoint lê o texto (PDF digital: o
   texto do próprio PDF, exato; PDF escaneado, foto ou imagem: reconhecimento de texto – OCR – do próprio Windows, sem enviar o documento
   para fora do computador) e encontra o **perímetro** (coordenadas, azimutes e distâncias, tabela de vértices ou só as medidas de frente,
-  fundos e laterais), o **confrontante de cada divisa** e os **dados do imóvel** (matrícula, proprietário atual, CPF/CNPJ, lote, quadra,
-  endereço, bairro, CEP, município/UF, comarca, cartório, área e perímetro). Tudo aparece para conferir: as páginas do documento ao lado,
-  com **os números usados no desenho destacados em amarelo**, e a área e o perímetro do desenho comparados com os da certidão. Ao
-  desenhar, os **Dados do Imóvel** são preenchidos e o **lote é cadastrado** já com os confrontantes.
+  fundos e laterais) e o **confrontante de cada divisa** (na 1.6.1, só isso – ver acima). Tudo aparece para conferir: as páginas do
+  documento ao lado, com **os números usados no desenho destacados em amarelo**, e a área e o perímetro do desenho comparados com os da
+  certidão.
 - **Pranchas – coordenadas**: na janela de Pranchas você escolhe as coordenadas da prancha (grade, tabela, chamadas e carimbo):
   **Geográficas (latitude/longitude) – SIRGAS 2000** (padrão), UTM – SIRGAS 2000 ou o primeiro sistema do memorial.
 - **Grade limpa**: as linhas da grade de coordenadas não passam mais por cima da tabela, do norte, das chamadas de coordenada e dos
@@ -250,11 +269,13 @@ uma **certidão/memorial em PDF ou imagem** (*Importar certidão ou memorial*, v
   (`P-01; 235142,50; 9299292,99`, com tabulação, ponto e vírgula ou espaços; cabeçalho `N;E` ou `Longitude;Latitude` inverte as colunas).
 - O GeoPoint reconhece o **sistema** – **UTM**, **geográficas** ou **locais** (X para leste e Y para norte, ex.: estação total com
   1000/1000) – e o **datum** escrito no texto (SIRGAS 2000, WGS 84, SAD 69, Córrego Alegre ou EPSG). Confira e troque se preciso;
-  o **fuso** vem da referência do projeto (ou das Configurações).
+  o **fuso** vem do texto ("fuso 23 S", "meridiano central 45° W") ou, se o texto não diz, da referência do projeto (ou das
+  Configurações) – com aviso para conferir.
 - Tabela de vértices: nome, coordenadas, **raio até o próximo** (arcos) e lado do arco, o **azimute e a distância até o próximo** no
   formato do projeto e a **conferência com o texto**: cada trecho é comparado com o azimute e a distância escritos no memorial
-  (✓ confere, dizendo se bateu com o azimute **plano UTM** ou o **verdadeiro**; ⚠ com a diferença, em vermelho na tabela e na prévia).
-  A tolerância é de 30" (ou o ângulo de 2 cm nos trechos curtos) e 5 cm.
+  (✓ confere – o resultado diz se bateu com o azimute **plano UTM** ou o **verdadeiro**; ⚠ com a diferença, em vermelho na tabela e na
+  prévia). A tolerância é de 30" (ou o ângulo de 2 cm nos trechos curtos) e 5 cm. Texto **só com distâncias** (sem azimutes, comum
+  nas certidões): confere a distância, com tolerância de 10 cm ou 0,5%.
 - *Fechar o polígono* liga o último vértice ao primeiro; o vértice inicial repetido no fim do texto é ignorado. *Inverter sentido*
   percorre os vértices ao contrário.
 - O desenho fica no plano topográfico local do projeto (distâncias horizontais reais), como o resto do GeoPoint.
@@ -265,29 +286,38 @@ uma **certidão/memorial em PDF ou imagem** (*Importar certidão ou memorial*, v
 - **Clicar onde fica o primeiro vértice** – e, se o projeto ainda não tem referência, *Usar o primeiro vértice como ponto de
   referência do projeto* (o topo da vista é o norte): o projeto fica georreferenciado por essas coordenadas;
 - **Começar no ponto de referência do projeto** (aba de azimutes).
-As linhas criadas ficam selecionadas, prontas para *Reconhecer Lotes* (ou o lote já sai cadastrado, ver abaixo). Tudo é desfeito com um
+*Confrontantes* – as duas tabelas têm as colunas **Testada** e **Confrontante** (na de coordenadas, o confrontante da divisa que vai do
+vértice ao próximo). Vêm preenchidas quando o texto diz "confrontando com…", "limitando-se com…", "fazendo divisa com…" (pelo
+proprietário quando diz "lote 06 de propriedade de…"; ruas e avenidas marcadas como testada) e podem ser digitadas ou corrigidas.
+
+As linhas criadas ficam selecionadas, prontas para *Reconhecer Lotes*. Os **confrontantes ficam guardados com as linhas** e entram no
+lote quando o *Reconhecer Lotes* cria o lote desse contorno (as divisas que já tinham confrontante não mudam). Tudo é desfeito com um
 *Desfazer*.
 
 *Importar certidão ou memorial (PDF ou imagem)*
 - **PDF digital** (gerado pelo cartório ou pelo sistema): o texto é lido do próprio PDF – os números saem exatos. **PDF escaneado, foto
   do celular ou imagem** (JPG, PNG, TIF): o texto é reconhecido pelo **OCR do Windows**, no próprio computador (nada é enviado pela
   internet). Precisa do idioma *Português (Brasil)* instalado no Windows (Configurações › Hora e idioma › Idioma); sem ele, o GeoPoint avisa.
-- O GeoPoint encontra o perímetro e põe na aba certa: **coordenadas** (memorial, SIGEF ou tabela de vértices com azimute, distância, E e
-  N – como a tabela das pranchas do GeoPoint), **azimutes/rumos e distâncias**, ou **só as medidas dos lados** ("12,00 m de frente para a
-  Rua X, 30,00 m pelo lado direito…"): neste caso o desenho supõe as laterais perpendiculares à frente e avisa para conferir os ângulos.
-  O **fuso UTM** e o **datum** escritos na certidão também são usados.
+- O GeoPoint lê **só a descrição do perímetro** (de "DESCRIÇÃO DA PROPRIEDADE", "Partindo do vértice…", "Inicia-se…" ou "limites e
+  confrontações" até "fechando assim uma área de…"), trecho a trecho: **de qual vértice para qual**, as **coordenadas**, a **distância**,
+  o **azimute** (quando há) e o **confrontante**. Partes, registros, CPF, selos e emolumentos são ignorados – nada disso vai para o
+  projeto. Só essa descrição aparece no quadro de texto da aba.
+- O perímetro vai para a aba certa: **coordenadas** (memorial, SIGEF ou tabela de vértices com cabeçalho E/N – como a tabela das
+  pranchas do GeoPoint), **azimutes/rumos e distâncias**, ou **só as medidas dos lados** ("12,00 m de frente para a Rua X, 30,00 m pelo
+  lado direito…"): neste caso o desenho supõe as laterais perpendiculares à frente e avisa para conferir os ângulos.
+- O **fuso UTM** e o **datum** escritos na certidão são usados. Quando a certidão só diz "UTM" (o mais comum), vale **SIRGAS 2000** e o
+  **fuso do projeto** (23 S na região), com aviso para conferir se o imóvel é da região.
 - Erros comuns de OCR são corrigidos nos números (O no lugar de 0, l no lugar de 1, espaços dentro do número e do ângulo, grau lido
   como "o").
 - **Aba Documento** (ao lado da prévia): as páginas, com os números que entraram no desenho **destacados em amarelo**; zoom (− / + /
   Largura) e *Abrir o arquivo*. Arraste a divisória para alargar o painel.
-- **Aba Dados da certidão**: matrícula, proprietário **atual** (o último adquirente dos registros), CPF/CNPJ, lote, quadra, endereço,
-  bairro, CEP, município, UF, comarca, cartório, área e perímetro – corrija o que precisar e desmarque o que não quiser usar; e o
-  **confrontante de cada divisa** (pelo proprietário quando a certidão diz "de propriedade de…"; ruas marcadas como testada).
-- **Conferência**: além de conferir as coordenadas com os azimutes e distâncias do texto, o resultado mostra a **área e o perímetro do
-  desenho × os da certidão** – diferença acima de 1% indica número lido errado.
-- Ao **Desenhar**: *Preencher os Dados do Imóvel* (só os campos vazios, ou todos com *Substituir*) e *Cadastrar o lote ao desenhar* – o
-  lote já sai pronto (lote, quadra, matrícula, área e perímetro do título e o confrontante de cada divisa), sem *Reconhecer Lotes*.
-- O documento **não é guardado** no projeto (tem CPF): só os dados que você confirmou.
+- O **confrontante de cada divisa** aparece nas colunas *Testada* e *Confrontante* das tabelas (ver *Confrontantes* acima).
+- **Conferência**: as coordenadas são conferidas com as distâncias (e os azimutes, quando há) de cada trecho, e o resultado mostra a
+  **área e o perímetro do desenho × os da certidão** – diferença acima de 1% indica número lido errado. (Distâncias de certidão costumam
+  ser arredondadas: alguns centímetros e uma área uns 0,3% diferente são normais.)
+- **Dados do Imóvel e cadastro do lote** ficam com você (*Dados do Imóvel*, *Reconhecer Lotes*, *Gerenciar Lotes*); o lote reconhecido
+  já sai com os confrontantes da certidão.
+- O documento **não é guardado** no projeto: só o perímetro desenhado e os confrontantes.
 
 ### Painel Operações
 
@@ -548,7 +578,7 @@ ou do INCRA/SIGEF.
 | **Modelo de prancha** | Papel, margens, blocos do carimbo, grade, norte, estilos de texto e logomarca; fica na biblioteca de modelos. |
 | **Prancha geral / prancha do lote** | Geral: vários lotes, sem números de vértice nem coordenadas. Do lote: numeração própria, azimutes e tabela de coordenadas. |
 | **Imagem de localização** | Espaço do carimbo para a imagem de localização (inserida por você). |
-| **Certidão (inteiro teor)** | Documento do cartório com a descrição do imóvel; o *Desenhar Perímetro* lê o perímetro, os confrontantes e os dados dela. |
+| **Certidão (inteiro teor)** | Documento do cartório com a descrição do imóvel; o *Desenhar Perímetro* lê dela o perímetro e os confrontantes. |
 | **OCR** | Reconhecimento de texto em imagem (PDF escaneado ou foto), feito pelo próprio Windows. |
 | **Recuos (área edificável)** | Onde se pode construir no lote, descontando o recuo de cada divisa. |
 | **Construção existente (área edificada)** | Edificações que já existem no lote: área de projeção, área construída, taxa de ocupação e distância até cada divisa. |

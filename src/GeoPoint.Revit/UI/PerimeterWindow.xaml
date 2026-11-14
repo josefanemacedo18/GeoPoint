@@ -14,14 +14,14 @@
     <DockPanel Margin="14">
         <TextBlock DockPanel.Dock="Top" Text="Desenhar perímetro" Style="{StaticResource H1}"/>
         <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}"
-                   Text="Desenhe o contorno do lote por azimutes e distâncias ou pelas coordenadas dos vértices: digite, cole o texto de um memorial (inclusive do SIGEF) ou as linhas de uma planilha. O texto é lido enquanto você digita; a prévia e a conferência aparecem ao lado. As linhas desenhadas servem para o Reconhecer Lotes."/>
+                   Text="Desenhe o contorno do lote por azimutes e distâncias ou pelas coordenadas dos vértices: digite, cole o texto de um memorial (inclusive do SIGEF) ou as linhas de uma planilha, ou importe a certidão. O texto é lido enquanto você digita; a prévia e a conferência aparecem ao lado. As linhas desenhadas servem para o Reconhecer Lotes, que já aplica os confrontantes informados aqui."/>
         <Border DockPanel.Dock="Top" Background="#F4F6F9" BorderBrush="#C9D1DB" BorderThickness="1" Padding="8,5" Margin="0,4,0,6">
             <DockPanel>
                 <Button x:Name="ImportBtn" DockPanel.Dock="Left" Margin="0" Style="{StaticResource Primary}" Click="ImportDoc_Click"
                         Content="Importar certidão ou memorial (PDF ou imagem)…"
-                        ToolTip="Certidão de inteiro teor, matrícula, memorial ou tabela de coordenadas. PDF digital: o texto do próprio PDF (exato). PDF escaneado, foto ou imagem: reconhecimento de texto (OCR) do Windows, sem enviar o documento para fora do computador."/>
+                        ToolTip="Lê só a descrição do perímetro: coordenadas ou azimutes e distâncias de cada trecho e o confrontante de cada divisa. PDF digital: o texto do próprio PDF (exato). PDF escaneado, foto ou imagem: reconhecimento de texto (OCR) do Windows, sem enviar o documento para fora do computador."/>
                 <TextBlock x:Name="ImportStatus" VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="Wrap" Foreground="#5F6B7A"
-                           Text="Leia o perímetro, os confrontantes e os dados do imóvel direto da certidão. Tudo lido aparece para conferir antes de desenhar."/>
+                           Text="Leia o perímetro e os confrontantes direto da certidão ou do memorial. Tudo o que for lido aparece nas tabelas para conferir antes de desenhar."/>
             </DockPanel>
         </Border>
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
@@ -48,7 +48,7 @@
             <TextBlock x:Name="Result" FontFamily="Consolas" TextWrapping="Wrap"/>
         </GroupBox>
         <Grid>
-            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="10"/><ColumnDefinition Width="400"/></Grid.ColumnDefinitions>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="10"/><ColumnDefinition Width="370"/></Grid.ColumnDefinitions>
             <GridSplitter Grid.Column="1" Width="10" HorizontalAlignment="Stretch" Background="Transparent" ResizeBehavior="PreviousAndNext"
                           ToolTip="Arraste para alargar o documento ou a prévia."/>
             <TabControl Grid.Column="2" x:Name="RightTabs">
@@ -57,16 +57,15 @@
                 </TabItem>
                 <TabItem Header="Documento" x:Name="DocTab">
                     <DockPanel Margin="2">
-                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                                <Button Content="−" Width="26" Margin="0" Click="DocZoomOut_Click" ToolTip="Diminuir"/>
-                                <Button Content="+" Width="26" Margin="2,0" Click="DocZoomIn_Click" ToolTip="Aumentar"/>
-                                <Button Content="Largura" Margin="0,0,4,0" Click="DocZoomFit_Click" ToolTip="Página inteira na largura do painel"/>
-                                <Button Content="Abrir o arquivo" Margin="0" Click="OpenDoc_Click" ToolTip="Abre o documento no visualizador do Windows."/>
-                            </StackPanel>
-                            <TextBlock VerticalAlignment="Center" TextWrapping="Wrap" Foreground="#5F6B7A" FontSize="11"
-                                       Text="Em amarelo: os números que entraram no desenho."/>
-                        </DockPanel>
+                        <!-- Botões numa linha (tamanho fixo) e a explicação embaixo: a explicação não aperta os botões. -->
+                        <WrapPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,2">
+                            <Button Content="−" Width="28" MinWidth="0" Padding="0,2" Margin="0" VerticalAlignment="Center" Click="DocZoomOut_Click" ToolTip="Diminuir"/>
+                            <Button Content="+" Width="28" MinWidth="0" Padding="0,2" Margin="3,0,0,0" VerticalAlignment="Center" Click="DocZoomIn_Click" ToolTip="Aumentar"/>
+                            <Button Content="Largura" MinWidth="0" Padding="8,2" Margin="3,0,0,0" VerticalAlignment="Center" Click="DocZoomFit_Click" ToolTip="Página inteira na largura do painel"/>
+                            <Button Content="Abrir o arquivo" MinWidth="0" Padding="8,2" Margin="3,0,0,0" VerticalAlignment="Center" Click="OpenDoc_Click" ToolTip="Abre o documento no visualizador do Windows."/>
+                        </WrapPanel>
+                        <TextBlock DockPanel.Dock="Top" Margin="1,2,0,4" TextWrapping="Wrap" Foreground="#5F6B7A" FontSize="11"
+                                   Text="Em amarelo: os números que entraram no desenho."/>
                         <ScrollViewer x:Name="DocScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Background="#EEE"
                                       SizeChanged="DocScroll_SizeChanged">
                             <ui:DocumentView x:Name="DocView" Margin="4"/>
@@ -101,12 +100,14 @@
                         </Border>
                         <DataGrid x:Name="Grid" Grid.Row="3" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Single" CellEditEnding="Grid_CellEditEnding">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Azimute (ex.: 299°36'55&quot;)" Binding="{Binding Az, UpdateSourceTrigger=LostFocus}" Width="170"/>
-                                <DataGridTextColumn Header="Distância / corda (m)" Binding="{Binding Dist, UpdateSourceTrigger=LostFocus}" Width="130"/>
-                                <DataGridTextColumn Header="Raio (m) – só arcos" Binding="{Binding Radius, UpdateSourceTrigger=LostFocus}" Width="120"/>
-                                <DataGridCheckBoxColumn Header="Arco à direita" Binding="{Binding Right, UpdateSourceTrigger=PropertyChanged}" Width="90"/>
-                                <DataGridTextColumn Header="No formato do projeto" Binding="{Binding Output}" Width="170" IsReadOnly="True"/>
-                                <DataGridTextColumn Header="Trecho encontrado no texto" Binding="{Binding Source}" Width="*" IsReadOnly="True"/>
+                                <DataGridTextColumn Header="Azimute (ex.: 299°36'55&quot;)" Binding="{Binding Az, UpdateSourceTrigger=LostFocus}" Width="140"/>
+                                <DataGridTextColumn Header="Distância / corda (m)" Binding="{Binding Dist, UpdateSourceTrigger=LostFocus}" Width="105"/>
+                                <DataGridTextColumn Header="Raio (m)" Binding="{Binding Radius, UpdateSourceTrigger=LostFocus}" Width="70"/>
+                                <DataGridCheckBoxColumn Header="Arco à dir." Binding="{Binding Right, UpdateSourceTrigger=PropertyChanged}" Width="55"/>
+                                <DataGridTextColumn Header="No formato do projeto" Binding="{Binding Output}" Width="160" IsReadOnly="True"/>
+                                <DataGridCheckBoxColumn Header="Testada" Binding="{Binding Testada, UpdateSourceTrigger=PropertyChanged}" Width="55"/>
+                                <DataGridTextColumn Header="Confrontante (pode corrigir)" Binding="{Binding Confrontante, UpdateSourceTrigger=LostFocus}" Width="*" MinWidth="150"/>
+                                <DataGridTextColumn Header="Trecho encontrado no texto" Binding="{Binding Source}" Width="150" IsReadOnly="True"/>
                             </DataGrid.Columns>
                         </DataGrid>
                         <CheckBox x:Name="Adjust" Grid.Row="4" Margin="0,6,0,0" Content="Distribuir o erro de fechamento (método de Bowditch) e fechar o polígono" IsChecked="True" Click="Recalc_Click"/>
@@ -164,52 +165,19 @@
                                 </Style>
                             </DataGrid.RowStyle>
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Vértice" Binding="{Binding Name, UpdateSourceTrigger=LostFocus}" Width="90"/>
-                                <DataGridTextColumn x:Name="ColA" Header="E (m)" Binding="{Binding A, UpdateSourceTrigger=LostFocus}" Width="120"/>
-                                <DataGridTextColumn x:Name="ColB" Header="N (m)" Binding="{Binding B, UpdateSourceTrigger=LostFocus}" Width="120"/>
-                                <DataGridTextColumn Header="Raio até o próximo (m)" Binding="{Binding Radius, UpdateSourceTrigger=LostFocus}" Width="90"/>
-                                <DataGridCheckBoxColumn Header="Arco à direita" Binding="{Binding Right, UpdateSourceTrigger=PropertyChanged}" Width="70"/>
-                                <DataGridTextColumn Header="Até o próximo – no desenho" Binding="{Binding Output}" Width="190" IsReadOnly="True"/>
-                                <DataGridTextColumn Header="Conferência com o texto" Binding="{Binding Check}" Width="*" IsReadOnly="True"/>
+                                <DataGridTextColumn Header="Vértice" Binding="{Binding Name, UpdateSourceTrigger=LostFocus}" Width="64"/>
+                                <DataGridTextColumn x:Name="ColA" Header="E (m)" Binding="{Binding A, UpdateSourceTrigger=LostFocus}" Width="100"/>
+                                <DataGridTextColumn x:Name="ColB" Header="N (m)" Binding="{Binding B, UpdateSourceTrigger=LostFocus}" Width="110"/>
+                                <DataGridTextColumn Header="Raio (m)" Binding="{Binding Radius, UpdateSourceTrigger=LostFocus}" Width="62"/>
+                                <DataGridCheckBoxColumn Header="Arco à dir." Binding="{Binding Right, UpdateSourceTrigger=PropertyChanged}" Width="55"/>
+                                <DataGridTextColumn Header="Até o próximo – no desenho" Binding="{Binding Output}" Width="145" IsReadOnly="True"/>
+                                <DataGridTextColumn Header="Conferência" Binding="{Binding Check}" Width="95" IsReadOnly="True"/>
+                                <DataGridCheckBoxColumn Header="Testada" Binding="{Binding Testada, UpdateSourceTrigger=PropertyChanged}" Width="55"/>
+                                <DataGridTextColumn Header="Confrontante até o próximo (pode corrigir)" Binding="{Binding Confrontante, UpdateSourceTrigger=LostFocus}" Width="*" MinWidth="150"/>
                             </DataGrid.Columns>
                         </DataGrid>
                         <TextBlock x:Name="CDetected" Grid.Row="4" Style="{StaticResource Hint}" Margin="0,6,0,0"
                                    ToolTip="O desenho usa o azimute verdadeiro e a distância horizontal (plano topográfico local), como o resto do GeoPoint. Distâncias UTM (planas) diferem alguns centímetros; a conferência aceita as duas."/>
-                    </Grid>
-                </TabItem>
-                            <!-- ============================== DADOS DA CERTIDÃO -->
-                <TabItem Header="Dados da certidão" x:Name="CertTab">
-                    <Grid Margin="6">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-                        <TextBlock x:Name="CertHint" Style="{StaticResource Hint}" Margin="0,0,0,4"
-                                   Text="Importe uma certidão para ler os dados do imóvel e os confrontantes. Confira e corrija os valores; os campos marcados vão para os Dados do Imóvel."/>
-                        <DataGrid x:Name="CertFields" Grid.Row="1" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Single">
-                            <DataGrid.Columns>
-                                <DataGridCheckBoxColumn Header="Usar" Binding="{Binding Use, UpdateSourceTrigger=PropertyChanged}" Width="45"/>
-                                <DataGridTextColumn Header="Campo" Binding="{Binding Label}" Width="120" IsReadOnly="True"/>
-                                <DataGridTextColumn Header="Lido da certidão (pode corrigir)" Binding="{Binding Value, UpdateSourceTrigger=LostFocus}" Width="*"/>
-                            </DataGrid.Columns>
-                        </DataGrid>
-                        <TextBlock Grid.Row="2" FontWeight="SemiBold" Margin="0,8,0,4" Text="Confrontante de cada divisa (na ordem do perímetro):"/>
-                        <DataGrid x:Name="CertConfs" Grid.Row="3" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Single">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="Divisa" Binding="{Binding Trecho}" Width="150" IsReadOnly="True"/>
-                                <DataGridTextColumn Header="Confrontante (pode corrigir)" Binding="{Binding Confrontante, UpdateSourceTrigger=LostFocus}" Width="*"/>
-                                <DataGridCheckBoxColumn Header="Testada (rua)" Binding="{Binding Testada, UpdateSourceTrigger=PropertyChanged}" Width="85"/>
-                            </DataGrid.Columns>
-                        </DataGrid>
-                        <StackPanel Grid.Row="4" Margin="0,6,0,0">
-                            <CheckBox x:Name="FillInfo" IsChecked="True" Content="Preencher os Dados do Imóvel com os campos marcados"/>
-                            <CheckBox x:Name="ReplaceInfo" Margin="22,2,0,2" Content="Substituir também os dados já preenchidos (sem marcar: só os campos vazios)"/>
-                            <CheckBox x:Name="RegisterLot" Content="Cadastrar o lote ao desenhar (lote, quadra, matrícula, área e perímetro da certidão e o confrontante de cada divisa)"
-                                      ToolTip="O lote já fica pronto, sem precisar de Reconhecer Lotes. Só para polígonos fechados."/>
-                        </StackPanel>
                     </Grid>
                 </TabItem>
             </TabControl>
