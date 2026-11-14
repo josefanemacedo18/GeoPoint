@@ -40,7 +40,12 @@ public static class GisExport
     private static string Coords(IEnumerable<GeodeticPoint> pts) =>
         string.Join(" ", pts.Select(p => string.Create(Inv, $"{p.Lon:0.#########},{p.Lat:0.#########},0")));
 
-    public static string BuildKml(ProjectContext ctx, IReadOnlyList<LotRecord> lots, string documentName)
+    /// <param name="lotColors">
+    /// Cor de cada lote (id → RGB), a da hachura do projeto: cada lote ganha o seu estilo (contorno na cor e preenchimento com a
+    /// opacidade das Configurações). Sem ela, a cor é a do uso do lote.
+    /// </param>
+    public static string BuildKml(ProjectContext ctx, IReadOnlyList<LotRecord> lots, string documentName,
+        IReadOnlyDictionary<string, (byte R, byte G, byte B)>? lotColors = null)
     {
         if (!ctx.Coords.HasGeoreference) throw new InvalidOperationException("Defina o ponto de referência (Georreferência › Definir Referência) antes de exportar.");
         var ks = ctx.Settings.Kml;
@@ -68,6 +73,28 @@ public static class GisExport
                 w.WriteElementString("color", KmlColor(col, ks.FillOpacity));
                 w.WriteEndElement();
                 w.WriteEndElement();
+            }
+            // Um estilo por lote, na cor da hachura do lote no projeto.
+            var lotStyle = new Dictionary<string, string>();
+            if (lotColors is not null)
+            {
+                int n = 0;
+                foreach (var lot in lots)
+                {
+                    if (!lotColors.TryGetValue(lot.Id, out var col)) continue;
+                    string id = "lote" + (++n);
+                    lotStyle[lot.Id] = id;
+                    w.WriteStartElement("Style");
+                    w.WriteAttributeString("id", id);
+                    w.WriteStartElement("LineStyle");
+                    w.WriteElementString("color", KmlColor(col, 1));
+                    w.WriteElementString("width", ks.LineWidth.ToString("0.##", Inv));
+                    w.WriteEndElement();
+                    w.WriteStartElement("PolyStyle");
+                    w.WriteElementString("color", KmlColor(col, ks.FillOpacity));
+                    w.WriteEndElement();
+                    w.WriteEndElement();
+                }
             }
             w.WriteStartElement("Style");
             w.WriteAttributeString("id", "vertice");
@@ -104,7 +131,7 @@ public static class GisExport
                     w.WriteStartElement("description");
                     w.WriteCData(LotHtml(ctx.Project, lot, r, fmt));
                     w.WriteEndElement();
-                    w.WriteElementString("styleUrl", "#uso" + (int)lot.Uso);
+                    w.WriteElementString("styleUrl", lotStyle.TryGetValue(lot.Id, out var sid) ? "#" + sid : "#uso" + (int)lot.Uso);
                     WriteExtended(w, ctx.Project, lot, r);
                     w.WriteStartElement("Polygon");
                     w.WriteElementString("tessellate", "1");
@@ -230,6 +257,14 @@ public static class GisExport
         Row("Endereço", lot.Endereco);
         sb.Append("</table>");
         return sb.ToString();
+    }
+
+    /// <summary>Nome de arquivo seguro para um lote ("Lote 01 – Quadra A" → "Lote 01 - Quadra A").</summary>
+    public static string SafeFileName(string name)
+    {
+        var bad = Path.GetInvalidFileNameChars().Concat(new[] { '/', '\\', ':', '*', '?', '"', '<', '>', '|' }).ToHashSet();
+        var s = new string(name.Replace('–', '-').Replace('—', '-').Select(c => bad.Contains(c) || char.IsControl(c) ? '_' : c).ToArray()).Trim().TrimEnd('.');
+        return s.Length == 0 ? "lote" : s.Length > 80 ? s[..80].Trim() : s;
     }
 
     public static byte[] BuildKmz(string kml)

@@ -77,6 +77,35 @@ public sealed class CmdPranchas : CommandBase
             return g is null ? (false, false) : (true, SheetRegistry.IsEdited(s, g));
         }
 
+        // Imagem de localização dos projetos antigos (só o caminho do arquivo) passa a ficar guardada no projeto.
+        LocationImageService.MigrateLegacy(s);
+        string? ManageImages(System.Windows.Window owner, double aspect)
+        {
+            var iw = new SatelliteImagesWindow(s.Project, id => ImageStore.Load(s.Doc, id), aspect) { Owner = owner };
+            if (iw.ShowDialog() != true || !iw.Changes.Any) return null;
+            try { LocationImageService.Apply(s, iw.Changes); }
+            catch (Exception ex)
+            {
+                Logger.Error("Guardar imagens de satélite", ex);
+                Ui.Warn("Imagens de satélite", "Não foi possível guardar as imagens no projeto: " + ex.Message);
+                return null;
+            }
+            return LocationImageService.Summary(s.Project);
+        }
+
+        // Miniatura da imagem das pranchas desta fase para a prévia (lida do projeto só quando a imagem muda).
+        string cqId = "";
+        System.Windows.Media.ImageSource? cqImg = null;
+        System.Windows.Media.ImageSource? CroquiPreview()
+        {
+            var img = LocationImages.For(s.Project, s.Project.Fase.Id);
+            if (img is null) { cqId = ""; cqImg = null; return null; }
+            if (img.Id == cqId) return cqImg;
+            cqId = img.Id;
+            try { cqImg = ImageStore.Load(s.Doc, img.Id) is byte[] b ? ImageCodec.Decode(b) : null; } catch { cqImg = null; }
+            return cqImg;
+        }
+
         PranchasWindow w;
         while (true)
         {
@@ -90,9 +119,12 @@ public sealed class CmdPranchas : CommandBase
                 var st0 = s.Settings.Clone();
                 st0.Sheets.SistemaCoordenadas = coords;
                 return SheetPreview.Compose(pctx, ls, sp, tpl, mm, scale, Hatcher.Palette, r => Annotator.LotLabel(r, pctx, new ValueFormatter(s.Settings.Format), Annotator.Options.From(s.Settings.Annotation)),
-                    crs: st0.SheetCrs());
+                    crs: st0.SheetCrs(), croqui: LocationImages.For(s.Project, s.Project.Fase.Id) is not null);
             }
-            w = new PranchasWindow(s.Project, s.Settings.Sheets, rows, op, state, RefOptions, Existing, Preview);
+            w = new PranchasWindow(s.Project, s.Settings.Sheets, rows, op, state, RefOptions, Existing, Preview, ManageImages, LocationImageService.Summary(s.Project))
+            {
+                CroquiProvider = CroquiPreview,
+            };
             if (Ui.ShowDialog(w, s.MainWindow) != true || w.Action == PranchasAction.Cancel) return false;
             w.Apply(s.Settings.Sheets, s.Project.Info);
             if (w.Action == PranchasAction.Generate) break;
@@ -172,7 +204,7 @@ public sealed class CmdPranchas : CommandBase
             Template = template,
             Scale = st.AutoScale ? 0 : st.Scale,
             Anotacoes = st.Anotacoes, Vias = st.Vias, NorteParaCima = st.NorteParaCima,
-            LocationImage = s.Project.Info.ImagemLocalizacao, NumberPrefix = st.NumberPrefix, Font = s.Settings.Annotation.Font,
+            LocationImage = LocationImageService.ForSheets(s), NumberPrefix = st.NumberPrefix, Font = s.Settings.Annotation.Font,
         });
         List<ViewSheet> sheets;
         using (var t = new Transaction(s.Doc, "GeoPoint: pranchas"))

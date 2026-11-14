@@ -56,6 +56,9 @@ public class SheetV15PreviewTests
 
     private static string F(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
 
+    /// <summary>Imagem de satélite para as prévias em SVG (null = retângulo verde no lugar).</summary>
+    public static byte[]? CroquiForSvg { get; set; }
+
     public static string Svg(SheetRenderInput input, List<SheetPrim> prims, AnnotationPlan plan, List<LotReport> reps, Func<Vec2, Vec2> toPaper, double k, double px = 4)
     {
         var (W, H) = input.Template.PaperSize();
@@ -127,6 +130,11 @@ public class SheetV15PreviewTests
                 }
                 case PCircle c:
                     sb.Append($"<circle cx='{X(c.C.X)}' cy='{Y(c.C.Y)}' r='{F(c.Radius * px)}' fill='{(c.Filled ? "black" : "none")}' stroke='black' stroke-width='{F(0.15 * px)}'/>");
+                    break;
+                case PImage im when im.Key == "croqui" && CroquiForSvg is { } cq:
+                    // Como na prancha: preenche o espaço inteiro sem distorcer (slice = recorte central).
+                    sb.Append($"<image x='{X(im.Rect.X0)}' y='{Y(im.Rect.Y1)}' width='{F(im.Rect.Width * px)}' height='{F(im.Rect.Height * px)}' preserveAspectRatio='xMidYMid slice' " +
+                              $"href='data:image/{ImageHeader.Extension(cq)};base64,{Convert.ToBase64String(cq)}'/>");
                     break;
                 case PImage im:
                     sb.Append($"<rect x='{X(im.Rect.X0)}' y='{Y(im.Rect.Y1)}' width='{F(im.Rect.Width * px)}' height='{F(im.Rect.Height * px)}' fill='#5a7a4a'/>");
@@ -203,6 +211,11 @@ public class SheetV15PreviewTests
                 case PImage im when im.Key == "logo" && comp.Input.Template.LogoBytes() is { } logo:
                     sb.Append($"<image x='{X(im.Rect.X0)}' y='{Y(im.Rect.Y1)}' width='{F(im.Rect.Width * px)}' height='{F(im.Rect.Height * px)}' preserveAspectRatio='xMidYMid meet' " +
                               $"href='data:image/{ImageHeader.Extension(logo)};base64,{Convert.ToBase64String(logo)}'/>");
+                    break;
+                case PImage im when im.Key == "croqui" && CroquiForSvg is { } cq:
+                    // Como na prancha: preenche o espaço inteiro sem distorcer (slice = recorte central).
+                    sb.Append($"<image x='{X(im.Rect.X0)}' y='{Y(im.Rect.Y1)}' width='{F(im.Rect.Width * px)}' height='{F(im.Rect.Height * px)}' preserveAspectRatio='xMidYMid slice' " +
+                              $"href='data:image/{ImageHeader.Extension(cq)};base64,{Convert.ToBase64String(cq)}'/>");
                     break;
                 case PImage im:
                     sb.Append($"<rect x='{X(im.Rect.X0)}' y='{Y(im.Rect.Y1)}' width='{F(im.Rect.Width * px)}' height='{F(im.Rect.Height * px)}' fill='#5a7a4a'/>");

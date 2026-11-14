@@ -221,11 +221,12 @@ public sealed class CmdExportarSig : CommandBase
             new("geojson", "GeoJSON – QGIS", true),
             new("vert", "Incluir cada vértice como ponto (nome e coordenadas) – recomendado para conferir no Earth", true),
             new("edges", "Incluir as divisas como linhas (com azimute e distância)", k.IncludeEdges),
-            new("open", "Abrir o KMZ no Google Earth ao terminar", true),
-            new("opacity", "Opacidade do preenchimento (0 a 1)", k.FillOpacity),
+            new("sep", "Um arquivo para cada lote (no Google Earth, cada lote entra separado)", k.OneFilePerLot),
+            new("open", "Abrir no Google Earth ao terminar", true),
+            new("opacity", "Cor do preenchimento (0 a 1; 0,45 = 45% de cor)", k.FillOpacity),
         };
         var w = new LotPickerWindow("Exportar para Google Earth / QGIS",
-            "Os lotes são exportados em latitude/longitude (SIRGAS 2000 ≈ WGS 84), coloridos por uso, para conferência sobre imagem de satélite.",
+            "Os lotes são exportados em latitude/longitude (SIRGAS 2000 ≈ WGS 84) para conferência sobre imagem de satélite: polígono na cor da hachura de cada lote no projeto, com o contorno, as divisas e os vértices com as coordenadas.",
             rows, opts, "Exportar");
         if (Ui.ShowDialog(w, s.MainWindow) != true) return Result.Cancelled;
         bool kmz = w.Option("kmz"), kml = w.Option("kml"), gj = w.Option("geojson");
@@ -233,6 +234,7 @@ public sealed class CmdExportarSig : CommandBase
         k.IncludeVertices = w.Option("vert");
         k.IncludeEdges = w.Option("edges");
         k.FillOpacity = Math.Clamp(w.Number("opacity"), 0, 1);
+        k.OneFilePerLot = w.Option("sep");
         try { s.SaveSettings(); } catch { }
 
         string baseName = Folders.ProjectName(s) + " - GeoPoint";
@@ -241,34 +243,66 @@ public sealed class CmdExportarSig : CommandBase
         if (path is null) return Result.Cancelled;
         string stem = Path.Combine(Path.GetDirectoryName(path)!, Path.GetFileNameWithoutExtension(path));
         var lots = w.SelectedLots;
+        if (lots.Count == 0) { Ui.Warn("Nenhum lote marcado", "Marque pelo menos um lote."); return Result.Cancelled; }
         var written = new List<string>();
-        var kmlText = GisExport.BuildKml(ctx, lots, Folders.ProjectName(s));
-        if (kmz && Ui.TryWrite(stem + ".kmz", GisExport.BuildKmz(kmlText))) written.Add(stem + ".kmz");
-        if (kml && Ui.TryWrite(stem + ".kml", new System.Text.UTF8Encoding(false).GetBytes(kmlText))) written.Add(stem + ".kml");
+        if (k.OneFilePerLot && (kmz || kml))
+        {
+            // Um arquivo por lote, na pasta escolhida: "<nome> - Lote 01.kmz", "<nome> - Lote 02.kmz"...
+            string dir = Path.GetDirectoryName(path)!, prefix = Path.GetFileNameWithoutExtension(path);
+            if (kmz) written.AddRange(EarthExport.WritePerLot(s, ctx, lots, dir, prefix, kmz: true));
+            if (kml) written.AddRange(EarthExport.WritePerLot(s, ctx, lots, dir, prefix, kmz: false));
+        }
+        else
+        {
+            var kmlText = GisExport.BuildKml(ctx, lots, Folders.ProjectName(s), EarthExport.HatchColors(s, lots));
+            if (kmz && Ui.TryWrite(stem + ".kmz", GisExport.BuildKmz(kmlText))) written.Add(stem + ".kmz");
+            if (kml && Ui.TryWrite(stem + ".kml", new System.Text.UTF8Encoding(false).GetBytes(kmlText))) written.Add(stem + ".kml");
+        }
         if (gj && Ui.TryWrite(stem + ".geojson", new System.Text.UTF8Encoding(false).GetBytes(GisExport.BuildGeoJson(ctx, lots, k.IncludeVertices)))) written.Add(stem + ".geojson");
         if (written.Count == 0) return Result.Failed;
         Folders.Remember(s, written[0]);
-        if (w.Option("open") && written.FirstOrDefault(f => f.EndsWith(".kmz") || f.EndsWith(".kml")) is string toOpen) Ui.OpenFile(toOpen);
-        else Ui.Info("Exportação concluída", string.Join("\n", written) + "\n\nNo QGIS: Camada › Adicionar camada vetorial e escolha o arquivo .geojson ou .kml.");
+        var earth = written.Where(f => f.EndsWith(".kmz", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (earth.Count == 0) earth = written.Where(f => f.EndsWith(".kml", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (w.Option("open") && earth.Count > 0)
+        {
+            EarthExport.OpenInEarth(earth);
+            if (earth.Count > 1)
+                Ui.Info("Exportação concluída", $"{earth.Count} arquivos (um por lote) abrindo no Google Earth, um de cada vez.\n\n" +
+                    string.Join("\n", written.Select(Path.GetFileName).Take(20)) + (written.Count > 20 ? $"\n… e mais {written.Count - 20}." : ""));
+        }
+        else Ui.Info("Exportação concluída", string.Join("\n", written.Take(20)) + (written.Count > 20 ? $"\n… e mais {written.Count - 20}." : "") +
+                     "\n\nNo QGIS: Camada › Adicionar camada vetorial e escolha o arquivo .geojson ou .kml.");
         return Result.Succeeded;
     }
 
     private static double SafeArea(LotRecord l) { try { return l.ToRegion().Area; } catch { return 0; } }
 
-    /// <summary>Exporta todos os lotes ativos para um KMZ temporário e abre no Google Earth.</summary>
+    /// <summary>
+    /// Conferência no Google Earth logo depois de definir a referência: um KMZ por lote (cada lote entra separado), na cor da
+    /// hachura do lote, com os vértices e as coordenadas. Com mais de um lote, você escolhe quais abrir.
+    /// </summary>
     internal static void QuickKmz(GpSession s)
     {
         if (!NorthGuard.Ensure(s)) return;
         try
         {
             var ctx = s.NewContext();
-            var lots = s.Project.ActiveLots.ToList();
+            var lots = ProjectContext.SortLots(s.Project.ActiveLots).ToList();
+            if (lots.Count == 0) return;
+            if (lots.Count > 1)
+            {
+                var rows = lots.Select(l => new LotRow(l, SafeArea(l)) { Selected = true }).ToList();
+                var pick = new LotPickerWindow("Conferir no Google Earth",
+                    "Cada lote marcado vai como um arquivo separado para o Google Earth (polígono na cor da hachura do lote, com os vértices e as coordenadas).",
+                    rows, null, "Abrir no Google Earth");
+                if (Ui.ShowDialog(pick, s.MainWindow) != true) return;
+                lots = pick.SelectedLots;
+                if (lots.Count == 0) return;
+            }
             ctx.Settings.Kml.IncludeVertices = true; // conferência: sempre com todos os pontos
-            var kml = GisExport.BuildKml(ctx, lots, Folders.ProjectName(s));
-            var dir = Path.Combine(Path.GetTempPath(), "GeoPoint");
-            Directory.CreateDirectory(dir);
-            var path = Path.Combine(dir, Folders.ProjectName(s) + " - conferencia.kmz");
-            if (Ui.TryWrite(path, GisExport.BuildKmz(kml))) Ui.OpenFile(path);
+            var dir = Path.Combine(Path.GetTempPath(), "GeoPoint", GisExport.SafeFileName(Folders.ProjectName(s)));
+            var files = EarthExport.WritePerLot(s, ctx, lots, dir, "Conferência", kmz: true);
+            EarthExport.OpenInEarth(files);
         }
         catch (Exception ex)
         {

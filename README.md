@@ -4,7 +4,7 @@ Plugin para **Revit 2027** (uso interno) de georreferenciamento de lotes urbanos
 do desenho, calcula azimutes/rumos, distâncias, áreas e coordenadas (UTM, geográficas, SAD 69, Córrego Alegre, Plano Topográfico
 Local, RTM/LTM), desenha lotes por azimutes ou coordenadas – inclusive lendo o perímetro e os confrontantes da certidão de inteiro teor em PDF ou imagem (OCR), faz desmembramento (inclusive desenhando com a ferramenta Linha, com prévia ao vivo), remembramento e simulação de parcelamento,
 calcula recuos, construções existentes e afastamentos, e gera memorial descritivo em Word, pranchas por modelo (grade de coordenadas, tabela,
-coordenada de referência, espaço para a imagem de localização, carimbo e logomarca do escritório), PDF, planilha Excel e arquivos KMZ/KML/GeoJSON para Google Earth e QGIS.
+coordenada de referência, imagem de satélite guardada no projeto – geral ou por fase –, carimbo e logomarca do escritório), PDF, planilha Excel e arquivos KMZ/KML/GeoJSON para Google Earth (um arquivo por lote, na cor da hachura) e QGIS.
 
 - Manual do usuário: [`docs/MANUAL.md`](docs/MANUAL.md)
 - Pacote de instalação: `dist/GeoPoint-<versão>.zip` (descompacte e execute `Instalar.bat`)

@@ -22,8 +22,8 @@ public sealed class SheetBuildOptions
     public bool Anotacoes { get; set; } = true;
     public bool Vias { get; set; } = true;
     public bool NorteParaCima { get; set; } = true;
-    /// <summary>Imagem de localização escolhida pelo usuário (usada quando não há croqui automático).</summary>
-    public string LocationImage { get; set; } = "";
+    /// <summary>Imagem de satélite guardada no projeto para as pranchas (a da fase ou a geral); null = espaço em branco.</summary>
+    public (string Id, byte[] Jpeg)? LocationImage { get; set; }
     public string NumberPrefix { get; set; } = "GP";
     public string Font { get; set; } = "Arial";
 }
@@ -206,9 +206,9 @@ public sealed class SheetBuilder
                 try { buildings.Add(GeoPoint.Core.Urban.BuildingAnalyzer.Analyze(ctx.Report(l), b)); } catch { }
         var content = SheetContent.Build(_ctx, _fmt, spec, lots, def, vias: _o.Vias && _s.Project.Vias.Count > 0, edificacoes: buildings.Count > 0);
         var images = new HashSet<string>();
-        // Espaço da imagem de localização: a imagem escolhida na janela de Pranchas, ou em branco (você insere no Revit).
-        string? croqui = !string.IsNullOrWhiteSpace(_o.LocationImage) && File.Exists(_o.LocationImage) ? _o.LocationImage : null;
-        if (croqui is not null) images.Add("croqui");
+        // Espaço da imagem de localização: a imagem de satélite guardada no projeto (a da fase ou a geral), ou em branco.
+        bool croqui = _o.LocationImage is not null;
+        if (croqui) images.Add("croqui");
         // Logomarca do escritório (embutida no modelo): gravada na pasta de cache para o Revit inserir.
         string? logo = null;
         try { logo = SheetTemplateLibrary.LogoFile(tpl); } catch (Exception ex) { Logger.Error("Logomarca", ex); Warnings.Add("Logomarca do escritório: " + ex.Message); }
@@ -357,7 +357,7 @@ public sealed class SheetBuilder
         return gs;
     }
 
-    private void DrawPrims(ViewSheet sheet, IEnumerable<SheetPrim> prims, string? croqui, string? logo)
+    private void DrawPrims(ViewSheet sheet, IEnumerable<SheetPrim> prims, bool croqui, string? logo)
     {
         foreach (var pr in prims)
         {
@@ -394,7 +394,7 @@ public sealed class SheetBuilder
                         Text(sheet, t);
                         break;
                     case PImage im:
-                        string? path = im.Key == "croqui" ? croqui : im.Key == "logo" ? logo : null;
+                        string? path = im.Key == "croqui" ? (croqui ? CroquiFile(im.Rect) : null) : im.Key == "logo" ? logo : null;
                         if (path is not null) PlaceImage(sheet, im.Rect, path);
                         break;
                 }
@@ -603,6 +603,19 @@ public sealed class SheetBuilder
         Line(sheet, new Vec2(r.X1, r.Y0), new Vec2(r.X1, r.Y1), style);
         Line(sheet, new Vec2(r.X1, r.Y1), new Vec2(r.X0, r.Y1), style);
         Line(sheet, new Vec2(r.X0, r.Y1), new Vec2(r.X0, r.Y0), style);
+    }
+
+    /// <summary>A imagem de satélite recortada na proporção exata do espaço (preenche o espaço inteiro, sem distorcer).</summary>
+    private string? CroquiFile(PaperRect r)
+    {
+        if (_o.LocationImage is not { } img || r.Width <= 0 || r.Height <= 0) return null;
+        try { return ImageCodec.CroppedFile(img.Jpeg, img.Id, r.Width / r.Height); }
+        catch (Exception ex)
+        {
+            Logger.Error("Imagem de satélite da prancha", ex);
+            Warnings.Add("Não foi possível preparar a imagem de satélite: " + ex.Message);
+            return null;
+        }
     }
 
     private void PlaceImage(ViewSheet sheet, PaperRect r, string path)

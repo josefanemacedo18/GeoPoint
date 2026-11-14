@@ -84,6 +84,8 @@ public static class ProjectStore
         p.ControlPoints ??= new();
         p.Sheets ??= new();
         p.StreetDrawings ??= new();
+        p.PendingConfrontantes ??= new();
+        p.SatelliteImages ??= new();
         foreach (var f in p.Fases)
         {
             f.ViewIds ??= new();

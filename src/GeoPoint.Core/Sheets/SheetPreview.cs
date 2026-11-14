@@ -31,9 +31,17 @@ public static class SheetPreview
     /// Monta a prancha de <paramref name="lots"/> pelo modelo, com o norte para cima (como o Revit faz com "norte para cima").
     /// <paramref name="annoTextMm"/> = altura dos textos do desenho no papel.
     /// </summary>
+    private static HashSet<string> Imgs(bool logo, bool croqui)
+    {
+        var h = new HashSet<string>();
+        if (logo) h.Add("logo");
+        if (croqui) h.Add("croqui");
+        return h;
+    }
+
     public static SheetComposition Compose(ProjectContext ctx, IReadOnlyList<LotRecord> lots, SheetSpec spec, SheetTemplate tpl,
         double annoTextMm = 2.0, int fixedScale = 0, IReadOnlyList<(byte R, byte G, byte B)>? palette = null, Func<LotReport, string>? labelOf = null,
-        CrsDef? crs = null)
+        CrsDef? crs = null, bool croqui = false)
     {
         palette ??= new[] { ((byte)220, (byte)60, (byte)50), ((byte)40, (byte)90, (byte)210), ((byte)30, (byte)150, (byte)80), ((byte)225, (byte)140, (byte)20) };
         var fmt = new ValueFormatter(ctx.Settings.Format);
@@ -88,7 +96,7 @@ public static class SheetPreview
             CrsAt = q => ctx.Coords.ToCrs(ToModel(q), def) is { } cc ? (geo ? (cc.Lon, cc.Lat) : (cc.East, cc.North)) : null,
             Geographic = geo, WestAsO = ctx.Settings.Format.WestAsO,
             Table = fit.Table is null ? null : table, TableRect = fit.Table, Palette = palette,
-            Images = tpl.HasLogo ? new HashSet<string> { "logo" } : new HashSet<string>(), LogoAspect = tpl.LogoAspect(), Placeholders = true,
+            Images = Imgs(tpl.HasLogo, croqui), LogoAspect = tpl.LogoAspect(), Placeholders = true,
             // A grade não passa por cima dos textos do desenho (chamadas de coordenada, rótulos, nomes).
             GridHoles = plan.Texts.Select(t => SheetRenderer.HoleOf(Corners(t.Box).Select(ToPaper))).ToList(),
         };

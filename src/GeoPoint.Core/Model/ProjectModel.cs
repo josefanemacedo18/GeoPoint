@@ -587,6 +587,35 @@ public sealed class GeneratedSheet
     public int Folha { get; set; }
 }
 
+/// <summary>Cores das hachuras dos lotes (as mesmas no Revit, nas pranchas e no Google Earth).</summary>
+public static class LotPalette
+{
+    public static readonly (byte R, byte G, byte B)[] Colors =
+    {
+        (220, 60, 50), (40, 90, 210), (30, 150, 80), (225, 140, 20), (140, 60, 190), (20, 150, 170), (200, 50, 130), (110, 110, 30),
+    };
+
+    public static (byte R, byte G, byte B) Of(int index) => Colors[Math.Abs(index) % Colors.Length];
+}
+
+/// <summary>
+/// Imagem de satélite (print ou imagem salva) guardada dentro do projeto para o espaço de localização das pranchas.
+/// Os bytes ficam num registro separado do modelo (por <see cref="Id"/>); aqui ficam só os dados.
+/// </summary>
+public sealed class SatelliteImage
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    /// <summary>Fase (etapa) a que a imagem pertence; vazio = imagem geral (todas as pranchas).</summary>
+    public string FaseId { get; set; } = "";
+    /// <summary>Nome do arquivo de origem (ou "Print colado").</summary>
+    public string Nome { get; set; } = "";
+    public int Width { get; set; }
+    public int Height { get; set; }
+    /// <summary>Tamanho guardado (bytes do JPEG).</summary>
+    public int Bytes { get; set; }
+    public DateTime Added { get; set; } = DateTime.Now;
+}
+
 /// <summary>
 /// Confrontante lido da certidão para uma linha desenhada pelo Desenhar Perímetro. Fica guardado até o Reconhecer Lotes
 /// criar o lote desse contorno; aí vai para a divisa do lote (e sai desta lista).
@@ -632,6 +661,8 @@ public sealed class ParcelProject
     public List<BuildingRecord> Buildings { get; set; } = new();
     /// <summary>Confrontantes das linhas desenhadas pela certidão, à espera do Reconhecer Lotes.</summary>
     public List<PendingConfrontante> PendingConfrontantes { get; set; } = new();
+    /// <summary>Imagens de satélite das pranchas: a geral (todas as pranchas) e as de cada fase.</summary>
+    public List<SatelliteImage> SatelliteImages { get; set; } = new();
 
     /// <summary>Edificações da fase ativa.</summary>
     [JsonIgnore] public IEnumerable<BuildingRecord> PhaseBuildings => Buildings.Where(b => b.FaseId == Fase.Id);

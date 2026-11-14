@@ -19,6 +19,8 @@ public sealed class SheetPreviewControl : FrameworkElement
     private List<(List<Vec2> Pts, Color Fill)> _shapes = new();
     private byte[] _grid = { 175, 175, 175 };
     private ImageSource? _logo;
+    /// <summary>Imagem de satélite das pranchas (desenhada no espaço de localização, recortada como na prancha).</summary>
+    public ImageSource? Croqui { get; set; }
     private string _logoKey = "";
 
     public void Show(SheetTemplate t, List<SheetPrim> prims, List<(List<Vec2> Pts, Color Fill)>? shapes = null)
@@ -138,6 +140,15 @@ public sealed class SheetPreviewControl : FrameworkElement
                     var a = P(new Vec2(im.Rect.X0, im.Rect.Y1));
                     var r = new Rect(a.X, a.Y, im.Rect.Width * s, im.Rect.Height * s);
                     if (im.Key == "logo" && _logo is not null) dc.DrawImage(_logo, r);
+                    else if (im.Key == "croqui" && Croqui is { Width: > 0, Height: > 0 } cq)
+                    {
+                        // Preenche o espaço inteiro sem distorcer (as sobras das bordas ficam de fora), como na prancha.
+                        double k = Math.Max(r.Width / cq.Width, r.Height / cq.Height);
+                        double iw = cq.Width * k, ih = cq.Height * k;
+                        dc.PushClip(new RectangleGeometry(r));
+                        dc.DrawImage(cq, new Rect(r.X + (r.Width - iw) / 2, r.Y + (r.Height - ih) / 2, iw, ih));
+                        dc.Pop();
+                    }
                     else dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(90, 122, 74)), null, r);
                     break;
                 }

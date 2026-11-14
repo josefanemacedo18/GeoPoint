@@ -72,13 +72,17 @@ public partial class PranchasWindow : Window
     private readonly SheetSettings _st;
 
     private readonly Func<SheetSpec, SheetTemplate, int, GeoPoint.Core.Settings.SheetCoordSystem, SheetComposition?>? _preview;
+    /// <summary>Abre a janela das imagens de satélite (proporção do espaço do modelo) e devolve o novo resumo; null = nada mudou.</summary>
+    private readonly Func<Window, double, string?>? _manageImages;
 
     public PranchasWindow(ParcelProject project, SheetSettings st, IEnumerable<LotRow> rows, OperationRecord? preselect, PranchasState state,
         Func<SheetSpec, List<IdText>> refOptions, Func<SheetSpec, (bool exists, bool edited)> existing,
-        Func<SheetSpec, SheetTemplate, int, GeoPoint.Core.Settings.SheetCoordSystem, SheetComposition?>? preview = null)
+        Func<SheetSpec, SheetTemplate, int, GeoPoint.Core.Settings.SheetCoordSystem, SheetComposition?>? preview = null,
+        Func<Window, double, string?>? manageImages = null, string imagesSummary = "")
     {
         InitializeComponent();
         _preview = preview;
+        _manageImages = manageImages;
         _project = project;
         _state = state;
         _refOptions = refOptions;
@@ -109,10 +113,13 @@ public partial class PranchasWindow : Window
         LoadTemplates(st.Template, st.Orientation == 1 ? SheetOrientation.Paisagem : SheetOrientation.Retrato);
         Coords.SelectedIndex = (int)st.SistemaCoordenadas;
         Prefix.Text = st.NumberPrefix;
-        Image.Text = project.Info.ImagemLocalizacao;
+        ImageInfo.Text = imagesSummary;
         _loading = false;
         Refresh();
     }
+
+    /// <summary>Imagem de satélite das pranchas desta fase (para a prévia).</summary>
+    public Func<System.Windows.Media.ImageSource?>? CroquiProvider { get; set; }
 
     public PranchasAction Action { get; private set; }
     public OperationRecord? Operation => (Source.SelectedItem as SourceChoice)?.Operation;
@@ -138,7 +145,6 @@ public partial class PranchasWindow : Window
         if (!st.AutoScale && SelectedTemplate is { } t2) st.Scale = t2.ScaleList[Math.Min(Scale.SelectedIndex - 1, t2.ScaleList.Count - 1)];
         st.SistemaCoordenadas = (GeoPoint.Core.Settings.SheetCoordSystem)Math.Max(0, Coords.SelectedIndex);
         st.NumberPrefix = Prefix.Text.Trim();
-        info.ImagemLocalizacao = Image.Text.Trim();
     }
 
     private void Changed(object sender, RoutedEventArgs e) => Refresh();
@@ -214,6 +220,7 @@ public partial class PranchasWindow : Window
             int scale = Scale.SelectedIndex > 0 ? tpl.ScaleList[Math.Min(Scale.SelectedIndex - 1, tpl.ScaleList.Count - 1)] : 0;
             var comp = _preview(row.Spec, tpl, scale, (GeoPoint.Core.Settings.SheetCoordSystem)Math.Max(0, Coords.SelectedIndex));
             if (comp is null) return;
+            SheetPreview.Croqui = CroquiProvider?.Invoke();
             SheetPreview.Show(tpl, comp.All.ToList());
             PreviewInfo.Text = $"{row.Title} – escala 1:{comp.Fit.Scale}." + (comp.Warnings.Count > 0 ? "  ⚠ " + string.Join(" ", comp.Warnings) : "");
         }
@@ -227,10 +234,15 @@ public partial class PranchasWindow : Window
         LoadTemplates(w.ChosenName ?? SelectedTemplate?.Name, SheetOrientation.Retrato);
     }
 
-    private void Image_Click(object sender, RoutedEventArgs e)
+    private void Images_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new Microsoft.Win32.OpenFileDialog { Title = "Imagem de localização", Filter = "Imagens|*.png;*.jpg;*.jpeg;*.bmp;*.tif;*.tiff|Todos|*.*" };
-        if (dlg.ShowDialog(this) == true) Image.Text = dlg.FileName;
+        if (_manageImages is null) return;
+        double aspect = SelectedTemplate?.CroquiAspect() ?? 0;
+        if (_manageImages(this, aspect) is string summary)
+        {
+            ImageInfo.Text = summary;
+            ShowPreview();
+        }
     }
 
     /// <summary>Guarda as escolhas da tabela (sobrevivem a mudanças de opção e a cliques no desenho).</summary>

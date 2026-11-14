@@ -307,10 +307,7 @@ public static class Annotator
 /// <summary>Hachuras dos lotes (cores distintas; lote remanescente com hachura cruzada).</summary>
 public static class Hatcher
 {
-    public static readonly (byte R, byte G, byte B)[] Palette =
-    {
-        (220, 60, 50), (40, 90, 210), (30, 150, 80), (225, 140, 20), (140, 60, 190), (20, 150, 170), (200, 50, 130), (110, 110, 30),
-    };
+    public static readonly (byte R, byte G, byte B)[] Palette = LotPalette.Colors;
 
     /// <summary>Tipo de hachura do índice de cor (o mesmo das hachuras dos lotes); cinza = área edificada.</summary>
     public static ElementId TypeFor(Document doc, int colorIndex, bool cross, double spacingMm = 1.6, bool gray = false)

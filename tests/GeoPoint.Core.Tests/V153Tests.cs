@@ -36,7 +36,7 @@ public class V153Tests
             }
             """);
             var s = SettingsStore.Load(path);
-            Assert.Equal(3, s.Version);
+            Assert.Equal(new GeoPointSettings().Version, s.Version);
             Assert.Equal(2.2, s.Annotation.DotMm, 6);
             Assert.Equal(2.5, s.Annotation.TextSizeMm, 6);
             Assert.Equal(VertexNumbering.Lote, s.Naming.Numbering);

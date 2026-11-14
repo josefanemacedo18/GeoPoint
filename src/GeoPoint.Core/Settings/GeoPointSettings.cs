@@ -226,16 +226,19 @@ public enum SheetCoordSystem
 
 public sealed class KmlSettings
 {
-    public double FillOpacity { get; set; } = 0.35;
+    /// <summary>Quanto de cor tem o preenchimento dos lotes no Google Earth (0,45 = 45% de cor, 55% transparente).</summary>
+    public double FillOpacity { get; set; } = 0.45;
     public double LineWidth { get; set; } = 2;
     public bool IncludeVertices { get; set; } = true;
     public bool IncludeEdges { get; set; }
     public bool IncludeArchived { get; set; }
+    /// <summary>Um arquivo para cada lote (no Google Earth, cada lote entra separado).</summary>
+    public bool OneFilePerLot { get; set; } = true;
 }
 
 public sealed class GeoPointSettings
 {
-    public int Version { get; set; } = 3;
+    public int Version { get; set; } = 4;
     public RecognitionSettings Recognition { get; set; } = new();
     public NamingSettings Naming { get; set; } = new();
     public FormatSettings Format { get; set; } = new();
@@ -372,6 +375,12 @@ public static class SettingsStore
             if (Math.Abs(s.Streets.Calcada - 2.5) < 1e-9) s.Streets.Calcada = 2;
             if (Math.Abs(s.Streets.RaioEsquina - 3) < 1e-9) s.Streets.RaioEsquina = 2;
             s.Version = 3;
+        }
+        // Versão 4: preenchimento dos lotes no Google Earth com 45% de cor (antes 35%).
+        if (s.Version < 4)
+        {
+            if (Math.Abs(s.Kml.FillOpacity - 0.35) < 1e-9) s.Kml.FillOpacity = 0.45;
+            s.Version = 4;
         }
         s.Annotation.DotMm = Math.Clamp(s.Annotation.DotMm, 0.2, 10);
         s.RuleProfiles ??= RuleProfile.Defaults();

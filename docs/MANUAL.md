@@ -23,6 +23,23 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 
 ---
 
+## Novidades da versão 1.7
+
+- **Imagens de satélite guardadas no projeto**: na janela de *Pranchas*, botão **Imagens…** ao lado de *Imagem de satélite*. Escolha o
+  arquivo do print (ou da imagem salva) ou clique em **Colar print** depois de tirar o print (tecla *Print Screen*, *Win+Shift+S* ou
+  *Copiar imagem* no navegador/Google Earth). A imagem fica **dentro do projeto** (não depende mais da pasta do arquivo) e entra
+  **sozinha no espaço de localização** da prancha, **recortada para preencher o espaço sem distorcer** (as sobras das bordas ficam de
+  fora). Um print Full HD (1920×1080) é o ideal.
+- **Imagem geral e imagens por etapa**: a **imagem geral** vale para todas as pranchas; cada **fase** (situação atual, desmembramento,
+  remembramento, regularização…) pode ter a **sua própria imagem**, usada nas pranchas daquela fase. Fase sem imagem própria usa a
+  geral. A janela mostra a miniatura com o recorte exato que vai para a prancha, e a prévia das pranchas já mostra a imagem.
+- **Google Earth – cor da hachura, 45% de cor e um lote por arquivo**: cada lote vai para o Google Earth com o polígono **na mesma cor
+  da hachura do lote no projeto**, preenchimento com **45% de cor** (dá para ver a imagem por baixo), contorno na cor, os vértices
+  com as coordenadas e as divisas. Por padrão sai **um arquivo para cada lote** (cada lote entra separado no Google Earth); os
+  arquivos abrem um de cada vez. A conferência logo depois de *Definir Referência* também abre cada lote separado (você escolhe quais).
+- A imagem de localização escolhida nas versões anteriores (só o caminho do arquivo) passa a ser a imagem geral guardada no projeto,
+  na primeira vez que você abre *Pranchas*.
+
 ## Ajustes da versão 1.6.2
 
 - **Certidões antigas (só com as medidas dos lados)**: o *Importar certidão* agora entende os lados escritos como nas certidões mais
@@ -437,8 +454,9 @@ As edificações aparecem no **memorial** (seção *ÁREA EDIFICADA* com as dist
   projeção, fuso, meridiano central, EPSG, **escala** e **escala gráfica**), o espaço da **imagem de localização**, o espaço da **logomarca do
   escritório** e o **título** com a **FOLHA**;
 - **folhas numeradas por projeto** (FOLHA 01, 02, 03…; uma prancha substituída mantém o número);
-- **imagem de localização**: espaço sem título no carimbo. Escolha a imagem em *Imagem de localização* (ajustada ao espaço) ou deixe em
-  branco e insira a imagem no Revit;
+- **imagem de satélite**: espaço sem título no carimbo. Em *Imagem de satélite › Imagens…*, escolha o arquivo ou cole o print: a
+  **imagem geral** (todas as pranchas) e, se quiser, uma **imagem para cada fase** (a fase sem imagem própria usa a geral). A imagem fica
+  guardada no projeto e entra recortada para preencher o espaço, sem distorcer. Sem imagem, o espaço fica em branco;
 - **prévia** da prancha selecionada (mesmo encaixe, carimbo e anotações), com avisos de legibilidade;
 - **pranchas já geradas**: a tabela mostra se você **editou** a prancha e você escolhe *Substituir*, *Manter a atual* ou *Nova versão ao lado*;
 - **conferência antes de emitir** e avisos de legibilidade (textos sem espaço, tabela reduzida, desenho apertado);
@@ -463,7 +481,11 @@ As pranchas ficam **editáveis** no Revit.
 **Exportar PDF** – exporta as pranchas pelo recurso do próprio Revit, em **escala real (100%)** e no papel de cada prancha (A4…A0,
 retrato ou paisagem, detectado pelo tamanho da folha); um arquivo só ou um por prancha.
 
-**Google Earth / QGIS** – KMZ, KML e GeoJSON com os lotes coloridos por uso e os vértices como pontos.
+**Google Earth / QGIS** – KMZ, KML e GeoJSON. No Google Earth, cada lote aparece com o polígono **na cor da hachura do lote no projeto**
+(lote ainda sem hachura: a cor que o comando *Hachuras* daria a ele), preenchimento com **45% de cor** (*Cor do preenchimento*, de 0 a 1),
+o contorno, os **vértices com as coordenadas** e, se marcado, as divisas com azimute e distância. *Um arquivo para cada lote* (padrão)
+grava `<nome> - Lote 01.kmz`, `<nome> - Lote 02.kmz`… na pasta escolhida e abre um de cada vez no Google Earth; desmarcado, sai um
+arquivo só com todos os lotes. O GeoJSON (QGIS) sai sempre num arquivo só.
 
 **Planilha Excel** – lotes, quadro de áreas, vértices, registro de vértices e segmentos.
 
@@ -588,7 +610,7 @@ ou do INCRA/SIGEF.
 | **Ponto de referência do lote** | Vértice cuja coordenada aparece com chamada no mapa (P-01 por padrão; escolha outro nas Pranchas). |
 | **Modelo de prancha** | Papel, margens, blocos do carimbo, grade, norte, estilos de texto e logomarca; fica na biblioteca de modelos. |
 | **Prancha geral / prancha do lote** | Geral: vários lotes, sem números de vértice nem coordenadas. Do lote: numeração própria, azimutes e tabela de coordenadas. |
-| **Imagem de localização** | Espaço do carimbo para a imagem de localização (inserida por você). |
+| **Imagem de satélite (localização)** | Print do local no satélite guardado no projeto: a geral vale para todas as pranchas e a de cada fase só para as pranchas dela. |
 | **Certidão (inteiro teor)** | Documento do cartório com a descrição do imóvel; o *Desenhar Perímetro* lê dela o perímetro e os confrontantes. |
 | **OCR** | Reconhecimento de texto em imagem (PDF escaneado ou foto), feito pelo próprio Windows. |
 | **Recuos (área edificável)** | Onde se pode construir no lote, descontando o recuo de cada divisa. |

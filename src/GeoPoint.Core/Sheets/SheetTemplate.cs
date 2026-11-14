@@ -117,6 +117,20 @@ public sealed class SheetTemplate
     [JsonIgnore] public bool HasLogo => LogoBytes() is { Length: > 0 } b && ImageHeader.Size(b) is not null;
 
     /// <summary>Largura/altura da logomarca (0 = sem logomarca ou formato desconhecido).</summary>
+    /// <summary>
+    /// Proporção (largura / altura) da área da imagem de localização: o bloco do croqui sem o cabeçalho (se tiver título) e sem a
+    /// margem de 1,2 mm – a mesma área em que a prancha coloca a imagem. 0 = o modelo não tem esse espaço.
+    /// </summary>
+    public double CroquiAspect()
+    {
+        var b = Block(SheetBlockKind.Croqui);
+        if (b is null || b.W <= 2 || b.H <= 2) return 0;
+        double h = b.H - 2.4;
+        if (b.Title.Length > 0) h -= Styles.CabecalhoMm * 2.15;
+        double w = b.W - 2.4;
+        return w > 0 && h > 0 ? w / h : 0;
+    }
+
     public double LogoAspect() => ImageHeader.Size(LogoBytes()) is { W: > 0, H: > 0 } z ? (double)z.W / z.H : 0;
 
     /// <summary>Embute a logomarca no modelo (null ou vazio = remove). Aceita PNG, JPG, GIF e BMP até 3 MB.</summary>
