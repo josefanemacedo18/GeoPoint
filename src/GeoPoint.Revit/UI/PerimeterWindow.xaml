@@ -63,7 +63,10 @@
             </StackPanel>
         </GroupBox>
         <GroupBox DockPanel.Dock="Bottom" Header="Resultado e conferência">
-            <TextBlock x:Name="Result" FontFamily="Consolas" TextWrapping="Wrap"/>
+            <!-- O veredito da conferência pode ter várias linhas: rola em vez de apertar as tabelas. -->
+            <ScrollViewer MaxHeight="190" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <TextBlock x:Name="Result" FontFamily="Consolas" TextWrapping="Wrap"/>
+            </ScrollViewer>
         </GroupBox>
         <Grid>
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="10"/><ColumnDefinition Width="370"/></Grid.ColumnDefinitions>

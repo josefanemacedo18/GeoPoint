@@ -122,8 +122,13 @@ public static class SmartReader
         // Letras no lugar de dígitos nos minutos e segundos ("82° os' 34"" → 82°05'34"): o → 0, s → 5, l/I → 1.
         s = Regex.Replace(s, @"(?<=\d{1,3}\s*[°º]\s*)([0-9oOsSlI]{2})(?=\s*[!'|]\s*\d)", m =>
             m.Value.Any(char.IsLetter) ? new string(m.Value.Select(c => c switch { 'o' or 'O' => '0', 's' or 'S' => '5', 'l' or 'I' => '1', _ => c }).ToArray()) : m.Value);
-        // Apóstrofo dos minutos lido como "!" ou "|" ("82º 05! 34"") e marca dos minutos perdida ("24°2701,840"").
-        s = Regex.Replace(s, @"(?<=\d{1,3}\s*[°º]\s*\d{1,2})\s*[!|]\s*(?=\d{1,2}(?:[.,]\d+)?\s*"")", "'");
+        // Espaço no meio dos minutos/segundos ("06º201 3.46"" → "06º2013.46"").
+        s = Regex.Replace(s, @"(?<=\d{1,3}\s*[°º]\s*\d{2,3})[ ](?=\d[\d.,]*\s*[""”])", "");
+        // Marca dos segundos lida como grau ("28º37/12º" → 28º37/12").
+        s = Regex.Replace(s, @"(?<=\d{1,3}\s*[°º]\s*\d{1,2}\s*['’/|!:]\s*\d{1,2}(?:[.,]\d+)?)\s*[°º](?![\d])", "\"");
+        // Apóstrofo dos minutos lido como "!", "|", "/" ou ":" ("82º 05! 34"", "208º37/12"", "47º23:36.97"") e marca dos minutos
+        // perdida ("24°2701,840"").
+        s = Regex.Replace(s, @"(?<=\d{1,3}\s*[°º]\s*\d{1,2})\s*[!|/:]\s*(?=\d{1,2}(?:[.,]\d+)?\s*"")", "'");
         s = Regex.Replace(s, @"(?<=\d{1,3}\s*[°º])\s*([0-5]\d)([0-5]\d(?:[.,]\d+)?)(?=\s*"")", "$1'$2");
         // Grau escrito como º, ˚ ou ° com espaço antes.
         s = Regex.Replace(s, @"(?<=\d)\s?[º˚]", "°");
@@ -582,6 +587,18 @@ public static class SmartReader
             res.Kind = model == ReadingModel.Local || !utm ? PerimeterCoordKind.Local : PerimeterCoordKind.Utm;
         }
         res.Format = r.Table ? "tabela" : "memorial";
+        if (res.Kind == PerimeterCoordKind.Local)
+        {
+            // Coordenadas locais não têm faixa de valores que as identifique: só valem com o nome do vértice em cada linha ou com os
+            // rótulos X/Y (ou E/N) em cada número. Palavras seguidas de dois números são texto, não tabela.
+            int named = res.Vertices.Count(x => x.Name.Length > 0);
+            int labeled = pairs.Count(p => p.A!.Label.Length > 0 && p.B!.Label.Length > 0);
+            if (named < res.Vertices.Count * 0.8 && labeled < pairs.Count * 0.8)
+            {
+                res.Vertices.Clear();
+                return;
+            }
+        }
         CleanupVertices(res);
         PrecisionConsistency(res);
     }

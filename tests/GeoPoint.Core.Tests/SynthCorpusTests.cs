@@ -144,6 +144,7 @@ public class SynthCorpusTests
         var sb = new StringBuilder();
         int okConf = 0, okAsk = 0, badAsk = 0, silent = 0, total = 0;
         var detail = new StringBuilder();
+        int dupla = 0;
         foreach (var (id, t) in Cases())
             foreach (var variant in new[] { "texto", "limpo", "scan", "foto", "limpo-blocos", "scan-blocos", "foto-blocos" })
             {
@@ -152,10 +153,20 @@ public class SynthCorpusTests
                 if (!File.Exists(file)) continue;
                 total++;
                 var d = CertidaoParser.Parse(File.ReadAllText(file));
+                // Dupla leitura (como no GeoPoint): a segunda leitura do OCR (outra configuração) confere os números da primeira.
+                string second = variant is "limpo" or "scan" or "foto" ? Path.Combine(Dir, $"{id}.{variant}.linhas2.txt") : "";
+                if (second.Length > 0 && File.Exists(second))
+                {
+                    var d2 = CertidaoParser.Parse(File.ReadAllText(second));
+                    var doubts = ReadingAgreement.Compare(d, d2);
+                    if (doubts.Count > 0) dupla++;
+                    d.Doubts.AddRange(doubts);
+                }
                 var dr = Plugin(d, t.zone ?? 23, d.Doubts);
                 string err = DrawingError(t, dr);
                 bool conf = dr.Verdict.Level == VerdictLevel.Conferido;
                 detail.AppendLine($"{id,-22} {variant,-13} {dr.Verdict.Level,-15} {(err.Length == 0 ? "certo" : "ERRADO: " + err)}");
+                if (conf && Compare(t, d) is { Length: > 0 } vw) detail.AppendLine($"   (conferido, desenho certo, mas um valor difere do documento: {id} [{variant}] {vw})");
                 if (err.Length == 0 && conf) okConf++;
                 else if (err.Length == 0) okAsk++;
                 else if (!conf) badAsk++;
@@ -174,7 +185,8 @@ public class SynthCorpusTests
                 }
             }
         string head = $"Leituras: {total}\n  certas e conferidas (desenha direto): {okConf}\n  certas, mas pede confirmação: {okAsk}\n" +
-                      $"  erradas e avisadas (pede confirmação): {badAsk}\n  ERRADAS SEM AVISO: {silent}\n";
+                      $"  erradas e avisadas (pede confirmação): {badAsk}\n  ERRADAS SEM AVISO: {silent}\n" +
+                      $"  (leituras em que a dupla leitura achou número diferente: {dupla})\n";
         if (Environment.GetEnvironmentVariable("GEOPOINT_OUT") is { Length: > 0 } outDir)
             File.WriteAllText(Path.Combine(outDir, "memoriais-silencioso.txt"), head + sb + "\n" + detail);
         Assert.True(total > 0);

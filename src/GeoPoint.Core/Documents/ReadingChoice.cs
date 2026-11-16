@@ -45,12 +45,18 @@ public static class ReadingChoice
             _ => v.All(x => double.IsFinite(x.A) && double.IsFinite(x.B)),
         };
         if (!range) return false;
+        // Coordenadas locais (números pequenos, sem faixa que as identifique) só com nomes de vértice de verdade: "com", "Rua",
+        // "portador" seguidos de dois números são texto de certidão, não uma tabela.
+        if (r.Kind == PerimeterCoordKind.Local && v.Count(x => VertexNameRx.IsMatch(x.Name)) < v.Count * 0.8) return false;
         if (v.Count < 2) return true;
         var pts = PlanePoints(r);
         var bb = BBox.Of(pts);
         double diag = Math.Sqrt(bb.Width * bb.Width + bb.Height * bb.Height);
         return diag >= 0.3 && diag <= 50_000;
     }
+
+    private static readonly System.Text.RegularExpressions.Regex VertexNameRx = new(@"^(?:[A-Z]{1,6}[-_ ]?[A-Z]?[-_]?\d{1,6}[A-Z]?|[A-Z]{1,3}|\d{1,4}[A-Z]?|[A-Z0-9]{3,6}-[A-Z]{1,2}-\d{1,6}[A-Z]?)$",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     /// <summary>Pontos em metros (UTM e locais como estão; geográficas pelos raios do elipsoide).</summary>
     public static List<Vec2> PlanePoints(CoordinateTextResult r)

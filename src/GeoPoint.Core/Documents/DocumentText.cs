@@ -107,6 +107,7 @@ public static class OcrCleanup
         // Metro quadrado ("m2", "m^2" e o "²" lido como "?").
         s = Regex.Replace(s, @"\bm\s*2\b|\bm\^2\b", "m²");
         s = Regex.Replace(s, @"(?<=\d\s?)m\?", "m²");
+        s = Regex.Replace(s, @"(?<=\d\s?)m[º°](?![\d\p{L}])", "m²");
         // Barra solta dentro do número ("12,/00m") e "&" no lugar de "e" ("azimutes & distâncias").
         s = Regex.Replace(s, @"(?<=\d[.,])/(?=\d)", "");
         s = Regex.Replace(s, @"(?<=\s)&(?=\s)", "e");

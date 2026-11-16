@@ -147,6 +147,8 @@ public static class PerimeterText
             return smart;
         }
         var legacy = ParseCoordinatesLegacy(text ?? "", tableNeedsHeader);
+        // Documento importado: uma leitura sem sentido (números soltos do texto) não vira vértices.
+        if (tableNeedsHeader && legacy.Vertices.Count >= 3 && !Documents.ReadingChoice.Plausible(legacy)) legacy = new CoordinateTextResult();
         bool useSmart = Documents.ReadingChoice.Score(smart) >= Documents.ReadingChoice.Score(legacy) && smart.Vertices.Count > 0;
         smartUsed = useSmart ? sm : null;
         if (!useSmart && legacy.Vertices.Count > 0)

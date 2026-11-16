@@ -21,6 +21,8 @@ public sealed class ReadDocument
     public ImageQualityReport? Quality { get; set; }
     /// <summary>Cada tentativa de OCR e o que ela leu (para o diagnóstico).</summary>
     public List<string> Attempts { get; } = new();
+    /// <summary>Números lidos diferente nas duas leituras do OCR (pedem confirmação antes de desenhar).</summary>
+    public List<string> Doubts { get; } = new();
 }
 
 /// <summary>
@@ -160,8 +162,9 @@ public static class DocumentReader
     // ------------------------------------------------------------------ OCR
 
     /// <summary>
-    /// Tentativas de OCR (Tesseract normal, com correção de sombra, em bloco único; OCR do Windows), da melhor para a pior: para na
-    /// primeira leitura completa (fecha e confere); senão, fica a de melhor nota.
+    /// Tentativas de OCR (<see cref="OcrPlan"/>): a página como veio; se as palavras saem em pé ou nada é encontrado, a página girada
+    /// (90°, 270°, 180°); com correção de sombra e em bloco único; e uma segunda leitura que confere os números da escolhida. O OCR do
+    /// Windows entra quando o Tesseract não dá uma leitura completa (na orientação da melhor leitura). Fica a de melhor nota.
     /// </summary>
     private static async Task RunOcrAsync(ReadDocument res, List<OcrPage> pages, IProgress<string>? progress, Func<ImageQualityReport, bool>? confirm)
     {
@@ -175,62 +178,71 @@ public static class DocumentReader
             if (confirm is not null && !confirm(quality)) throw new OperationCanceledException("Leitura cancelada para tirar outra foto.");
         }
         var baseWords = doc.Words.ToList();   // palavras das páginas com texto (PDF misto)
-        (ExtractedDocument Doc, ReadingScore Score, string Engine)? best = null;
-
-        void Consider(List<DocWord> words, string engine)
-        {
-            var cand = new ExtractedDocument { Path = doc.Path };
-            cand.Pages.AddRange(doc.Pages);
-            cand.PagesWithoutText.AddRange(doc.PagesWithoutText);
-            cand.Warnings.AddRange(doc.Warnings);
-            cand.Words.AddRange(baseWords);
-            cand.Words.AddRange(words);
-            var score = ReadingScore.Of(CertidaoParser.Parse(cand.Text));
-            res.Attempts.Add($"{engine}: {score.Summary} (nota {score.Score:0})");
-            if (best is null || score.Score > best.Value.Score.Score) best = (cand, score, engine);
-        }
-
+        OcrCandidate? best = null;
+        var doubts = new List<string>();
         using (var tess = TesseractReader.TryCreate(out string tessError))
         {
             if (tess is null) res.Attempts.Add("Tesseract indisponível: " + tessError);
             else
             {
-                var tries = new (string Name, bool Flatten, Tesseract.PageSegMode Mode)[]
+                try
                 {
-                    ("Tesseract", false, Tesseract.PageSegMode.Auto),
-                    ("Tesseract com correção de sombra", true, Tesseract.PageSegMode.Auto),
-                    ("Tesseract em bloco único", false, Tesseract.PageSegMode.SingleBlock),
-                };
-                foreach (var (name, flatten, mode) in tries)
+                    var outcome = OcrPlan.Run(pages.Select(p => (p.Index, p.Gray)).ToList(), baseWords,
+                        (g, idx, flatten, single) => tess.Read(g, idx, flatten, single ? Tesseract.PageSegMode.SingleBlock : Tesseract.PageSegMode.Auto, out _),
+                        m => progress?.Report(m));
+                    res.Attempts.AddRange(outcome.Attempts);
+                    best = outcome.Best;
+                    doubts.AddRange(outcome.Doubts);
+                }
+                catch (Exception ex)
                 {
-                    progress?.Report($"Lendo a imagem ({name})…");
-                    var words = new List<DocWord>();
-                    try
-                    {
-                        foreach (var p in pages) words.AddRange(tess.Read(p.Gray, p.Index, flatten, mode, out _));
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.Error(name, ex);
-                        res.Attempts.Add($"{name}: falhou ({ex.Message})");
-                        break;
-                    }
-                    Consider(words, name);
-                    if (best?.Score.Complete == true) break;
+                    Logger.Error("Tesseract", ex);
+                    res.Attempts.Add($"Tesseract: falhou ({ex.Message})");
                 }
             }
         }
         if (best?.Score.Complete != true)
         {
+            int turns = best?.Turns ?? 0;
             try
             {
                 progress?.Report("Lendo a imagem (OCR do Windows)…");
                 var engine = CreateEngine(out _);
-                var words = new List<DocWord>();
-                foreach (var p in pages.Where(p => p.Windows is not null))
-                    foreach (var w in await OcrAsync(engine, p.Windows!, p.Index))
-                        words.Add(new DocWord(w.Page, w.Text, w.X0 / p.WindowsScale, w.Y0 / p.WindowsScale, w.X1 / p.WindowsScale, w.Y1 / p.WindowsScale));
-                Consider(words, $"OCR do Windows ({engine.RecognizerLanguage.DisplayName})");
+                var words = new List<DocWord>(baseWords);
+                foreach (var p in pages)
+                {
+                    if (turns == 0 && p.Windows is not null)
+                    {
+                        foreach (var w in await OcrAsync(engine, p.Windows, p.Index))
+                            words.Add(new DocWord(w.Page, w.Text, w.X0 / p.WindowsScale, w.Y0 / p.WindowsScale, w.X1 / p.WindowsScale, w.Y1 / p.WindowsScale));
+                    }
+                    else
+                    {
+                        // Página girada: a imagem em cinza já na orientação da melhor leitura.
+                        var g = p.Gray.Rotate(turns);
+                        using var sb = WinImaging.SoftwareBitmap.CreateCopyFromBuffer(
+                            System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.AsBuffer(g.Px), WinImaging.BitmapPixelFormat.Gray8, g.Width, g.Height);
+                        words.AddRange(await OcrAsync(engine, sb, p.Index));
+                    }
+                }
+                string text = OcrCleanup.Normalize(DocumentText.BuildText(words));
+                var d = CertidaoParser.Parse(text);
+                var sc = ReadingScore.Of(d);
+                string name = $"OCR do Windows ({engine.RecognizerLanguage.DisplayName}){(turns == 0 ? "" : $", página girada {turns * 90}°")}";
+                res.Attempts.Add($"{name}: {sc.Summary} (nota {sc.Score:0})");
+                var win = new OcrCandidate { Name = name, Turns = turns, Words = words, Text = text, Data = d, Score = sc };
+                if (best is null || sc.Score > best.Score.Score)
+                {
+                    // O OCR do Windows (outro motor) ficou melhor: a leitura do Tesseract confere os números dele.
+                    if (best is not null) { doubts.Clear(); doubts.AddRange(ReadingAgreement.Compare(win.Data, best.Data)); win.Data.Doubts.AddRange(doubts); }
+                    best = win;
+                }
+                else
+                {
+                    var more = ReadingAgreement.Compare(best.Data, win.Data).Where(x => !doubts.Contains(x)).ToList();
+                    doubts.AddRange(more);
+                    best.Data.Doubts.AddRange(more);
+                }
             }
             catch (Exception ex)
             {
@@ -239,11 +251,38 @@ public static class DocumentReader
                 if (best is null) throw;
             }
         }
-        if (best is { } b)
+        if (best is null) return;
+        // A leitura escolhida: as palavras dela e, se a página foi girada, as imagens e os tamanhos das páginas girados junto (para os
+        // destaques caírem no lugar certo).
+        var cand = new ExtractedDocument { Path = doc.Path };
+        cand.Pages.AddRange(doc.Pages);
+        cand.PagesWithoutText.AddRange(doc.PagesWithoutText);
+        cand.Warnings.AddRange(doc.Warnings);
+        cand.Words.AddRange(best.Words);
+        if (best.Turns % 4 != 0)
         {
-            res.Doc = b.Doc;
-            res.OcrLanguage = b.Engine;
+            foreach (var p in pages)
+            {
+                if (p.Index < res.PageImages.Count) res.PageImages[p.Index] = Rotate(res.PageImages[p.Index], best.Turns);
+                var g = p.Gray;
+                bool swap = best.Turns % 2 == 1;
+                if (p.Index < cand.Pages.Count) cand.Pages[p.Index] = new DocPage(p.Index, swap ? g.Height : g.Width, swap ? g.Width : g.Height, true);
+            }
+            cand.Warnings.Add($"A foto estava girada: lida com a página girada {best.Turns * 90}°.");
         }
+        if (doubts.Count > 0) cand.Warnings.Add($"Dupla leitura: {doubts.Count} número(s) lido(s) diferente(s) nas duas leituras do OCR – confira antes de desenhar.");
+        res.Doc = cand;
+        res.OcrLanguage = best.Name;
+        res.Doubts.AddRange(doubts);
+    }
+
+    /// <summary>Imagem da página girada (quartos de volta no sentido horário), congelada para a janela.</summary>
+    private static WpfImaging.BitmapSource? Rotate(WpfImaging.BitmapSource? img, int turns)
+    {
+        if (img is null || turns % 4 == 0) return img;
+        var t = new WpfImaging.TransformedBitmap(img, new System.Windows.Media.RotateTransform(90 * turns));
+        t.Freeze();
+        return t;
     }
 
     public sealed class OcrUnavailableException : InvalidOperationException

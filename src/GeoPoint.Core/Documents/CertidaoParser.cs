@@ -106,7 +106,10 @@ public static class CertidaoParser
     /// <summary>Linha do quadro de confrontações: "Frente - RUA 07 - 24,00 m", "Lado Esquerdo LOTE 26 - … - 25,00 m".</summary>
     private static readonly Regex ConfLineRx = new(
         @"^\s*(?:(?<l>frente|fundos?|lado\s+direito|lado\s+esquerdo|lateral\s+direita|lateral\s+esquerda)\s*[-–:]?\s*)?(?<c>\S.*?)\s*[-–:]\s*" + Num + @"\s*(?:m\b|metros)\s*(?:e\s*)?$", Opt);
-    private static readonly Regex AreaRx = new(@"[áa]rea\s*(?:\([^)\n]{0,60}\)\s*)?(?:(?:total|superficial|para\s+retifica[çc][ãa]o|para\s+regulariza[çc][ãa]o|a\s+retificar|retificada|regularizada|de\s+terreno|do\s+terreno|do\s+lote|do\s+im[óo]vel|da\s+gleba)\s*)?(?:de\s+|com\s+|:\s*|=\s*|igual\s+a\s+)?" + Num + @"\s*(?<u>m²|m2|metros\s+quadrados|ha\b|hectares?)", Opt);
+    private static readonly Regex AreaRx = new(@"[áa]rea\s*(?:\([^)\n]{0,60}\)\s*)?(?:(?:total|superficial|para\s+retifica[çc][ãa]o|para\s+regulariza[çc][ãa]o|a\s+retificar|retificada|regularizada|de\s+terreno|do\s+terreno|do\s+lote|do\s+im[óo]vel|da\s+gleba)\s*)?(?:de\s+|com\s+|:\s*|=\s*|igual\s+a\s+)?" + Num + @"\s*(?<u>m²|m2|metros\s+quadrados|ha\b|hectares?)" +
+        // "Área para retificaçã etificação: 360,00 m²" (rótulo com palavras estragadas pelo OCR, terminando em ":"). Área construída,
+        // edificada, útil, privativa ou comum não é a do terreno.
+        @"|[áa]rea\b(?![\p{L} ]{0,40}?(?:constru|edifica|[úu]til|privativ|comum|cobert))[\p{L} ]{1,40}?:\s*" + Num + @"\s*(?<u>m²|m2|metros\s+quadrados|ha\b|hectares?)", Opt);
     private static readonly Regex PerimRx = new(@"per[íi]metro\s*(?:total\s+)?(?:de\s+|com\s+|:\s*|=\s*|igual\s+a\s+)?" + Num + @"\s*(?:m\b|metros)", Opt);
     private static readonly Regex ZoneRx = new(@"(?:fuso|zona)\s*(?:UTM\s*)?:?\s*(?<z>\d{1,2})\s*(?<h>[NS])?(?![\d\p{L}])|\bUTM\s*(?:zona\s*)?(?<z>\d{2})\s*(?<h>[NS])\b", Opt);
     private static readonly Regex McRx = new(@"(?:\bMC\b|meridiano\s+central)\s*:?\s*(?<mc>-?\d{2})\s*°?\s*(?<w>W|O|WGr)?", Opt);
@@ -534,7 +537,9 @@ public static class CertidaoParser
     }
 
     private static readonly Regex SideKeyRx = new(
-        @"\b(?:(?:ao|a|à)\s+(?<c>norte|sul|l[ec]ste|o[ec]ste|[ec]ste)\b|(?<f>frente)\b|(?:ao\s+)?(?<u>fundos?)\b|(?:pel[oa]\s+)?(?:lado|lateral)\s+(?<l>direit[oa]|esquerd[oa])\b)", Opt);
+        @"\b(?:(?:ao|a|à)\s+(?<c>norte|sul|l[ec]ste|o[ec]ste|[ec]ste)\b|(?<f>frente)\b|(?:ao\s+)?(?<u>fundos?)\b|(?:pel[oa]\s+)?(?:lado|lateral)\s+(?<l>direit[oa]|esquerd[oa])\b|" +
+        // "pela direita com o lote nº 19, medindo 30 metros", "à esquerda, com…"
+        @"(?:pel[oa]|à|a)\s+(?<l>direit[oa]|esquerd[oa])\b)", Opt);
     private static string NormCard(string c)
     {
         c = c.ToLowerInvariant();

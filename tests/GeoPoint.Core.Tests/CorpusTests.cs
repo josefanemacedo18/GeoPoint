@@ -101,14 +101,23 @@ public class CorpusTests
             var file = Directory.GetFiles(dir).FirstOrDefault(f => f.StartsWith(stem + ".") && !f.EndsWith(".expected.json") && !f.EndsWith(".ocr.txt"));
             if (file is null) continue;
             var e = JsonDocument.Parse(File.ReadAllText(exp)).RootElement;
-            string text = Path.GetExtension(file).ToLowerInvariant() switch
+            string text;
+            CertidaoData d;
+            var attempts = new List<string>();
+            switch (Path.GetExtension(file).ToLowerInvariant())
             {
-                ".txt" => File.ReadAllText(file),
-                ".pdf" => PdfTextReader.Read(file).Text,
-                _ => Ocr(file),
-            };
-            var d = CertidaoParser.Parse(text);
+                case ".txt": text = File.ReadAllText(file); d = CertidaoParser.Parse(text); break;
+                case ".pdf": text = PdfTextReader.Read(file).Text; d = CertidaoParser.Parse(text); break;
+                default:
+                    // Foto: a mesma sequência de tentativas do GeoPoint (inclusive a página girada e a dupla leitura).
+                    var o = OcrImage(file);
+                    text = o.Best!.Text;
+                    d = o.Best.Data;
+                    attempts.AddRange(o.Attempts);
+                    break;
+            }
             var score = ReadingScore.Of(d);
+            var drawn = SynthCorpusTests.Plugin(d, d.UtmZone ?? 23, d.Doubts);
             int v = d.HasCoordinates ? d.Coordinates.Vertices.Count : 0;
             int pairs = d.Trechos.Count(t => t.Azimuth is not null && t.Distance is not null);
             int confs = d.Confrontantes.Count(c => c.Length > 0);
@@ -119,13 +128,63 @@ public class CorpusTests
             if (e.TryGetProperty("confs", out var ef) && ef.GetInt32() != confs) errs.Add($"confrontantes {confs} (esperado {ef.GetInt32()})");
             if (e.TryGetProperty("area", out var ea) && ea.GetDouble() > 0 && Math.Abs((d.Area ?? 0) - ea.GetDouble()) > ea.GetDouble() * 0.001) errs.Add($"área {d.Area} (esperado {ea.GetDouble()})");
             if (e.TryGetProperty("complete", out var eo) && eo.GetBoolean() != score.Complete) errs.Add($"completa {score.Complete} (esperado {eo.GetBoolean()})");
-            report.AppendLine($"{(errs.Count == 0 ? "✓" : "✗")} {Path.GetFileName(file)}: {score.Summary}" + (errs.Count > 0 ? " – " + string.Join("; ", errs) : ""));
+            if (e.TryGetProperty("verdict", out var evd) && evd.GetString() != drawn.Verdict.Level.ToString()) errs.Add($"veredito {drawn.Verdict.Level} (esperado {evd.GetString()})");
+            if (e.TryGetProperty("draw", out var edr) && (edr.GetString() == "courses") != drawn.Verdict.DrawFromCourses) errs.Add($"desenho pelos trechos {drawn.Verdict.DrawFromCourses} (esperado {edr.GetString()})");
+            if (e.TryGetProperty("courseValues", out var ecv))
+            {
+                // Trechos esperados (azimute em graus e distância): os que o GeoPoint desenharia.
+                var cs = d.HasCoordinates ? d.Coordinates.StatedCourses : d.Courses;
+                var want = ecv.EnumerateArray().Select(x => (Az: x[0].GetDouble(), D: x[1].GetDouble())).ToList();
+                if (cs.Count != want.Count) errs.Add($"trechos lidos {cs.Count} (esperado {want.Count})");
+                else for (int i = 0; i < cs.Count; i++)
+                        if (PerimeterText.AngleDiff(cs[i].AzimuthDeg, want[i].Az) > 0.5 / 3600 || Math.Abs(cs[i].Distance - want[i].D) > 0.001)
+                            errs.Add($"trecho {i + 1}: {cs[i].AzimuthDeg:0.0000}° {cs[i].Distance} (esperado {want[i].Az:0.0000}° {want[i].D})");
+            }
+            report.AppendLine($"{(errs.Count == 0 ? "✓" : "✗")} {Path.GetFileName(file)}: {score.Summary}; veredito {drawn.Verdict.Level}{(drawn.Verdict.DrawFromCourses ? " (desenho pelos trechos)" : "")}" +
+                              (errs.Count > 0 ? " – " + string.Join("; ", errs) : ""));
+            foreach (var it in drawn.Verdict.Items.Where(i => i.Status != CheckStatus.Ok)) report.AppendLine($"    {it.Icon} {it.Name}: {Privacy.MaskNames(it.Detail)}");
+            foreach (var a in attempts) report.AppendLine($"    · {a}");
             foreach (var t in d.Trechos)
                 report.AppendLine($"    {t.From} → {t.To}: az {t.Azimuth:0.0000} dist {t.Distance:0.00} {t.Lado} {Privacy.MaskNames(t.Confrontante)}{(t.Inherited ? " (herdado)" : "")}");
             if (errs.Count > 0) failures.Add(Path.GetFileName(file) + ": " + string.Join("; ", errs));
         }
         File.WriteAllText(Path.Combine(dir, "corpus-report.txt"), report.ToString());
         Assert.True(failures.Count == 0, string.Join("\n", failures));
+    }
+
+    /// <summary>Foto → (convert) cinza → as tentativas do GeoPoint (<see cref="OcrPlan"/>) com o Tesseract de linha de comando.</summary>
+    public static OcrOutcome OcrImage(string image)
+    {
+        string tmp = Path.Combine(Path.GetTempPath(), "gp-corpus-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            string raw = Path.Combine(tmp, "raw.pgm");
+            Run("convert", $"\"{image}\" -auto-orient -colorspace Gray -depth 8 \"{raw}\"");
+            var gray = GrayImage.FromPgm(File.ReadAllBytes(raw));
+            var o = OcrPlan.Run(new[] { (0, gray) }, Array.Empty<DocWord>(), (g, page, flatten, single) => TessCli(g, page, flatten, single, tmp));
+            File.WriteAllText(Path.ChangeExtension(image, ".ocr.txt"), o.Best!.Text);
+            return o;
+        }
+        finally { try { Directory.Delete(tmp, true); } catch { } }
+    }
+
+    /// <summary>Como o TesseractReader do GeoPoint: imagem preparada, OCR em português, palavras na escala da página.</summary>
+    private static List<DocWord> TessCli(GrayImage g, int page, bool flatten, bool single, string tmp)
+    {
+        var prepared = ImagePrep.Prepare(g, out double k, flatten: flatten);
+        string pgm = Path.Combine(tmp, "prep.pgm"), outBase = Path.Combine(tmp, "out");
+        File.WriteAllBytes(pgm, prepared.ToPgm());
+        Run("tesseract", $"\"{pgm}\" \"{outBase}\" -l por --psm {(single ? 6 : 3)} --dpi 300 -c preserve_interword_spaces=1 tsv");
+        var words = new List<DocWord>();
+        foreach (var line in File.ReadAllLines(outBase + ".tsv").Skip(1))
+        {
+            var f = line.Split('\t');
+            if (f.Length < 12 || f[0] != "5" || f[11].Trim().Length == 0) continue;
+            double x = double.Parse(f[6]), y = double.Parse(f[7]), w = double.Parse(f[8]), h = double.Parse(f[9]);
+            words.Add(new DocWord(page, f[11].Trim(), x / k, y / k, (x + w) / k, (y + h) / k));
+        }
+        return words;
     }
 
     /// <summary>Imagem → (convert) cinza → preparação do GeoPoint → Tesseract (por).</summary>

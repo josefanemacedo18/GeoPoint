@@ -32,6 +32,27 @@ public sealed class GrayImage
         return g;
     }
 
+    /// <summary>Imagem girada em quartos de volta no sentido horário (1 = 90°, 2 = 180°, 3 = 270°).</summary>
+    public GrayImage Rotate(int quarterTurns)
+    {
+        int q = ((quarterTurns % 4) + 4) % 4;
+        if (q == 0) return new GrayImage(Width, Height, (byte[])Px.Clone());
+        int w = Width, h = Height;
+        var r = q == 2 ? new GrayImage(w, h) : new GrayImage(h, w);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                byte v = Px[y * w + x];
+                switch (q)
+                {
+                    case 1: r.Px[x * h + (h - 1 - y)] = v; break;            // (x, y) → (h-1-y, x)
+                    case 2: r.Px[(h - 1 - y) * w + (w - 1 - x)] = v; break;  // (x, y) → (w-1-x, h-1-y)
+                    default: r.Px[(w - 1 - x) * h + y] = v; break;           // (x, y) → (y, w-1-x)
+                }
+            }
+        return r;
+    }
+
     /// <summary>Arquivo PGM (P5) – formato simples, usado nos testes com o Tesseract de linha de comando.</summary>
     public byte[] ToPgm()
     {

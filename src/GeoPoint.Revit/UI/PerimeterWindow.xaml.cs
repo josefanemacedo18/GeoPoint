@@ -34,8 +34,12 @@ public sealed class CourseRow : Notify, INumberedRow
     private string _dist = "";
     private string _radius = "";
     private bool _right = true;
-    public string Az { get => _az; set => Set(ref _az, value ?? ""); }
-    public string Dist { get => _dist; set => Set(ref _dist, value ?? ""); }
+    /// <summary>Azimute digitado ou lido; mudou na célula = a precisão passa a ser a do texto digitado.</summary>
+    public string Az { get => _az; set { if (Set(ref _az, value ?? "")) AzStep = null; } }
+    public string Dist { get => _dist; set { if (Set(ref _dist, value ?? "")) DistStep = null; } }
+    /// <summary>Passo da última casa do azimute e da distância como estavam escritos no documento (null = pelo texto da célula).</summary>
+    public double? AzStep { get; set; }
+    public double? DistStep { get; set; }
     public string Radius { get => _radius; set => Set(ref _radius, value ?? ""); }
     public bool Right { get => _right; set => Set(ref _right, value); }
     public string Source { get; set; } = "";
@@ -77,8 +81,10 @@ public sealed class CoordRow : Notify, INumberedRow
     private string _name = "", _a = "", _b = "", _radius = "", _output = "", _check = "";
     private bool _right = true, _bad;
     public string Name { get => _name; set => Set(ref _name, value ?? ""); }
-    public string A { get => _a; set => Set(ref _a, value ?? ""); }
-    public string B { get => _b; set => Set(ref _b, value ?? ""); }
+    public string A { get => _a; set { if (Set(ref _a, value ?? "")) Rounding = null; } }
+    public string B { get => _b; set { if (Set(ref _b, value ?? "")) Rounding = null; } }
+    /// <summary>Arredondamento das coordenadas como estavam escritas no documento (m); null = pelo texto da célula.</summary>
+    public double? Rounding { get; set; }
     public string Radius { get => _radius; set => Set(ref _radius, value ?? ""); }
     public bool Right { get => _right; set => Set(ref _right, value); }
     /// <summary>Azimute e distância até o próximo vértice (formato do projeto).</summary>
@@ -155,6 +161,12 @@ public partial class PerimeterWindow : Window
     private readonly List<(string Path, ReadDocument Read, CertidaoData Cert)> _docs = new();
     private List<DocCheck> _steps = new();
     private List<DocCheck> _checks = new();
+    /// <summary>Números com cara de lidos errado (casas fora do padrão) na última leitura de cada aba.</summary>
+    private List<string> _coordDoubts = new(), _courseDoubts = new();
+    /// <summary>Trechos montados só das medidas dos lados (o documento não traz ângulos).</summary>
+    private bool _fromSides;
+    /// <summary>Conferência do desenho com o documento (o que está nas tabelas agora).</summary>
+    private DrawingVerdict? _verdict;
 
     /// <summary>Configurações (correções aprendidas e aviso de qualidade da foto); quem abre a janela salva depois.</summary>
     public GeoPoint.Core.Settings.GeoPointSettings? Settings { get; set; }
@@ -340,7 +352,8 @@ public partial class PerimeterWindow : Window
         // Trechos: a melhor leitura (leitor inteligente com a conferência pelo fechamento, ou o de expressões fixas).
         var cr = ReadingChoice.Courses(text, Model);
         var list = cr.Courses;
-        ShowReadInfo(false, cr.Model.Length > 0 && list.Count >= 3 ? cr.Model : list.Count >= 3 ? "Azimutes e distâncias" : "", cr.Evidence, cr.Fixes, cr.Warnings);
+        _courseDoubts = cr.Doubts.ToList();
+        ShowReadInfo(false, cr.Model.Length > 0 && list.Count >= 3 ? cr.Model : list.Count >= 3 ? "Azimutes e distâncias" : "", cr.Evidence, cr.Fixes, cr.Warnings.Concat(cr.Doubts));
         if (list.Count == 0)
         {
             if (!quiet)
@@ -354,9 +367,14 @@ public partial class PerimeterWindow : Window
         var used = new HashSet<CertidaoTrecho>();
         var old = _rows.ToList();
         _rows.Clear();
+        _fromSides = false;
         foreach (var co in list)
         {
-            var row = new CourseRow { Az = AngleText.FormatDms(co.AzimuthDeg, 2, AngleKind.Azimuth), Dist = Fmt.Raw(co.Distance, 4), Source = co.Source };
+            var row = new CourseRow
+            {
+                Az = AngleText.FormatDms(co.AzimuthDeg, 2, AngleKind.Azimuth), Dist = Fmt.Raw(co.Distance, 4), Source = co.Source,
+                AzStep = co.AzimuthStep ?? WrittenPrecision.DefaultAzimuthStep, DistStep = co.DistanceStep ?? WrittenPrecision.DefaultDistanceStep,
+            };
             var t = trechos.FirstOrDefault(t => !used.Contains(t) && t.Azimuth is double az && t.Distance is double dd &&
                                                 PerimeterText.AngleDiff(az, co.AzimuthDeg) < 1.0 / 3600 && Math.Abs(dd - co.Distance) < 0.0005);
             if (t is not null && t.Confrontante.Length > 0)
@@ -514,7 +532,11 @@ public partial class PerimeterWindow : Window
                 if (rr * 2 < d) { error = $"Trecho {i}: o raio deve ser pelo menos metade da corda."; return false; }
                 rad = rr;
             }
-            courses.Add(new Course { AzimuthDeg = az, Distance = d, Radius = rad, ArcToRight = r.Right });
+            courses.Add(new Course
+            {
+                AzimuthDeg = az, Distance = d, Radius = rad, ArcToRight = r.Right,
+                AzimuthStep = r.AzStep ?? WrittenPrecision.AngleStep(r.Az), DistanceStep = r.DistStep ?? WrittenPrecision.NumberStep(r.Dist),
+            });
             i++;
         }
         if (courses.Count == 0) { error = "Nenhum trecho informado."; return false; }
@@ -598,7 +620,8 @@ public partial class PerimeterWindow : Window
         // Texto vindo do documento: tabela só com cabeçalho E/N (números soltos de protocolo, emolumentos etc. não viram vértices).
         bool fromDoc = _docCoordText is not null && text == _docCoordText;
         var t = PerimeterText.ParseCoordinates(text, fromDoc, Model, out var smartUsed);
-        if (smartUsed is not null) ShowReadInfo(true, smartUsed.Model, smartUsed.Evidence, smartUsed.Fixes, new List<string>());
+        _coordDoubts = t.Doubts.ToList();
+        if (smartUsed is not null) ShowReadInfo(true, smartUsed.Model, smartUsed.Evidence, smartUsed.Fixes, t.Doubts);
         else ShowReadInfo(true, t.Vertices.Count >= 3 ? (t.Format == "tabela" ? "Tabela de coordenadas" : "Memorial com coordenadas") : "", new List<string>(), new List<ReadingFix>(), new List<string>());
         if (t.Vertices.Count < 2)
         {
@@ -626,7 +649,7 @@ public partial class PerimeterWindow : Window
         for (int i = 0; i < t.Vertices.Count; i++)
         {
             var v = t.Vertices[i];
-            var row = new CoordRow { Name = v.Name, A = FormatValue(v.A, t.Kind), B = FormatValue(v.B, t.Kind) };
+            var row = new CoordRow { Name = v.Name, A = FormatValue(v.A, t.Kind), B = FormatValue(v.B, t.Kind), Rounding = v.Rounding };
             string conf = i < confs.Count ? confs[i] : "";
             if (conf.Length > 0)
             {
@@ -754,6 +777,15 @@ public partial class PerimeterWindow : Window
         Recalc();
     }
 
+    /// <summary>Arredondamento de coordenadas digitadas na tabela: metade da última casa de cada uma (geográficas em metros).</summary>
+    private static double RoundingOfText(CoordRow r, PerimeterCoordKind k, double lat)
+    {
+        if (k != PerimeterCoordKind.Geographic)
+            return Math.Max(WrittenPrecision.NumberStep(r.A), WrittenPrecision.NumberStep(r.B)) / 2;
+        double Step(string t) => t.Contains('°') || t.Contains('º') ? WrittenPrecision.AngleStep(t) : WrittenPrecision.NumberStep(t.Replace("-", "").Trim());
+        return WrittenPrecision.GeoRounding(lat, Step(r.A), Step(r.B));
+    }
+
     private bool TryVertices(out List<PerimeterVertex> vs, out string error)
     {
         vs = new();
@@ -774,7 +806,7 @@ public partial class PerimeterWindow : Window
                 if (!Fmt.TryNum(r.Radius, out double rr) || rr <= 0) { error = $"{name}: raio inválido."; return false; }
                 rad = rr;
             }
-            vs.Add(new PerimeterVertex { Name = name, A = a.Value, B = b.Value, Radius = rad, ArcToRight = r.Right });
+            vs.Add(new PerimeterVertex { Name = name, A = a.Value, B = b.Value, Radius = rad, ArcToRight = r.Right, Rounding = r.Rounding ?? RoundingOfText(r, k, a.Value) });
         }
         if (vs.Count < 2) { error = "Informe as coordenadas de pelo menos dois vértices (cole o texto e clique em Interpretar)."; return false; }
         return true;
@@ -1001,6 +1033,7 @@ public partial class PerimeterWindow : Window
             }
             Recalc();
             what = "medidas dos lados (sem ângulos)";
+            _fromSides = true;
             ShowReadInfo(false, cert.Model, cert.Evidence, cert.Fixes, new List<string>());
         }
         else
@@ -1119,7 +1152,15 @@ public partial class PerimeterWindow : Window
         }
         bool zoneAssumed = _cert is not null && CoordMode && Kind == PerimeterCoordKind.Utm && _cert.UtmZone is null;
         bool datumAssumed = _cert is not null && CoordMode && Kind != PerimeterCoordKind.Local && _cert.Coordinates.Datum is null;
-        _checks = divs.Count == 0 ? new List<DocCheck>() : ReadingReport.Consistency(_cert, divs, area, perim, mis, ok, tot, zoneAssumed, datumAssumed);
+        var cons = divs.Count == 0 ? new List<DocCheck>() : ReadingReport.Consistency(_cert, divs, area, perim, mis, ok, tot, zoneAssumed, datumAssumed);
+        // Fechamento, trechos, área e perímetro: os da conferência pela precisão do documento (o veredito do desenho).
+        _checks = new List<DocCheck>();
+        if (_verdict is not null)
+        {
+            _checks.Add(new DocCheck("Veredito", _verdict.Verified ? CheckStatus.Ok : _verdict.Level == VerdictLevel.Divergente ? CheckStatus.Falha : CheckStatus.Aviso, _verdict.Headline));
+            _checks.AddRange(_verdict.Items);
+        }
+        _checks.AddRange(cons.Where(c => c.Name is not ("Fechamento" or "Trechos × texto" or "Área" or "Perímetro")));
         if (_cert is not null && _docs.Count > 1)
             _checks.AddRange(ReadingReport.CompareDocs(_cert, area, _docs.Skip(1).Select(d => (System.IO.Path.GetFileName(d.Path), d.Cert)).ToList()));
         ChecksList.ItemsSource = _checks.Select(x => new CheckRow(x)).ToList();
@@ -1197,24 +1238,40 @@ public partial class PerimeterWindow : Window
     }
 
     /// <summary>Área e perímetro do desenho × os da certidão (diferença grande = número lido errado ou perímetro incompleto).</summary>
-    private void AppendCertCheck()
+    /// <summary>
+    /// Conferência do que está nas tabelas com o documento (precisão com que ele foi escrito): o veredito vai para o resultado e para o
+    /// Diagnóstico, e decide se o desenho sai direto ou pede confirmação.
+    /// </summary>
+    private DrawingVerdict? ComputeVerdict()
     {
-        if (_cert is null || (_cert.Area is null && _cert.Perimetro is null)) return;
-        double? area = CoordMode ? (_per is { Closed: true } p ? p.Area : null) : _trav?.Area;
-        double? perim = CoordMode ? _per?.Perimeter : _trav?.Perimeter;
-        var lines = new List<string>();
-        if (_cert.Area is double ca && area is double da && ca > 0)
+        var fig = _cert?.Figures ?? CertidaoParser.FiguresOf(CoordMode ? CoordSource.Text : Source.Text);
+        var doubts = new List<string>(CoordMode ? _coordDoubts : _courseDoubts);
+        if (_read is not null) doubts.AddRange(_read.Doubts.Where(x => !doubts.Contains(x)));
+        var info = CoordMode ? _infoCoord : _infoAz;
+        int derived = info?.Fixes.Count(f => f.Derived) ?? 0, fixes = (info?.Fixes.Count ?? 0) - derived;
+        if (CoordMode)
         {
-            double pct = Math.Abs(da - ca) / ca * 100;
-            lines.Add($"{(pct > 1 ? "⚠ " : "")}Documento: área {Fmt.N(ca, 2)} m² – desenho {Fmt.N(da, 2)} m² (diferença {Fmt.N(pct, 1)}%)" +
-                      (pct > 1 ? ": confira os números lidos." : "."));
+            if (_per is null || !TryVertices(out var vs, out _) || vs.Count != _per.Points.Count) return null;
+            if (_per.Closed && DrawingCheck.CoursesMorePrecise(vs, Kind, _stated))
+                return DrawingCheck.ForCoursesWithCoordinates(_per, vs, Kind, _stated, fig, fixes + derived, doubts);
+            return DrawingCheck.ForCoordinates(_per, vs, Kind, fig, fixes + derived, doubts);
         }
-        if (_cert.Perimetro is double cp && perim is double dp && cp > 0)
+        if (!TryCourses(out var cs, out _)) return null;
+        return DrawingCheck.ForCourses(cs, fig, fixes, doubts, _fromSides, derived);
+    }
+
+    private void AppendVerdict()
+    {
+        _verdict = ComputeVerdict();
+        if (_verdict is null) return;
+        var lines = new List<string>
         {
-            double pct = Math.Abs(dp - cp) / cp * 100;
-            lines.Add($"{(pct > 0.5 ? "⚠ " : "")}Documento: perímetro {Fmt.N(cp, 2)} m – desenho {Fmt.N(dp, 2)} m (diferença {Fmt.N(pct, 1)}%).");
-        }
-        if (lines.Count > 0) Result.Text = (Result.Text + "\n" + string.Join("\n", lines)).Trim();
+            (_verdict.Verified ? "✓ " : _verdict.Level == VerdictLevel.Divergente ? "✗ " : "⚠ ") + _verdict.Headline,
+        };
+        if (_verdict.DrawFromCourses && _verdict.Items.FirstOrDefault(i => i.Name == "Desenho") is { } how) lines.Add("   Desenho " + how.Detail + ".");
+        foreach (var it in _verdict.Items.Where(i => i.Status != CheckStatus.Ok).Take(5)) lines.Add($"   {it.Icon} {it.Name}: {it.Detail}");
+        if (!_verdict.Verified) lines.Add("   Ao desenhar, o GeoPoint vai pedir a sua confirmação.");
+        Result.Text = (Result.Text + "\n" + string.Join("\n", lines)).Trim();
     }
 
     private void Pos_Changed(object sender, RoutedEventArgs e)
@@ -1228,7 +1285,7 @@ public partial class PerimeterWindow : Window
     {
         if (_loading || Tabs is null) return;
         if (CoordMode) RecalcCoords(); else RecalcCourses();
-        AppendCertCheck();
+        AppendVerdict();
         UpdateHighlights();
         UpdateChecks();
         UpdatePositionOptions();
@@ -1275,6 +1332,19 @@ public partial class PerimeterWindow : Window
             PosClick.IsChecked == true ? $"Depois de Desenhar, clique no Revit onde fica o vértice {name}." : "";
     }
 
+    /// <summary>
+    /// Desenho sem conferência completa (divergência, correção automática, dúvida da leitura ou documento sem como conferir): só com
+    /// a sua confirmação – o padrão é não desenhar.
+    /// </summary>
+    private bool ConfirmVerdict()
+    {
+        var v = _verdict;
+        if (v is { Verified: true }) return true;
+        string text = v?.Question() ?? "Não foi possível conferir o desenho com o documento. Desenhar assim mesmo?";
+        return MessageBox.Show(this, text, v?.Level == VerdictLevel.Divergente ? "GeoPoint – NÃO CONFERE" : "GeoPoint – Conferência",
+            MessageBoxButton.YesNo, v?.Level == VerdictLevel.Divergente ? MessageBoxImage.Error : MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes;
+    }
+
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
         Grid.CommitEdit(DataGridEditingUnit.Row, true);
@@ -1285,10 +1355,14 @@ public partial class PerimeterWindow : Window
         {
             if (!TryVertices(out var vs, out var err)) { Fmt.Msg(err, icon: MessageBoxImage.Warning); return; }
             if (_per is null || _per.Curves.Count == 0) { Fmt.Msg(Result.Text, icon: MessageBoxImage.Warning); return; }
-            if (_per.Checked > _per.CheckedOk &&
-                MessageBox.Show(this, $"{_per.Checked - _per.CheckedOk} trecho(s) não conferem com os azimutes e distâncias do texto.\n\nDesenhar assim mesmo (pelas coordenadas)?",
-                    "GeoPoint – Conferência", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-            d.Curves.AddRange(_per.Curves);
+            if (!ConfirmVerdict()) return;
+            if (_verdict?.DrawFromCourses == true)
+            {
+                // Coordenadas grossas e trechos precisos: o desenho pelos azimutes e distâncias, a partir do primeiro vértice.
+                var tr = Traverse.Compute(DrawingCheck.ToTrueNorth(_stated, _per), adjust: true);
+                d.Curves.AddRange(tr.Curves);
+            }
+            else d.Curves.AddRange(_per.Curves);
             d.Vertices = vs.Count;
             d.StartName = vs[0].Name;
             d.InputKind = Kind == PerimeterCoordKind.Geographic ? CrsKind.Geographic : CrsKind.Utm;
@@ -1301,6 +1375,7 @@ public partial class PerimeterWindow : Window
         else
         {
             if (!TryCourses(out var courses, out var err)) { Fmt.Msg(err, icon: MessageBoxImage.Warning); return; }
+            if (!ConfirmVerdict()) return;
             var res = _trav ?? Traverse.Compute(courses, AdjustClosure);
             d.Curves.AddRange(res.Curves);
             d.Vertices = courses.Count;
@@ -1315,6 +1390,7 @@ public partial class PerimeterWindow : Window
             d.Summary = Result.Text;
         }
         if (d.Curves.Count == 0) { Fmt.Msg("Nada para desenhar.", icon: MessageBoxImage.Warning); return; }
+        if (_verdict is { Verified: false } nv) d.Summary += $"\n\nDesenhado com a sua confirmação, sem conferência completa: {nv.Headline}";
         // Polígono fechado? (os confrontantes só ficam guardados para contornos fechados)
         d.Closed = CoordMode ? _per?.Closed == true
             : AdjustClosure || (TryCourses(out var cc, out _) && Traverse.Compute(cc, adjust: false).MisclosureLength < 0.001);
