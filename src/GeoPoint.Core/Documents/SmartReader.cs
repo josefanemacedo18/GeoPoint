@@ -36,6 +36,8 @@ public sealed class ReadToken
     /// <summary>Outra leitura possível do número (ex.: "236.184" = 236184 com ponto de milhar).</summary>
     public double? Alt { get; init; }
     public int Decimals { get; init; }
+    /// <summary>Passo da última casa escrita: em metros (números) ou em graus (ângulos). Define o arredondamento do valor.</summary>
+    public double Step { get; set; } = 1;
     /// <summary>Segundos com casas decimais (ângulos de coordenada costumam ter).</summary>
     public int SecDecimals { get; init; }
     /// <summary>Letra do hemisfério depois do ângulo (N, S, E, W).</summary>
@@ -71,6 +73,8 @@ public sealed class SmartReading
     public string Text { get; set; } = "";
     /// <summary>Área escrita no documento (m²), para a conferência.</summary>
     public double? Area { get; set; }
+    /// <summary>Passo da última casa da área escrita (m²).</summary>
+    public double AreaStep { get; set; } = 0.01;
     /// <summary>Avisos sobre os trechos (os das coordenadas ficam em <see cref="Coordinates"/>).</summary>
     public List<string> Warnings { get; } = new();
     /// <summary>Correções feitas pela conferência cruzada.</summary>
@@ -223,7 +227,7 @@ public static class SmartReader
         {
             if (!TryAngle(m, out double v, out int secDec)) continue;
             bool neg = m.Groups["sg"].Success;
-            var t = new ReadToken { Start = m.Index, End = m.Index + m.Length, Raw = s.Substring(m.Index, m.Length), IsAngle = true, Value = neg ? -v : v, Negative = neg, SecDecimals = secDec, Line = LineOf(m.Index) };
+            var t = new ReadToken { Start = m.Index, End = m.Index + m.Length, Raw = s.Substring(m.Index, m.Length), IsAngle = true, Value = neg ? -v : v, Negative = neg, SecDecimals = secDec, Line = LineOf(m.Index), Step = AngleStep(m) };
             // Letra depois: hemisfério (S, W…) ou quadrante do rumo (NE…).
             var h = HemiAfterRx.Match(s[t.End..Math.Min(s.Length, t.End + 4)]);
             if (h.Success)
@@ -253,7 +257,7 @@ public static class SmartReader
             var (v, alt, dec) = ParseNumber(m.Groups["n"].Value, ptDoc);
             if (double.IsNaN(v)) continue;
             bool neg = m.Groups["sg"].Success;
-            toks.Add(new ReadToken { Start = m.Index, End = m.Index + m.Length, Raw = s.Substring(m.Index, m.Length), Value = neg ? -v : v, Alt = alt, Decimals = dec, Negative = neg, Line = LineOf(m.Index) });
+            toks.Add(new ReadToken { Start = m.Index, End = m.Index + m.Length, Raw = s.Substring(m.Index, m.Length), Value = neg ? -v : v, Alt = alt, Decimals = dec, Negative = neg, Line = LineOf(m.Index), Step = Math.Pow(10, -dec) });
         }
         toks.Sort((a, b) => a.Start.CompareTo(b.Start));
 
@@ -296,7 +300,11 @@ public static class SmartReader
         // Trechos escritos junto com as coordenadas: conferência (trecho i = do vértice i ao i+1).
         if (r.Coordinates.Vertices.Count >= 3 && r.Courses.Count > 0) r.Coordinates.StatedCourses.AddRange(r.Courses);
         r.Coordinates.Datum = CoordinateTableReader.DetectDatum(s);
-        if (toks.FirstOrDefault(t => t.Role == TokenRole.Area && t.Value > 0) is { } at) r.Area = at.Unit == "ha" ? at.Value * 10000 : at.Value;
+        if (toks.FirstOrDefault(t => t.Role == TokenRole.Area && t.Value > 0) is { } at)
+        {
+            r.Area = at.Unit == "ha" ? at.Value * 10000 : at.Value;
+            r.AreaStep = at.Step * (at.Unit == "ha" ? 10000 : 1);
+        }
         if (check) ReadingCheck.Review(r);
         Describe(r, toks, model);
         return r;
@@ -308,6 +316,16 @@ public static class SmartReader
         string n = g.Value.Trim();
         if (n.Length == 0 || names.Any(x => g.Index < x.End && g.Index + g.Length > x.Start)) return;
         names.Add((g.Index, g.Index + g.Length, n));
+    }
+
+    /// <summary>Passo da última casa do ângulo escrito, em graus (segundos, minutos, graus ou decimais de grau).</summary>
+    private static double AngleStep(Match m)
+    {
+        static int Dec(string v) { int k = v.IndexOfAny(new[] { ',', '.' }); return k < 0 ? 0 : v.Length - k - 1; }
+        if (m.Groups["dd"].Success) return Math.Pow(10, -Dec(m.Groups["dd"].Value));
+        if (m.Groups["s"].Success) return Math.Pow(10, -Dec(m.Groups["s"].Value)) / 3600;
+        if (m.Groups["m"].Success) return Math.Pow(10, -Dec(m.Groups["m"].Value)) / 60;
+        return 1;
     }
 
     private static bool TryAngle(Match m, out double deg, out int secDecimals)
@@ -647,7 +665,15 @@ public static class SmartReader
             a = SignedGeo(p.A);
             b = SignedGeo(p.B);
         }
-        res.Vertices.Add(new PerimeterVertex { Name = nm, A = a, B = b, Source = (p.A.Start < p.B.Start ? p.A.Raw + " / " + p.B.Raw : p.B.Raw + " / " + p.A.Raw).Trim() });
+        // Arredondamento do vértice como foi escrito: metade da última casa (nas geográficas, convertida em metros).
+        double rounding = p.Geo
+            ? WrittenPrecision.GeoRounding(a, p.A.Step, p.B.Step)
+            : Math.Max(p.A.Step, p.B.Step) / 2;
+        res.Vertices.Add(new PerimeterVertex
+        {
+            Name = nm, A = a, B = b, Rounding = rounding,
+            Source = (p.A.Start < p.B.Start ? p.A.Raw + " / " + p.B.Raw : p.B.Raw + " / " + p.A.Raw).Trim(),
+        });
     }
 
     private static void CleanupVertices(CoordinateTextResult res)
@@ -726,7 +752,11 @@ public static class SmartReader
                 double az = a is null ? double.NaN : AzimuthOf(a, model);
                 double dist = d is null ? double.NaN : d.Value;
                 if (a is null && n > 1) continue;
-                var c = new Course { AzimuthDeg = az, Distance = dist, Source = ((a?.Raw ?? "?") + " – " + (d?.Raw ?? "?")).Trim() };
+                var c = new Course
+                {
+                    AzimuthDeg = az, Distance = dist, Source = ((a?.Raw ?? "?") + " – " + (d?.Raw ?? "?")).Trim(),
+                    DistanceStep = d?.Step, AzimuthStep = a?.Step,
+                };
                 r.Courses.Add(c);
                 int cs = Math.Min(a?.Start ?? int.MaxValue, d?.Start ?? int.MaxValue), ce = Math.Max(a?.End ?? 0, d?.End ?? 0);
                 r.CourseSpans.Add((cs, ce));
@@ -744,7 +774,11 @@ public static class SmartReader
             bool aNoAz = double.IsNaN(a.AzimuthDeg) && !double.IsNaN(a.Distance), bNoDist = !double.IsNaN(b.AzimuthDeg) && double.IsNaN(b.Distance);
             if ((aNoDist && bNoAz) || (aNoAz && bNoDist))
             {
-                r.Courses[k] = new Course { AzimuthDeg = aNoDist ? a.AzimuthDeg : b.AzimuthDeg, Distance = aNoDist ? b.Distance : a.Distance, Source = a.Source + " … " + b.Source };
+                r.Courses[k] = new Course
+                {
+                    AzimuthDeg = aNoDist ? a.AzimuthDeg : b.AzimuthDeg, Distance = aNoDist ? b.Distance : a.Distance, Source = a.Source + " … " + b.Source,
+                    AzimuthStep = aNoDist ? a.AzimuthStep : b.AzimuthStep, DistanceStep = aNoDist ? b.DistanceStep : a.DistanceStep,
+                };
                 r.CourseSpans[k] = (r.CourseSpans[k].Start, r.CourseSpans[k + 1].End);
                 r.Courses.RemoveAt(k + 1);
                 r.CourseSpans.RemoveAt(k + 1);

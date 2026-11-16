@@ -42,6 +42,11 @@ public sealed class CertidaoData
     public List<CertidaoSide> Sides { get; } = new();
     /// <summary>Quadro "CONFRONTAÇÕES" do fim do memorial (para conferir as medidas de cada divisa).</summary>
     public List<CertidaoConfrontacao> Confrontacoes { get; } = new();
+    /// <summary>Passo da última casa da área e do perímetro escritos (m² e m): a tolerância da conferência.</summary>
+    public double AreaStep { get; set; } = 0.01;
+    public double PerimetroStep { get; set; } = 0.01;
+    /// <summary>Área e perímetro do documento para a conferência do desenho.</summary>
+    public StatedFigures Figures => new() { Area = Area, AreaStep = AreaStep, Perimeter = Perimetro, PerimeterStep = PerimetroStep };
     /// <summary>Perímetro escrito em outro lugar do documento com valor diferente (ex.: cabeçalho lido errado pelo OCR).</summary>
     public double? PerimetroOutro { get; set; }
     /// <summary>Trechos montados das medidas dos lados (ângulos supostos de 90° na frente).</summary>
@@ -99,7 +104,7 @@ public static class CertidaoParser
     /// <summary>Linha do quadro de confrontações: "Frente - RUA 07 - 24,00 m", "Lado Esquerdo LOTE 26 - … - 25,00 m".</summary>
     private static readonly Regex ConfLineRx = new(
         @"^\s*(?:(?<l>frente|fundos?|lado\s+direito|lado\s+esquerdo|lateral\s+direita|lateral\s+esquerda)\s*[-–:]?\s*)?(?<c>\S.*?)\s*[-–:]\s*" + Num + @"\s*(?:m\b|metros)\s*(?:e\s*)?$", Opt);
-    private static readonly Regex AreaRx = new(@"[áa]rea\s*(?:\([^)\n]{0,60}\)\s*)?(?:total\s+|superficial\s+|de\s+terreno\s+|do\s+terreno\s+)?(?:de\s+|com\s+|:\s*|=\s*|igual\s+a\s+)?" + Num + @"\s*(?<u>m²|m2|metros\s+quadrados|ha\b|hectares?)", Opt);
+    private static readonly Regex AreaRx = new(@"[áa]rea\s*(?:\([^)\n]{0,60}\)\s*)?(?:(?:total|superficial|para\s+retifica[çc][ãa]o|para\s+regulariza[çc][ãa]o|a\s+retificar|retificada|regularizada|de\s+terreno|do\s+terreno|do\s+lote|do\s+im[óo]vel|da\s+gleba)\s*)?(?:de\s+|com\s+|:\s*|=\s*|igual\s+a\s+)?" + Num + @"\s*(?<u>m²|m2|metros\s+quadrados|ha\b|hectares?)", Opt);
     private static readonly Regex PerimRx = new(@"per[íi]metro\s*(?:total\s+)?(?:de\s+|com\s+|:\s*|=\s*|igual\s+a\s+)?" + Num + @"\s*(?:m\b|metros)", Opt);
     private static readonly Regex ZoneRx = new(@"(?:fuso|zona)\s*(?:UTM\s*)?:?\s*(?<z>\d{1,2})\s*(?<h>[NS])?(?![\d\p{L}])|\bUTM\s*(?:zona\s*)?(?<z>\d{2})\s*(?<h>[NS])\b", Opt);
     private static readonly Regex McRx = new(@"(?:\bMC\b|meridiano\s+central)\s*:?\s*(?<mc>-?\d{2})\s*°?\s*(?<w>W|O|WGr)?", Opt);
@@ -186,20 +191,7 @@ public static class CertidaoParser
         }
 
         // ---- Área e perímetro do documento (conferência do desenho).
-        var areaM = DescEndRx.Match(flat) is { Success: true } end && AreaRx.Match(end.Value) is { Success: true } ae ? ae : AreaRx.Match(flat);
-        if (areaM.Success && CoordinateTableReader.Num(areaM.Groups["v"].Value) is double av)
-            d.Area = areaM.Groups["u"].Value.StartsWith("h", StringComparison.OrdinalIgnoreCase) ? av * 10000 : av;
-        // Perímetro: o escrito na própria descrição ("ponto inicial … perímetro de 98,00 m") vale mais que o do cabeçalho.
-        var perims = PerimRx.Matches(flat).Cast<Match>().Select(m => (m.Index, V: CoordinateTableReader.Num(m.Groups["v"].Value))).Where(x => x.V is > 0).ToList();
-        int descAt = desc.Length > 0 ? flat.IndexOf(desc, StringComparison.Ordinal) : -1;
-        var inDesc = descAt >= 0 ? perims.Where(x => x.Index >= descAt && x.Index < descAt + desc.Length).ToList() : new();
-        var main = inDesc.Count > 0 ? inDesc[^1] : perims.FirstOrDefault();
-        if (main.V is double pv)
-        {
-            d.Perimetro = pv;
-            var other = perims.FirstOrDefault(x => x.V is double o && Math.Abs(o - pv) > 0.005);
-            if (other.V is double ov) d.PerimetroOutro = ov;
-        }
+        ReadFigures(flat, desc, d);
         // Quadro de confrontações (conferência das medidas de cada divisa) e a divisa dos trechos que não a dizem.
         d.Confrontacoes.AddRange(ReadConfrontacoes(text));
         foreach (var t in d.Trechos.Where(t => t.Lado.Length == 0 && t.Confrontante.Length > 0))
@@ -214,6 +206,41 @@ public static class CertidaoParser
                 ? "A descrição traz distâncias, mas não traz coordenadas nem azimutes: não dá para desenhar só com as distâncias."
                 : "Não foi encontrada a descrição do perímetro (coordenadas, azimutes e distâncias ou as medidas dos lados).");
         return d;
+    }
+
+    /// <summary>Área e perímetro escritos (e o passo da última casa de cada um).</summary>
+    private static void ReadFigures(string flat, string desc, CertidaoData d)
+    {
+        var areaM = DescEndRx.Match(flat) is { Success: true } end && AreaRx.Match(end.Value) is { Success: true } ae ? ae : AreaRx.Match(flat);
+        if (areaM.Success && CoordinateTableReader.Num(areaM.Groups["v"].Value) is double av)
+        {
+            bool ha = areaM.Groups["u"].Value.StartsWith("h", StringComparison.OrdinalIgnoreCase);
+            d.Area = ha ? av * 10000 : av;
+            d.AreaStep = WrittenPrecision.NumberStep(areaM.Groups["v"].Value) * (ha ? 10000 : 1);
+        }
+        // Perímetro: o escrito na própria descrição ("ponto inicial … perímetro de 98,00 m") vale mais que o do cabeçalho.
+        var perims = PerimRx.Matches(flat).Cast<Match>().Select(m => (m.Index, V: CoordinateTableReader.Num(m.Groups["v"].Value), Raw: m.Groups["v"].Value)).Where(x => x.V is > 0).ToList();
+        int descAt = desc.Length > 0 ? flat.IndexOf(desc, StringComparison.Ordinal) : -1;
+        var inDesc = descAt >= 0 ? perims.Where(x => x.Index >= descAt && x.Index < descAt + desc.Length).ToList() : new();
+        var main = inDesc.Count > 0 ? inDesc[^1] : perims.FirstOrDefault();
+        if (main.V is double pv)
+        {
+            d.Perimetro = pv;
+            d.PerimetroStep = WrittenPrecision.NumberStep(main.Raw);
+            var other = perims.FirstOrDefault(x => x.V is double o && Math.Abs(o - pv) > 0.005);
+            if (other.V is double ov) d.PerimetroOutro = ov;
+        }
+    }
+
+    /// <summary>Área e perímetro escritos num texto colado (para a conferência do desenho).</summary>
+    public static StatedFigures FiguresOf(string text)
+    {
+        var d = new CertidaoData();
+        string norm = OcrCleanup.Normalize(text ?? "");
+        if (norm.Trim().Length == 0) return StatedFigures.None;
+        string flat = Flatten(norm);
+        ReadFigures(flat, Description(flat), d);
+        return d.Figures;
     }
 
     // ------------------------------------------------------------------ descrição e trechos
@@ -401,6 +428,13 @@ public static class CertidaoParser
         int before = c.StatedCourses.Count(x => !double.IsNaN(x.Distance));
         if (mine > 0 && mine >= before)
         {
+            // A precisão com que cada valor foi escrito (lida antes) continua valendo para os mesmos valores.
+            for (int i = 0; i < stated.Count && i < c.StatedCourses.Count; i++)
+            {
+                var o = c.StatedCourses[i];
+                if (Math.Abs(o.Distance - stated[i].Distance) < 1e-9) stated[i].DistanceStep = o.DistanceStep;
+                if (!double.IsNaN(stated[i].AzimuthDeg) && PerimeterText.AngleDiff(o.AzimuthDeg, stated[i].AzimuthDeg) < 1e-9) stated[i].AzimuthStep = o.AzimuthStep;
+            }
             c.StatedCourses.Clear();
             c.StatedCourses.AddRange(stated);
         }

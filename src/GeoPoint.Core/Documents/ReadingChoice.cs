@@ -96,11 +96,15 @@ public static class ReadingChoice
     {
         var res = new CourseReading();
         var sm = SmartReader.Read(text ?? "", model);
-        var smart = sm.Courses.Select(c => new Course { AzimuthDeg = c.AzimuthDeg, Distance = c.Distance, Radius = c.Radius, ArcToRight = c.ArcToRight, Source = c.Source }).ToList();
+        var smart = sm.Courses.Select(c => new Course
+        {
+            AzimuthDeg = c.AzimuthDeg, Distance = c.Distance, Radius = c.Radius, ArcToRight = c.ArcToRight, Source = c.Source,
+            DistanceStep = c.DistanceStep, AzimuthStep = c.AzimuthStep,
+        }).ToList();
         var warnings = new List<string>(sm.HasCoordinates ? new List<string>() : sm.Warnings);
         var fixes = new List<ReadingFix>(sm.HasCoordinates ? new List<ReadingFix>() : sm.Fixes);
         // Com coordenadas no texto, a conferência do leitor foi nas coordenadas: confere os trechos aqui.
-        if (sm.HasCoordinates && smart.Count >= 3) ReadingCheck.Courses(smart, sm.Area, warnings, fixes);
+        if (sm.HasCoordinates && smart.Count >= 3) ReadingCheck.Courses(smart, sm.Area, warnings, fixes, sm.AreaStep);
         var legacy = model == ReadingModel.Auto ? MemorialTextParser.Parse(text ?? "") : new List<Course>();
         bool useSmart = model != ReadingModel.Auto || CourseScore(smart) > CourseScore(legacy);
         if (useSmart)

@@ -125,6 +125,29 @@ public class SynthCorpusTests
         File.WriteAllText(Path.Combine(outDir, "depurar.txt"), sb.ToString());
     }
 
+    /// <summary>Depuração: GEOPOINT_DEBUG_TEXT=arquivo.txt grava a leitura da certidão e a conferência de cada trecho.</summary>
+    [Fact]
+    public void DepurarCertidao()
+    {
+        if (Environment.GetEnvironmentVariable("GEOPOINT_DEBUG_TEXT") is not { Length: > 0 } path) return;
+        var outDir = Environment.GetEnvironmentVariable("GEOPOINT_OUT") ?? Path.GetTempPath();
+        var d = CertidaoParser.Parse(File.ReadAllText(path));
+        var sb = new StringBuilder();
+        sb.AppendLine($"modelo: {d.Model}; área {d.Area}; perímetro {d.Perimetro}; fuso {d.UtmZone}");
+        var c = d.Coordinates;
+        foreach (var v in c.Vertices) sb.AppendLine($"  {v.Name}: {v.A} ; {v.B}  (arred. {v.Rounding}) [{v.Source}]");
+        if (c.Vertices.Count >= 3)
+        {
+            var r = PerimeterText.Build(c.Vertices, c.Kind, c.Datum ?? Geodesy.DatumId.Sirgas2000, d.UtmZone ?? 23, d.South, true, c.StatedCourses);
+            foreach (var sg in r.Segments)
+                sb.AppendLine($"  {sg.From}->{sg.To}: calc {sg.Azimuth:0.0000}° {sg.Distance:0.0000} m | grid {sg.GridAzimuth:0.0000} {sg.GridDistance:0.0000} | texto {sg.Stated?.AzimuthDeg:0.0000} {sg.Stated?.Distance} " +
+                              $"(passo {sg.Stated?.DistanceStep}) | dif {sg.AzimuthDiffDeg * 3600:0.0}\" {sg.DistanceDiff:0.0000} m | tol {sg.AzimuthTolDeg * 3600:0.0}\" {sg.DistanceTol:0.0000} m | {sg.Matches}");
+            sb.AppendLine($"  área calc {r.Area:0.00}");
+        }
+        foreach (var w in d.Warnings.Concat(c.Warnings)) sb.AppendLine("  ! " + w);
+        File.WriteAllText(Path.Combine(outDir, "depurar-certidao.txt"), sb.ToString());
+    }
+
     [Fact]
     public void LeituraDosModelos()
     {

@@ -29,6 +29,11 @@ public sealed class PerimeterVertex
     public double? Radius { get; set; }
     public bool ArcToRight { get; set; } = true;
     public string Source { get; set; } = "";
+    /// <summary>
+    /// Arredondamento das coordenadas como foram escritas (m): metade da última casa (UTM ao centímetro = 0,005 m; segundos com 2
+    /// casas ≈ 0,15 m). null = não se sabe (suposto o de um documento cuidadoso).
+    /// </summary>
+    public double? Rounding { get; set; }
 }
 
 /// <summary>Coordenadas encontradas num texto (memorial, SIGEF, planilha).</summary>
@@ -67,6 +72,9 @@ public sealed class PerimeterSegment
     public string Basis { get; set; } = "";
     /// <summary>null = sem valor no texto para conferir.</summary>
     public bool? Matches { get; set; }
+    /// <summary>Tolerâncias usadas na conferência (o que o arredondamento das coordenadas e do texto explica).</summary>
+    public double? DistanceTol { get; set; }
+    public double? AzimuthTolDeg { get; set; }
 }
 
 /// <summary>Perímetro pronto para desenhar: pontos no plano local (leste, norte) com o primeiro vértice em (0, 0).</summary>
@@ -133,6 +141,17 @@ public static class PerimeterText
         var legacy = ParseCoordinatesLegacy(text ?? "", tableNeedsHeader);
         bool useSmart = Documents.ReadingChoice.Score(smart) >= Documents.ReadingChoice.Score(legacy) && smart.Vertices.Count > 0;
         smartUsed = useSmart ? sm : null;
+        if (!useSmart && legacy.Vertices.Count > 0)
+        {
+            // O leitor antigo não guarda como os números foram escritos: vale o arredondamento visto pelo leitor inteligente no mesmo
+            // texto (o vértice de mesmas coordenadas, ou o maior do documento).
+            double? docRounding = smart.Vertices.Count > 0 ? smart.Vertices.Max(v => v.Rounding ?? 0) : null;
+            foreach (var v in legacy.Vertices)
+            {
+                var same = smart.Vertices.FirstOrDefault(x => Math.Abs(x.A - v.A) < 1e-9 && Math.Abs(x.B - v.B) < 1e-9);
+                v.Rounding = same?.Rounding ?? (docRounding > 0 ? docRounding : null);
+            }
+        }
         return useSmart ? smart : legacy;
     }
 
@@ -439,31 +458,49 @@ public static class PerimeterText
             foreach (var cv in res.Curves) area += cv.GreenIntegral(o);
             res.Area = Math.Abs(area);
         }
-        if (stated is { Count: > 0 }) Check(res, stated);
+        if (stated is { Count: > 0 }) Check(res, stated, vs, kind);
         return res;
     }
 
     /// <summary>Diferença entre dois azimutes (graus, 0–180).</summary>
     public static double AngleDiff(double a, double b) => Math.Abs(((a - b) % 360 + 540) % 360 - 180);
 
-    private static void Check(PerimeterResult res, IReadOnlyList<Course> stated)
+    /// <summary>
+    /// Confere cada trecho calculado pelas coordenadas com o azimute e a distância escritos no texto. A tolerância é a que o próprio
+    /// documento permite: o arredondamento das duas coordenadas do trecho (cada uma pode estar até meia casa fora), meia casa da
+    /// distância e do azimute escritos, a diferença de escala entre o plano UTM, o plano local e o elipsoide (alturas), e a
+    /// convergência dos meridianos dentro do imóvel. Fora disso, o trecho não confere: algum número foi lido ou escrito errado.
+    /// </summary>
+    private static void Check(PerimeterResult res, IReadOnlyList<Course> stated, IReadOnlyList<PerimeterVertex> vs, PerimeterCoordKind kind)
     {
         if (stated.Count != res.Segments.Count && stated.Any(x => !double.IsNaN(x.AzimuthDeg)))
             res.Warnings.Add($"O texto tem {stated.Count} trecho(s) com azimute e distância e as coordenadas formam {res.Segments.Count}: a conferência compara na ordem.");
+        // Alturas e planos diferentes (plano local, elipsoide): até 2,5 cm em 100 m. Coordenadas locais não têm isso.
+        double rel = kind == PerimeterCoordKind.Local ? 0 : 2.5e-4;
+        // Convergência dos meridianos dentro do imóvel (azimute em cada ponto × no plano do primeiro vértice).
+        double conv = 0;
+        if (res.Geodetic.Count >= 2)
+        {
+            double lonSpan = res.Geodetic.Max(g => g.LonDeg) - res.Geodetic.Min(g => g.LonDeg);
+            conv = lonSpan * Math.Abs(Math.Sin(res.Geodetic[0].LatDeg * Math.PI / 180));
+        }
         for (int k = 0; k < Math.Min(stated.Count, res.Segments.Count); k++)
         {
             var s = res.Segments[k];
             var st = stated[k];
             if (double.IsNaN(st.Distance) || st.Distance <= 0) continue;
+            double eps = Math.Max(Documents.WrittenPrecision.RoundingOf(vs[s.From], kind), Documents.WrittenPrecision.RoundingOf(vs[s.To], kind));
+            double posErr = 2 * Math.Sqrt(2) * eps;
+            double tolD = posErr + Documents.WrittenPrecision.DistanceStepOf(st) / 2 + rel * s.Distance + 0.002;
+            s.Stated = st;
+            s.DistanceTol = tolD;
             if (double.IsNaN(st.AzimuthDeg))
             {
                 // Só a distância escrita (certidões que descrevem por coordenadas e distâncias, sem azimute).
                 double dd = Math.Min(Math.Abs(st.Distance - s.Distance), s.GridDistance is double g0 ? Math.Abs(st.Distance - g0) : double.MaxValue);
-                s.Stated = st;
                 s.DistanceDiff = dd;
                 s.Basis = "distância";
-                // Distâncias de certidão costumam ser arredondadas em relação às coordenadas: 10 cm ou 0,5%.
-                s.Matches = dd <= Math.Max(0.10, s.Distance * 0.005);
+                s.Matches = dd <= tolD;
                 continue;
             }
             double dTrue = AngleDiff(st.AzimuthDeg, s.Azimuth);
@@ -471,10 +508,8 @@ public static class PerimeterText
             bool grid = dGrid < dTrue;
             double az = Math.Min(dTrue, dGrid);
             double dist = Math.Min(Math.Abs(st.Distance - s.Distance), s.GridDistance is double gd ? Math.Abs(st.Distance - gd) : double.MaxValue);
-            // Tolerância: 30" ou o ângulo de 2 cm no trecho (trechos curtos variam mais com o arredondamento das coordenadas).
-            double tolAz = Math.Max(30.0 / 3600, Math.Atan2(0.02, Math.Max(s.Distance, 0.01)) * 180 / Math.PI);
-            double tolD = Math.Max(0.05, s.Distance * 0.0005);
-            s.Stated = st;
+            double tolAz = Math.Atan2(posErr, Math.Max(s.Distance, 0.01)) * 180 / Math.PI + Documents.WrittenPrecision.AzimuthStepOf(st) / 2 + conv + 1.0 / 3600;
+            s.AzimuthTolDeg = tolAz;
             s.AzimuthDiffDeg = az;
             s.DistanceDiff = dist;
             s.Basis = grid ? "plano UTM" : "verdadeiro";

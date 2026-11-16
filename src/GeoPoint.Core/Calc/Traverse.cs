@@ -14,6 +14,10 @@ public sealed class Course
     /// <summary>Arco à direita (sentido horário) no sentido do percurso.</summary>
     public bool ArcToRight { get; set; } = true;
     public string Source { get; set; } = "";
+    /// <summary>Passo da última casa da distância como foi escrita (m): 0,01 em "12,00"; 1 em "30 metros". null = centímetro.</summary>
+    public double? DistanceStep { get; set; }
+    /// <summary>Passo da última casa do azimute/rumo como foi escrito (graus): 1/3600 em 45°30'00"; 1/60 em 45°30'. null = 1".</summary>
+    public double? AzimuthStep { get; set; }
 }
 
 public sealed class TraverseResult
@@ -155,7 +159,11 @@ public static class MemorialTextParser
             {
                 if (taken.Any(t => m.Index < t.E && m.Index + m.Length > t.S)) continue;
                 if (!TryAngle(m, out double a) || !AngleText.TryParseNumber(m.Groups["v"].Value, out double d) || d <= 0) continue;
-                pairs.Add(new Found(new Course { AzimuthDeg = a, Distance = d, Source = m.Value.Trim() }, m.Index, m.Index + m.Length));
+                pairs.Add(new Found(new Course
+                {
+                    AzimuthDeg = a, Distance = d, Source = m.Value.Trim(),
+                    AzimuthStep = Documents.WrittenPrecision.AngleStep(m.Value), DistanceStep = Documents.WrittenPrecision.NumberStep(m.Groups["v"].Value),
+                }, m.Index, m.Index + m.Length));
                 taken.Add((m.Index, m.Index + m.Length));
             }
         bool Free(Match m) => !taken.Any(t => m.Index < t.E && m.Index + m.Length > t.S);
@@ -177,7 +185,11 @@ public static class MemorialTextParser
             if (t.IsAngle) pa = t; else pd = t;
             if (pa is not null && pd is not null)
             {
-                var c = new Course { AzimuthDeg = pa.Value, Distance = pd.Value, Source = pa.Pos < pd.Pos ? pa.Text + " … " + pd.Text : pd.Text + " … " + pa.Text };
+                var c = new Course
+                {
+                    AzimuthDeg = pa.Value, Distance = pd.Value, Source = pa.Pos < pd.Pos ? pa.Text + " … " + pd.Text : pd.Text + " … " + pa.Text,
+                    AzimuthStep = Documents.WrittenPrecision.AngleStep(pa.Text), DistanceStep = Documents.WrittenPrecision.FirstNumberStep(pd.Text),
+                };
                 int start = Math.Min(pa.Pos, pd.Pos), end = Math.Max(pa.Pos + pa.Text.Length, pd.Pos + pd.Text.Length);
                 res.Add(new Found(c, start, end));
                 pa = null; pd = null;

@@ -152,9 +152,16 @@ public class V19Tests
     {
         string t = "vértice V1 (698356,34 mE; 8275523,57 mN), vértice V2 (698361,75 mE; 8275532,03 mN), vértice V3 (698370,62 mE; 8275540,57 mN), " +
                    "vértice V4 (698379,28 mE; 8275533,21 mN), vértice V5 (098388,14 mE; 8275525,85 mN), vértice V6 (698373,85 mE; 8275508,85 mN).";
-        var r = SmartReader.Read(t);
-        Assert.Equal(PerimeterCoordKind.Utm, r.Coordinates.Kind);
-        Assert.Equal(698388.14, r.Coordinates.Vertices[4].A, 3);
+        // Sem a área do documento, não há como provar qual dígito está errado: só avisa (não chuta).
+        var semArea = SmartReader.Read(t);
+        Assert.Equal(98388.14, semArea.Coordinates.Vertices[4].A, 3);
+        Assert.Empty(semArea.Fixes);
+        Assert.Contains(semArea.Coordinates.Warnings, w => w.Contains("V5") && w.Contains("longe dos outros"));
+        // Com a área, a única troca de um dígito que traz o vértice para junto dos outros e faz a área bater é a certa.
+        var comArea = SmartReader.Read(t + " Área de 521,71 m².");
+        Assert.Equal(PerimeterCoordKind.Utm, comArea.Coordinates.Kind);
+        Assert.Equal(698388.14, comArea.Coordinates.Vertices[4].A, 3);
+        Assert.Single(comArea.Fixes);
     }
 
     [Fact]

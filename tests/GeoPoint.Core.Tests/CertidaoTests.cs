@@ -111,13 +111,19 @@ public class CertidaoTests
         Assert.False(CertidaoParser.IsStreet(d.Confrontantes[3]));
         Assert.Equal(new double?[] { 7.35, 103.60, 7.35, 103.60 }, d.Trechos.Select(t => t.Distance));
         Assert.All(d.Trechos, t => Assert.Null(t.Azimuth));
-        // Conferência só pelas distâncias (o texto não traz azimutes): as quatro batem dentro da tolerância.
+        // Conferência só pelas distâncias (o texto não traz azimutes). Os lados de 103,60 m batem; os de 7,35 m não: pelas
+        // coordenadas (escritas ao centímetro) eles medem 7,32 e 7,43 m – 3 e 8 cm de diferença, mais do que o arredondamento
+        // explica (2,3 cm). O documento é inconsistente e o GeoPoint mostra isso em vez de dizer que confere.
         Assert.Equal(4, d.Coordinates.StatedCourses.Count);
         var r = PerimeterText.Build(d.Coordinates.Vertices, d.Coordinates.Kind, DatumId.Sirgas2000, 23, true, true, d.Coordinates.StatedCourses);
         Assert.Equal(4, r.Checked);
-        Assert.Equal(4, r.CheckedOk);
+        Assert.Equal(2, r.CheckedOk);
+        Assert.Equal(new bool?[] { false, true, false, true }, r.Segments.Select(s => s.Matches));
         Assert.All(r.Segments, s => Assert.Equal("distância", s.Basis));
         Assert.InRange(Math.Abs(r.Area - 761.46) / 761.46, 0, 0.01);
+        var v = DrawingCheck.ForCoordinates(r, d.Coordinates.Vertices, d.Coordinates.Kind, d.Figures);
+        Assert.Equal(VerdictLevel.Divergente, v.Level);
+        Assert.Contains(v.Items, i => i.Name == "Trechos × coordenadas" && i.Status == CheckStatus.Falha && i.Detail.Contains("7,35"));
         Assert.DoesNotContain(r.Warnings, w => w.Contains("quantidade", StringComparison.OrdinalIgnoreCase));
     }
 

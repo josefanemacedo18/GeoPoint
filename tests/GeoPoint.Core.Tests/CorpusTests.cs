@@ -25,7 +25,8 @@ public class CorpusTests
     public static IEnumerable<object[]> Reference() => new[]
     {
         new object[] { "certidão moderna – UTM com azimutes e distâncias", CertidaoTests.Moderna, 4, 4, 4, 360.0, true },
-        new object[] { "certidão de inteiro teor comum – UTM só com distâncias", CertidaoTests.ModeloComum, 4, 0, 4, 761.46, true },
+        // Inconsistente: os lados de 7,35 m diferem 3 e 8 cm das coordenadas – a leitura está certa, mas não "confere".
+        new object[] { "certidão de inteiro teor comum – UTM só com distâncias", CertidaoTests.ModeloComum, 4, 0, 4, 761.46, false },
         new object[] { "memorial SGL – geográficas, texto limpo", V18Tests.SglLimpo, 6, 6, 6, 600.0, true },
         new object[] { "memorial SGL – texto do OCR de uma foto", V18Tests.SglOcr, 6, 6, 6, 600.0, true },
         new object[] { "certidão antiga – frente, fundos e laterais", AntigaFrente, 0, 0, 4, 360.0, false },
