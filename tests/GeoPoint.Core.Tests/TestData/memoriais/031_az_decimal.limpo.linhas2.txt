@@ -1,0 +1,7 @@
+Poligonal (azimutes e distâncias):
+V1-V2: AZ = 56,7206º, D = 6,58 m
+V2-V3: Az = 83,7655º, D= 8,38 m
+V3-V4: Az = 161,9415º, D = 24,55 M
+V4-V5: AZ = 251,9387º, D = 14,55 M
+V5-V6: Az = 347,4553º, D = 15,65 Mm
+v6-v1: Az = 332,3913º, D = 9,08m

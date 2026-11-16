@@ -1,0 +1,19 @@
+MEMORIAL DESCRITIVO
+
+Área para retificação: 651,13 m?
+
+Inicia-se a descrição deste perímetro para retificação de área cravado na margem da
+Rua A no vértice P01, com Coordenadas Geográficas Latitude 10º05'36.36"S e Longitude
+43º34'58.65"W, deste segue confrontando com propriedade de Rua das Acácias, no
+azimute e distância de 138º31'17" - 23,13 metros, até o vértice PO2, de coordenadas
+Latitude 10º05'36.93"S e Longitude 43º34'58.15"W, deste segue confrontando com
+propriedade de Avenida Central, no azimute e distância de 228º30'37" - 28,16 metros,
+até o vértice P03, de coordenadas Latitude 10º05'37.54"S e Longitude 43º34'58.84'"W,
+deste segue confrontando com propriedade de Estrada Municipal, no azimute e distância
+de 318º31'17" - 23,13 metros, até o vértice P04, de coordenadas Latitude
+10º05'36.97"S e Longitude 43º34'59.34"W, deste segue confrontando com propriedade de
+Rua Ipê Amarelo, no azimute e distância de 48º30'37" - 28,16 metros, encontrando o
+ponto inicial de partida e fechando seu perímetro com 102,58 metros. Todas as
+coordenadas aqui descritas estão georreferenciadas ao Sistema Geodésico Brasileiro,
+tendo como DATUM o SIRGAS 2000. Todos os azimutes e distâncias, área e perímetro
+foram calculadas no sistema local de coordenadas (SGL).

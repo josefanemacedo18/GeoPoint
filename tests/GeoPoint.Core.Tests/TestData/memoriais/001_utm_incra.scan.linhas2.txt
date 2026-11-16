@@ -1,0 +1,21 @@
+Inicia-se a descrição deste perímetro no vértice LZGP-M-5867, de coordenadas N
+8.487.544,36m e E 729.870,57m:
+deste, segue confrontando com Rua Projetada A, com os seguintes azimute e distância:
+319º12'11" e 61,94 m, até o vértice LZGP-P-5868, de coordenadas N 8.487.591,25me E
+729.830,10m;
+deste, segue confrontando com Rua Ipê Amarelo, com os seguintes azimute e distância:
+49º12'12" e 78,91 m, até o vértice LZGP-M-5869, de coordenadas N 8.487.642,81m e E
+729.889,84m;
+deste, segue confrontando com Lote 07 da Quadra B, com os seguintes azimute e
+distância: 129º25'07" e 27,48 m, até o vértice LZGP-P-5870, de coordenadas N
+8.487.625,36m e E 729.911,07m:;
+deste, segue confrontando com Rua das Acácias, com os seguintes azimute e distância:
+146º50'03" e 35,17 m, até o vértice LZGP-M-5871, de coordenadas N 8.487.595,92m e E
+729.930,31m;
+deste, segue confrontando com Estrada Municipal, com os seguintes azimute e
+distância: 229º12'12" e 78,91 m, até o vértice LZGP-M-5867, ponto inicial da
+descrição deste perímetro. Todas as coordenadas aqui descritas estão
+georreferenciadas ao Sistema Geodésico Brasileiro, e encontram-se representadas no
+Sistema UTM, referenciadas ao Meridiano Central nº -45º WGr, tendo como datum o
+SIRGAS2000. Todos os azimutes e distâncias, área e perímetro foram calculados no
+plano de projeção UTM.

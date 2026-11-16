@@ -1,0 +1,16 @@
+Inicia-se a descrição deste perímetro no vértice ZZBG-M-4242, de coordenadas
+Longitude: -49º26'32,790", Latitude: -8º45'53,012" e Altitude: 569,36 m;
+deste, segue com azimute de 180º21'32" e distância de 121,97 m, confrontando com Rua
+Projetada A, até o vértice ZZBG-P-4243, de coordenadas Longitude: -49º26'32,815",
+Latitude: -8º45'56,982" e Altitude: 230,52 m;
+deste, segue com azimute de 270º21'29" e distância de 265,45 m, confrontando com Rua
+das Acácias, até o vértice ZZBG-M-4244, de coordenadas Longitude: -49º26'41,500",
+Latitude: -8º45'56,928" e Altitude: 570,83 m;
+deste, segue com azimute de 0º21'32" e distância de 121,97 m, confrontando com
+Estrada Municipal, até o vértice ZZBG-P-4245, de coordenadas Longitude:
+-49º26'41,475", Latitude: -8º45'52,958" e Altitude: 677,12 m;
+deste, segue com azimute de 90º21'29" e distância de 265,45 m, confrontando com Rua
+Projetada A, até o vértice ZZBG-M-4242, ponto inicial da descrição deste perímetro.
+Todas as coordenadas aqui descritas estão georreferenciadas ao Sistema Geodésico
+Brasileiro, a partir das coordenadas geodésicas, datum SIRGAS2000. Os azimutes e
+distâncias foram calculados pelo método geodésico.

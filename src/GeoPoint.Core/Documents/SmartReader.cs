@@ -77,6 +77,8 @@ public sealed class SmartReading
     public double AreaStep { get; set; } = 0.01;
     /// <summary>Avisos sobre os trechos (os das coordenadas ficam em <see cref="Coordinates"/>).</summary>
     public List<string> Warnings { get; } = new();
+    /// <summary>Números dos trechos com cara de lidos errado (casas decimais diferentes das dos outros): pedem confirmação.</summary>
+    public List<string> Doubts { get; } = new();
     /// <summary>Correções feitas pela conferência cruzada.</summary>
     public List<ReadingFix> Fixes { get; } = new();
     public bool HasCoordinates => Coordinates.Vertices.Count >= 3;
@@ -102,8 +104,9 @@ public static class SmartReader
     {
         string s = OcrCleanup.Normalize(text ?? "");
         s = s.Replace('\t', ' ').Replace('\u00A0', ' ');
-        // Número partido no fim da linha ("729.830,\n10m", "9.299.\n292,99").
+        // Número partido no fim da linha ("729.830,\n10m", "9.299.\n292,99", "56\n,19 metros").
         s = Regex.Replace(s, @"(?<=\d[.,])[ ]*\n[ ]*(?=\d)", "");
+        s = Regex.Replace(s, @"(?<=\d)[ ]*\n[ ]*(?=[.,]\d)", "");
         // Espaço depois da vírgula decimal ("729.830, 10m", "9°09'48, 800"").
         s = Regex.Replace(s, @"(?<=\d{1,3}(?:\.\d{3})+),[ ]+(?=\d{1,3}(?![\d.,]))", ",");
         s = Regex.Replace(s, @"(?<=\d{1,3}\s*[°º]\s*\d{1,2}\s*'\s*\d{1,2}),[ ]+(?=\d+\s*"")", ",");
@@ -153,9 +156,9 @@ public static class SmartReader
     // ------------------------------------------------------------------ números e ângulos
 
     private static readonly Regex AngleRx = new(
-        @"(?<![\p{L}\d.,])(?<![\p{L}\d][-/])(?:(?<sg>-)\s?)?(?:(?<dd>\d{1,3}[.,]\d+)\s*°|(?<d>\d{1,3})\s*°\s*(?:(?<m>\d{1,2}(?:[.,]\d+)?)\s*'\s*(?:(?<s>\d{1,2}(?:[.,]\d+)?)\s*""?)?)?)", Opt);
+        @"(?<![\p{L}\d.,])(?<![\p{L}\d][-/])(?:(?<sg>-))?(?:(?<dd>\d{1,3}[.,]\d+)\s*°|(?<d>\d{1,3})\s*°\s*(?:(?<m>\d{1,2}(?:[.,]\d+)?)\s*'\s*(?:(?<s>\d{1,2}(?:[.,]\d+)?)\s*""?)?)?)", Opt);
     private static readonly Regex NumRx = new(
-        @"(?<![\p{L}\d.,])(?<![\p{L}\d][-/])(?:(?<sg>-)\s?)?(?<n>\d{1,3}(?:\.\d{3})+,\d+|\d{1,3}(?: \d{3})+,\d+|\d{1,3}(?:,\d{3})+\.\d+|\d{1,3}(?:\.\d{3}){2,}(?![,\d])|\d+(?:[.,]\d+)?)(?![\d])", Opt);
+        @"(?<![\p{L}\d.,])(?<![\p{L}\d][-/])(?:(?<sg>-))?(?<n>\d{1,3}(?:\.\d{3})+,\d+|\d{1,3}(?: \d{3})+,\d+|\d{1,3}(?:,\d{3})+\.\d+|\d{1,3}(?:\.\d{3}){2,}(?![,\d])|\d+(?:[.,]\d+)?)(?![\d])", Opt);
     private static readonly Regex HemiAfterRx = new(@"^\s{0,2}(?<h>N[EeWwOo]|S[EeWwOo]|N|S|E|W|L|O)(?![\p{L}])", Opt);
     private static readonly Regex QuadBeforeRx = new(@"(?<![\p{L}])(?<q>N[EeWwOo]|S[EeWwOo]|N|S)\s{0,2}$", Opt);
 
@@ -298,7 +301,11 @@ public static class SmartReader
         // ---- trechos
         BuildCourses(r, toks, s, model);
         // Trechos escritos junto com as coordenadas: conferência (trecho i = do vértice i ao i+1).
-        if (r.Coordinates.Vertices.Count >= 3 && r.Courses.Count > 0) r.Coordinates.StatedCourses.AddRange(r.Courses);
+        if (r.Coordinates.Vertices.Count >= 3 && r.Courses.Count > 0)
+        {
+            r.Coordinates.StatedCourses.AddRange(r.Courses);
+            r.Coordinates.Doubts.AddRange(r.Doubts);
+        }
         r.Coordinates.Datum = CoordinateTableReader.DetectDatum(s);
         if (toks.FirstOrDefault(t => t.Role == TokenRole.Area && t.Value > 0) is { } at)
         {
@@ -576,6 +583,7 @@ public static class SmartReader
         }
         res.Format = r.Table ? "tabela" : "memorial";
         CleanupVertices(res);
+        PrecisionConsistency(res);
     }
 
     private sealed record CoordPair(ReadToken? A, ReadToken? B, bool Geo, string? Name = null)
@@ -671,9 +679,66 @@ public static class SmartReader
             : Math.Max(p.A.Step, p.B.Step) / 2;
         res.Vertices.Add(new PerimeterVertex
         {
-            Name = nm, A = a, B = b, Rounding = rounding,
+            Name = nm, A = a, B = b, Rounding = rounding, StepA = p.A.Step, StepB = p.B.Step,
             Source = (p.A.Start < p.B.Start ? p.A.Raw + " / " + p.B.Raw : p.B.Raw + " / " + p.A.Raw).Trim(),
         });
+    }
+
+    /// <summary>Passo que a maioria usa (o documento escreve os valores do mesmo tipo com as mesmas casas); null = sem maioria.</summary>
+    private static double? DominantStep(IEnumerable<double?> steps)
+    {
+        var l = steps.Where(s => s is > 0).Select(s => s!.Value).ToList();
+        if (l.Count < 3) return null;
+        var g = l.GroupBy(s => Math.Round(Math.Log10(s), 2)).OrderByDescending(x => x.Count()).First();
+        return g.Count() * 2 > l.Count ? g.First() : null;
+    }
+
+    private static bool SameStep(double a, double b) => Math.Abs(Math.Log10(a) - Math.Log10(b)) < 0.05;
+
+    /// <summary>
+    /// Coordenada com casas decimais diferentes das outras (o OCR perdeu ou inventou um dígito): vira dúvida para confirmar, e o
+    /// arredondamento de todas passa a ser o da maioria (senão a coordenada "grossa" afrouxaria a conferência).
+    /// </summary>
+    private static void PrecisionConsistency(CoordinateTextResult res)
+    {
+        var v = res.Vertices;
+        var modeA = DominantStep(v.Select(x => x.StepA));
+        var modeB = DominantStep(v.Select(x => x.StepB));
+        bool geo = res.Kind == PerimeterCoordKind.Geographic;
+        string la = geo ? "latitude" : res.Kind == PerimeterCoordKind.Utm ? "coordenada E" : "coordenada X";
+        string lb = geo ? "longitude" : res.Kind == PerimeterCoordKind.Utm ? "coordenada N" : "coordenada Y";
+        foreach (var x in v)
+        {
+            if (modeA is double ma && x.StepA is double sa && !SameStep(sa, ma))
+                res.Doubts.Add($"A {la} do vértice {x.Name} ({x.Source.Split('/')[0].Trim()}) tem {(sa > ma ? "menos" : "mais")} casas decimais que as dos outros vértices: provável dígito {(sa > ma ? "perdido" : "a mais")} na leitura – confira no documento.");
+            if (modeB is double mb && x.StepB is double sb && !SameStep(sb, mb))
+                res.Doubts.Add($"A {lb} do vértice {x.Name} ({(x.Source.Contains('/') ? x.Source.Split('/')[1].Trim() : x.Source)}) tem {(sb > mb ? "menos" : "mais")} casas decimais que as dos outros vértices: provável dígito {(sb > mb ? "perdido" : "a mais")} na leitura – confira no documento.");
+            double stA = modeA ?? x.StepA ?? 0, stB = modeB ?? x.StepB ?? 0;
+            if (stA > 0 && stB > 0)
+                x.Rounding = geo ? WrittenPrecision.GeoRounding(x.A, stA, stB) : Math.Max(stA, stB) / 2;
+        }
+    }
+
+    /// <summary>Distância ou azimute com casas diferentes das dos outros trechos: dúvida para confirmar; vale o passo da maioria.</summary>
+    private static void CoursePrecisionConsistency(SmartReading r)
+    {
+        var cs = r.Courses;
+        var md = DominantStep(cs.Select(c => c.DistanceStep));
+        var ma = DominantStep(cs.Select(c => c.AzimuthStep));
+        for (int i = 0; i < cs.Count; i++)
+        {
+            var c = cs[i];
+            if (md is double d && c.DistanceStep is double sd && !SameStep(sd, d))
+            {
+                r.Doubts.Add($"A distância do trecho {i + 1} ({c.Source.Split('–').Last().Trim()}) tem {(sd > d ? "menos" : "mais")} casas decimais que as dos outros trechos: provável dígito {(sd > d ? "perdido" : "a mais")} na leitura – confira no documento.");
+                c.DistanceStep = d;
+            }
+            if (ma is double a && c.AzimuthStep is double sa && !SameStep(sa, a))
+            {
+                r.Doubts.Add($"O azimute do trecho {i + 1} ({c.Source.Split('–').First().Trim()}) foi escrito com precisão diferente da dos outros trechos: provável parte perdida na leitura – confira no documento.");
+                c.AzimuthStep = a;
+            }
+        }
     }
 
     private static void CleanupVertices(CoordinateTextResult res)
@@ -750,7 +815,7 @@ public static class SmartReader
                 var a = k < angs.Count ? angs[k] : null;
                 var d = k < dists.Count ? dists[k] : null;
                 double az = a is null ? double.NaN : AzimuthOf(a, model);
-                double dist = d is null ? double.NaN : d.Value;
+                double dist = d is null ? double.NaN : Math.Abs(d.Value);
                 if (a is null && n > 1) continue;
                 var c = new Course
                 {
@@ -790,6 +855,7 @@ public static class SmartReader
         // Muito incompleto (menos da metade dos trechos com azimute e distância): não é uma descrição por trechos.
         int full = r.Courses.Count(c => !double.IsNaN(c.AzimuthDeg) && !double.IsNaN(c.Distance));
         if (full < Math.Max(2, r.Courses.Count / 2)) { r.Courses.Clear(); r.CourseSpans.Clear(); }
+        CoursePrecisionConsistency(r);
     }
 
     /// <summary>Lista com um trecho por linha (azimute e distância na mesma linha, várias linhas assim).</summary>

@@ -1,0 +1,5 @@
+O imóvel tem os seguintes vértices, no sentido horário: vértice v1 (698356, 34
+8275523,57 mN), vértice v2 (698361,75 mE; 8275532,03 mN), vértice v3 (698370,62 mE;
+8275540,57 mN), vértice v4 (698379,28 mE; 8275533,21 mN), vértice vs (698388,14 mE;
+8275525,85 mN), vértice v6 (698373,85 mE; 8275508, 85 mN). Sistema de projeção mE;
+Sul, SIRGAS2000. Área de 521,71 m2.	UTM, zona 22

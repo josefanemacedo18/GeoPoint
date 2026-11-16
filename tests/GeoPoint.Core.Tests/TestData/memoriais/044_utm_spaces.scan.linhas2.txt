@@ -1,0 +1,7 @@
+Descrição: do vértice P-01 (N 7 994 158,46; E 236 312,00) segue com 348º53'51" e 3,79
+m; do vértice P-02 (N 7 994 162,18; E 236 311,27) segue com 332º57'22" e 4,82 m; do
+vértice P-03 (N 7 994 166,47; E 236 309,08) segue com 68º34'29" e 7,64 m; do vértice
+P-04 (N 7 994 169,26; E 236 316,19) segue com 70º46'03" e 13,18 m; do vértice P-05 (N
+7 994 173,60; E 236 328,63) segue com 159º58'15" e 8,53 m; do vértice P-06 (N 7 994
+165,59; E 236 331,55) segue com 249º57'46" e 20,81 m, voltando ao vértice P-01. UTM,
+fuso 22, SIRGAS 2000.

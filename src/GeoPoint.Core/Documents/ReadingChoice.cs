@@ -9,6 +9,8 @@ public sealed class CourseReading
     public List<Course> Courses { get; } = new();
     public List<string> Warnings { get; } = new();
     public List<ReadingFix> Fixes { get; } = new();
+    /// <summary>Números com cara de lidos errado (casas fora do padrão): pedem confirmação.</summary>
+    public List<string> Doubts { get; } = new();
     public string Model { get; set; } = "";
     public List<string> Evidence { get; } = new();
     /// <summary>Veio do leitor inteligente (as posições dos trechos no texto não são as do texto original).</summary>
@@ -112,6 +114,7 @@ public static class ReadingChoice
             res.Courses.AddRange(smart.Where(c => !double.IsNaN(c.AzimuthDeg) && !double.IsNaN(c.Distance)));
             res.Warnings.AddRange(warnings);
             res.Fixes.AddRange(fixes);
+            res.Doubts.AddRange(sm.Doubts);
             res.FromSmart = true;
         }
         else res.Courses.AddRange(legacy);

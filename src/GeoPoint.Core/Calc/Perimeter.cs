@@ -34,6 +34,9 @@ public sealed class PerimeterVertex
     /// casas ≈ 0,15 m). null = não se sabe (suposto o de um documento cuidadoso).
     /// </summary>
     public double? Rounding { get; set; }
+    /// <summary>Passo da última casa escrita de cada coordenada (m, ou graus nas geográficas); para conferir se todas têm as mesmas casas.</summary>
+    public double? StepA { get; set; }
+    public double? StepB { get; set; }
 }
 
 /// <summary>Coordenadas encontradas num texto (memorial, SIGEF, planilha).</summary>
@@ -50,6 +53,11 @@ public sealed class CoordinateTextResult
     /// <summary>"memorial" (coordenadas no meio do texto) ou "tabela" (uma linha por vértice).</summary>
     public string Format { get; set; } = "";
     public List<string> Warnings { get; } = new();
+    /// <summary>
+    /// Números com cara de lidos errado (casas decimais diferentes das outras do mesmo tipo – dígito perdido ou a mais na leitura):
+    /// o desenho só sai depois de você confirmar.
+    /// </summary>
+    public List<string> Doubts { get; } = new();
 }
 
 /// <summary>Trecho do perímetro calculado pelas coordenadas, com a conferência dos valores escritos no texto.</summary>

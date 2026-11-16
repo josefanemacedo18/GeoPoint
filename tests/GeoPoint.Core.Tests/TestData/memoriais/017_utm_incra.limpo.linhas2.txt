@@ -1,0 +1,18 @@
+Inicia-se a descrição deste perímetro no vértice GVJJ-M-2862, de coordenadas N 8.150.675,88m e E
+445.777,15m;
+deste, segue confrontando com Rua das Acácias, com os seguintes azimute e distância: 311º58'01" e
+35,95 m, até o vértice GVJJ-P-2863, de coordenadas N 8.150.699,92m e E 445.750,42m;
+deste, segue confrontando com Lote 12, com os seguintes azimute e distância: 306º38'05" e 21,92
+m, até o vértice GVJJ-M-2864, de coordenadas N 8.150.713,00m e E 445.732,83m;
+deste, segue confrontando com Avenida Central, com os seguintes azimute e distância: 39º57'18" e
+119,41 m, até o vértice GVJJ-P-2865, de coordenadas N 8.150.804,53m e E 445.809,51m;
+deste, segue confrontando com Rua Ipê Amarelo, com os seguintes azimute e distância: 140º26'29" e
+34,45 m, até o vértice GVJJ-M-2866, de coordenadas N 8.150.777,97m e E 445.831,45m;
+deste, segue confrontando com Lote 05 da Quadra B, com os seguintes azimute e distância:
+115º16'13" e 24,74 m, até o vértice GVJJ-P-2867, de coordenadas N 8.150.767,41m e E 445.853,82m;
+deste, segue confrontando com Travessa Sete, com os seguintes azimute e distância: 219º57'04" e
+119,40 m, até o vértice GVJJ-M-2862, ponto inicial da descrição deste perímetro. Todas as
+coordenadas aqui descritas estão georreferenciadas ao Sistema Geodésico Brasileiro, e encontram-
+se representadas no Sistema UTM, referenciadas ao Meridiano Central nº -45º WGr, tendo como datum
+o SIRGAS2000. Todos os azimutes e distâncias, área e perímetro foram calculados no plano de
+projeção UTM.

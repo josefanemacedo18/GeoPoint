@@ -65,6 +65,8 @@ public sealed class CertidaoData
     public List<string> Evidence { get; } = new();
     /// <summary>Números lidos errados e corrigidos pela conferência cruzada.</summary>
     public List<ReadingFix> Fixes { get; } = new();
+    /// <summary>Números com cara de lidos errado (casas decimais fora do padrão do documento): pedem confirmação antes de desenhar.</summary>
+    public List<string> Doubts { get; } = new();
     public bool HasCoordinates => Coordinates.Vertices.Count >= 3;
     public bool HasCourses => Courses.Count >= 3;
 }
@@ -136,6 +138,7 @@ public static class CertidaoParser
             d.Evidence.AddRange(su.Evidence);
             d.Fixes.AddRange(su.Fixes);
         }
+        if (d.HasCoordinates) d.Doubts.AddRange(d.Coordinates.Doubts);
         d.Coordinates.Datum ??= CoordinateTableReader.DetectDatum(flat);
 
         // ---- Trechos: saída, chegada, distância, azimute e confrontante.
@@ -167,6 +170,7 @@ public static class CertidaoParser
                 for (int i = 0; i < d.Courses.Count; i++) d.Confrontantes.Add(src?[i] ?? "");
                 d.Warnings.AddRange(cr.Warnings);
                 d.Fixes.AddRange(cr.Fixes);
+                d.Doubts.AddRange(cr.Doubts);
             }
             if (d.HasCourses)
             {

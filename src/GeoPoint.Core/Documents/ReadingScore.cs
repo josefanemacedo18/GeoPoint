@@ -46,6 +46,8 @@ public sealed class ReadingScore
             if (d.Area is double a2 && a2 > 0) score += areaOk ? 5 : -5;
             complete = !d.FromSides && rel < 1.0 / 1000 && areaOk;
         }
+        // Números com casas fora do padrão (dígito perdido na leitura): a leitura não está completa – vale tentar outro OCR.
+        if (d.Doubts.Count > 0) { score -= 3 * d.Doubts.Count; complete = false; parts.Add($"{d.Doubts.Count} número(s) duvidoso(s)"); }
         int withPair = d.Trechos.Count(t => t.Azimuth is not null && t.Distance is not null);
         score += withPair * 1.5;
         int confs = d.Confrontantes.Count(x => x.Length > 0);
