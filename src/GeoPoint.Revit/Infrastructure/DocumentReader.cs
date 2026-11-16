@@ -218,11 +218,16 @@ public static class DocumentReader
                     }
                     else
                     {
-                        // Página girada: a imagem em cinza já na orientação da melhor leitura.
+                        // Página girada: a imagem em cinza já na orientação da melhor leitura (reduzida ao limite do OCR do Windows, se
+                        // precisar), em BGRA como o OCR do Windows recebe; as palavras voltam para a escala da página.
                         var g = p.Gray.Rotate(turns);
-                        using var sb = WinImaging.SoftwareBitmap.CreateCopyFromBuffer(
+                        double k = Math.Min(1, Windows.Media.Ocr.OcrEngine.MaxImageDimension / (double)Math.Max(g.Width, g.Height));
+                        if (k < 1) g = ImagePrep.Resize(g, k);
+                        using var gray = WinImaging.SoftwareBitmap.CreateCopyFromBuffer(
                             System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.AsBuffer(g.Px), WinImaging.BitmapPixelFormat.Gray8, g.Width, g.Height);
-                        words.AddRange(await OcrAsync(engine, sb, p.Index));
+                        using var bgra = WinImaging.SoftwareBitmap.Convert(gray, WinImaging.BitmapPixelFormat.Bgra8, WinImaging.BitmapAlphaMode.Premultiplied);
+                        foreach (var w in await OcrAsync(engine, bgra, p.Index))
+                            words.Add(new DocWord(w.Page, w.Text, w.X0 / k, w.Y0 / k, w.X1 / k, w.Y1 / k));
                     }
                 }
                 string text = OcrCleanup.Normalize(DocumentText.BuildText(words));

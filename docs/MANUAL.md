@@ -23,6 +23,63 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 
 ---
 
+## Novidades da versão 1.10 – o desenho só sai direto quando confere
+
+**Precisão do próprio documento**
+- Cada número lido guarda a precisão com que foi escrito, pelas casas decimais:
+  - "12,00 metros" → centímetro;
+  - "208°37'12"" → segundo;
+  - "06°20'12.79"" → centésimo de segundo, cerca de ±15 cm no terreno;
+  - "30 metros" → metro.
+- As conferências usam essa precisão como tolerância. Uma diferença só é apontada quando o arredondamento do próprio documento não
+  explica. Antes, a tolerância era fixa (5 cm, ou 10 cm nas certidões).
+
+**Conferência antes de desenhar**
+- O GeoPoint confere, antes de desenhar:
+  - cada trecho escrito (azimute e distância) com as coordenadas;
+  - o fechamento do polígono;
+  - a área escrita;
+  - o perímetro escrito.
+
+  O resultado aparece em *Resultado e conferência* e no *Diagnóstico*:
+  - **CONFERIDO** – o desenho confere com o documento dentro da precisão em que ele foi escrito. Desenha direto.
+  - **CONFERIDO EM PARTE** – nada diverge, mas há o que confirmar: uma correção automática, uma dúvida da leitura, ou o documento
+    sem área nem perímetro.
+  - **SEM CONFERÊNCIA** – o documento não traz como conferir: só coordenadas, ou só as medidas dos lados.
+  - **NÃO CONFERE** – algum número foi lido ou está escrito errado. Os trechos em vermelho mostram onde.
+
+  Fora do *Conferido*, o GeoPoint **pergunta antes de desenhar**, mostrando o que não conferiu, e o padrão é **não** desenhar.
+- **Coordenadas grossas, trechos precisos.** Alguns memoriais têm coordenadas com 2 casas nos segundos (±15 cm) e azimutes e
+  distâncias ao centímetro, como os de retificação calculados no SGL. Nesse caso o desenho é feito **pelos azimutes e distâncias**,
+  a partir do primeiro vértice, e sai com exatamente as medidas do documento. As coordenadas conferem cada trecho, dentro da
+  resolução delas.
+- **Correção automática só quando é a única possível.** Um número lido errado só é corrigido se existe uma única leitura parecida
+  (um dígito, a vírgula, o quadrante do rumo) que faz tudo bater dentro da precisão do documento. Com duas ou mais possíveis, por
+  exemplo 5,42 ou 5,43 m, o GeoPoint não escolhe: avisa onde está o erro. Toda correção pede a sua confirmação antes de desenhar.
+  Valor ilegível calculado pelo fechamento fica marcado como "calculado".
+- **Dúvidas da leitura:**
+  - um valor com casas decimais diferentes das dos outros do mesmo tipo (sinal de dígito perdido ou a mais no OCR) vira dúvida;
+  - **dupla leitura**: o OCR lê a foto duas vezes, com configurações diferentes, e o número lido diferente nas duas vira dúvida.
+- **Foto girada.** Uma página fotografada de lado ou de cabeça para baixo (comum em foto encaminhada pelo celular) é percebida e lida
+  na posição certa. Na aba Documento, a página aparece girada também.
+- **Certidões:**
+  - "pela direita" e "pela esquerda" passam a ser reconhecidos nas medidas dos lados;
+  - texto com palavras e números soltos não vira mais tabela de coordenadas;
+  - "mº" lido no lugar de m² é corrigido;
+  - o travessão em "208°37'12" – 7,26 metros" não vira sinal de menos.
+- **Resultado medido** em 51 memoriais fictícios de 17 modelos, cada um em texto e em OCR de folha limpa, escaneada e fotografada,
+  com e sem colunas lidas em blocos (357 leituras):
+  - **nenhuma leitura errada sai como conferida**;
+  - 334 desenham certo: 171 direto e 163 pedindo confirmação, porque o documento não traz como conferir;
+  - as 23 leituras erradas são todas avisadas;
+  - nenhuma leitura conferida tem qualquer número diferente do documento.
+- **Documentos reais testados:**
+  - memorial de retificação (foto girada): **conferido**, desenhado pelos trechos;
+  - memorial SGL: **conferido**;
+  - uma certidão cujas distâncias diferem das próprias coordenadas em 3 a 8 cm: **não confere**. A leitura está certa; o documento
+    é que é inconsistente;
+  - certidões só com as medidas dos lados: pedem confirmação, porque o desenho supõe ângulos retos.
+
 ## Novidades da versão 1.9
 
 **Leitura inteligente de coordenadas, azimutes e distâncias**
@@ -417,8 +474,10 @@ uma **certidão/memorial em PDF ou imagem** (*Importar certidão ou memorial*, v
 - Tabela de vértices: nome, coordenadas, **raio até o próximo** (arcos) e lado do arco, o **azimute e a distância até o próximo** no
   formato do projeto e a **conferência com o texto**: cada trecho é comparado com o azimute e a distância escritos no memorial
   (✓ confere – o resultado diz se bateu com o azimute **plano UTM** ou o **verdadeiro**; ⚠ com a diferença, em vermelho na tabela e na
-  prévia). A tolerância é de 30" (ou o ângulo de 2 cm nos trechos curtos) e 5 cm. Texto **só com distâncias** (sem azimutes, comum
-  nas certidões): confere a distância, com tolerância de 10 cm ou 0,5%.
+  prévia). A tolerância é a precisão com que o documento foi escrito: o arredondamento das duas coordenadas do trecho, meia casa da
+  distância e do azimute escritos, e a diferença de escala entre o plano UTM, o plano local e o elipsoide. Texto **só com distâncias**
+  (sem azimutes, comum nas certidões): confere a distância com a mesma regra. Antes de desenhar, o GeoPoint dá o veredito (*Conferido*,
+  *Conferido em parte*, *Sem conferência* ou *Não confere*) e só desenha direto o que está conferido – veja as Novidades da 1.10.
 - *Fechar o polígono* liga o último vértice ao primeiro; o vértice inicial repetido no fim do texto é ignorado. *Inverter sentido*
   percorre os vértices ao contrário.
 - Nas duas tabelas: **Remover selecionados** (Ctrl ou Shift + clique para vários; ou a tecla Delete), **Remover todos** e **▲ Subir /
