@@ -182,7 +182,7 @@ public partial class PerimeterWindow : Window
         "deste, segue com azimute de 0°00'00\" e distância de 12,00 m até o vértice P-01, ponto inicial.\r\n" +
         "Datum SIRGAS 2000, projeção UTM.\r\n" +
         "\r\n" +
-        "(Também pode colar linhas de planilha: P-01; 235142,50; 9299292,99 – ou latitude e longitude.)";
+        "(Também pode colar linhas de planilha – nome do vértice, E e N em cada linha – ou latitude e longitude.)";
 
     /// <param name="zone">Fuso UTM padrão (o da referência do projeto ou das Configurações).</param>
     /// <param name="height">Altitude do plano local do projeto (m).</param>

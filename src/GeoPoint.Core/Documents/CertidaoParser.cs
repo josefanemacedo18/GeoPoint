@@ -54,6 +54,12 @@ public sealed class CertidaoData
     public bool South { get; set; } = true;
     public List<string> Warnings { get; } = new();
 
+    /// <summary>Modelo do texto identificado na leitura ("Memorial com coordenadas UTM (E, N)"…).</summary>
+    public string Model { get; set; } = "";
+    /// <summary>Como o modelo foi identificado (rótulos, faixas de valores, cabeçalho da tabela…).</summary>
+    public List<string> Evidence { get; } = new();
+    /// <summary>Números lidos errados e corrigidos pela conferência cruzada.</summary>
+    public List<ReadingFix> Fixes { get; } = new();
     public bool HasCoordinates => Coordinates.Vertices.Count >= 3;
     public bool HasCourses => Courses.Count >= 3;
 }
@@ -99,7 +105,10 @@ public static class CertidaoParser
     private static readonly Regex McRx = new(@"(?:\bMC\b|meridiano\s+central)\s*:?\s*(?<mc>-?\d{2})\s*°?\s*(?<w>W|O|WGr)?", Opt);
     private static readonly Regex NorthHemiRx = new(@"hemisf[ée]rio\s+norte", Opt);
 
-    public static CertidaoData Parse(string text)
+    public static CertidaoData Parse(string text) => Parse(text, ReadingModel.Auto);
+
+    /// <param name="model">Modelo de texto esperado (Automático identifica sozinho).</param>
+    public static CertidaoData Parse(string text, ReadingModel model)
     {
         var d = new CertidaoData();
         text = OcrCleanup.Normalize(text ?? "");
@@ -110,11 +119,17 @@ public static class CertidaoParser
         d.Description = desc;
 
         // ---- Vértices com coordenadas (memorial, SIGEF; tabela só com cabeçalho).
-        d.Coordinates = PerimeterText.ParseCoordinates(desc.Length > 0 ? desc : text, tableNeedsHeader: true);
+        d.Coordinates = PerimeterText.ParseCoordinates(desc.Length > 0 ? desc : text, true, model, out var smartUsed);
         if (d.Coordinates.Vertices.Count < 3 && desc.Length > 0)
         {
-            var whole = PerimeterText.ParseCoordinates(text, tableNeedsHeader: true);
-            if (whole.Vertices.Count >= 3) d.Coordinates = whole;
+            var whole = PerimeterText.ParseCoordinates(text, true, model, out var smartWhole);
+            if (whole.Vertices.Count >= 3) { d.Coordinates = whole; smartUsed = smartWhole; }
+        }
+        if (smartUsed is { HasCoordinates: true } su && d.HasCoordinates)
+        {
+            d.Model = su.Model;
+            d.Evidence.AddRange(su.Evidence);
+            d.Fixes.AddRange(su.Fixes);
         }
         d.Coordinates.Datum ??= CoordinateTableReader.DetectDatum(flat);
 
@@ -132,6 +147,26 @@ public static class CertidaoParser
             {
                 d.Courses.Add(new Course { AzimuthDeg = t.Azimuth!.Value, Distance = t.Distance!.Value, Source = $"{t.From} → {t.To}" });
                 d.Confrontantes.Add(t.Confrontante);
+            }
+            // Leitura inteligente dos trechos (rumos, tabelas, valores lidos errados corrigidos pelo fechamento): fica a melhor.
+            var cr = ReadingChoice.Courses(desc.Length > 0 ? desc : text, model);
+            if (cr.FromSmart && (model != ReadingModel.Auto || ReadingChoice.CourseScore(cr.Courses) > ReadingChoice.CourseScore(d.Courses)))
+            {
+                var confs = d.Confrontantes.ToList();
+                d.Courses.Clear();
+                d.Courses.AddRange(cr.Courses);
+                d.Confrontantes.Clear();
+                // Os confrontantes dos trechos do texto, se a quantidade de trechos for a mesma.
+                var trechoConfs = d.Trechos.Select(t => t.Confrontante).ToList();
+                var src = confs.Count == d.Courses.Count ? confs : trechoConfs.Count == d.Courses.Count ? trechoConfs : null;
+                for (int i = 0; i < d.Courses.Count; i++) d.Confrontantes.Add(src?[i] ?? "");
+                d.Warnings.AddRange(cr.Warnings);
+                d.Fixes.AddRange(cr.Fixes);
+            }
+            if (d.HasCourses)
+            {
+                d.Model = cr.Model.Length > 0 && !cr.Model.StartsWith("Memorial") && !cr.Model.StartsWith("Tabela") ? cr.Model : "Azimutes e distâncias";
+                d.Evidence.AddRange(cr.Evidence);
             }
             // Só as medidas dos lados (frente, fundos, laterais).
             if (!d.HasCourses)
@@ -528,6 +563,7 @@ public static class CertidaoParser
         d.Confrontantes.Add(oeste?.Confrontante ?? "");
         if (sul is null) { d.Confrontantes[0] = ""; d.Confrontantes[2] = norte!.Confrontante; }
         d.FromSides = true;
+        d.Model = "Medidas dos lados por ponto cardeal (norte, sul, leste, oeste), sem ângulos";
         d.Warnings.Add("O documento traz só as medidas dos lados (norte, sul, leste e oeste), sem ângulos: o desenho supõe ângulos retos nos cantos do lado sul e já fica orientado (norte para cima). Confira os ângulos.");
         double nm = norte?.Medida ?? back.Length;
         if (sul is not null && norte is not null && Math.Abs(back.Length - nm) > Math.Max(0.1, nm * 0.005))
@@ -554,6 +590,7 @@ public static class CertidaoParser
         d.Confrontantes.Add(fun?.Confrontante ?? "");
         d.Confrontantes.Add(esq?.Confrontante ?? "");
         d.FromSides = true;
+        d.Model = "Medidas dos lados (frente, fundos e laterais), sem ângulos";
         d.Warnings.Add("O documento traz só as medidas dos lados, sem ângulos: o desenho supõe as laterais perpendiculares à frente (frente para o sul). Confira e gire o desenho no Revit para a posição real.");
         if (fun is not null && Math.Abs(back.Length - fun.Medida) > 0.05)
             d.Warnings.Add($"Com as laterais perpendiculares, os fundos dariam {back.Length:0.00} m e o documento diz {fun.Medida:0.00} m: os ângulos não são retos – ajuste os azimutes na tabela.");

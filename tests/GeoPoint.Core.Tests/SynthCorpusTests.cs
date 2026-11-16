@@ -100,6 +100,9 @@ public class SynthCorpusTests
         if (Environment.GetEnvironmentVariable("GEOPOINT_OUT") is { Length: > 0 } outDir)
             File.WriteAllText(Path.Combine(outDir, "memoriais-smart.txt"), report);
         Assert.True(total > 0);
+        // Texto sem OCR: todos os modelos; com OCR (inclusive foto e colunas em blocos): pelo menos 89% (era 47% na 1.8).
+        Assert.DoesNotContain("[texto]", report);
+        Assert.True(ok >= total * 0.89, report);
     }
 
     /// <summary>Depuração: GEOPOINT_DEBUG_CASE=005_table_EN.limpo.ocr (arquivo sem .txt) grava os números e papéis lidos.</summary>
@@ -130,6 +133,7 @@ public class SynthCorpusTests
         if (Environment.GetEnvironmentVariable("GEOPOINT_OUT") is { Length: > 0 } outDir)
             File.WriteAllText(Path.Combine(outDir, "memoriais-relatorio.txt"), report);
         Assert.True(total > 0);
-        Assert.True(ok >= total * 0.0, report);
+        Assert.DoesNotContain("[texto]", report);
+        Assert.True(ok >= total * 0.89, report);
     }
 }

@@ -85,6 +85,8 @@ public static class ReadingReport
             textLength == 0 ? "nenhum texto reconhecido" : $"{textLength} caracteres ({(engine.Length > 0 ? engine : "texto do próprio PDF")})"));
         res.Add(new("Descrição do perímetro", d.Description.Length > 0 ? CheckStatus.Ok : CheckStatus.Aviso,
             d.Description.Length > 0 ? "encontrada" : "início da descrição não encontrado: o texto todo foi usado"));
+        res.Add(new("Modelo do texto", d.Model.Length > 0 ? CheckStatus.Ok : CheckStatus.Aviso,
+            d.Model.Length > 0 ? d.Model + (d.Evidence.Count > 0 ? " – " + string.Join("; ", d.Evidence.Distinct().Take(4)) : "") : "não identificado"));
         var c = d.Coordinates;
         if (d.HasCoordinates)
         {
@@ -102,6 +104,9 @@ public static class ReadingReport
         if (d.Trechos.Count > 0 || d.HasCourses)
             res.Add(new("Trechos", pairs >= total && total > 0 ? CheckStatus.Ok : dist > 0 || d.HasCourses ? CheckStatus.Aviso : CheckStatus.Falha,
                 d.FromSides ? $"{d.Courses.Count} lados" : $"{d.Trechos.Count} trecho(s): {pairs} com azimute e distância, {dist} com distância"));
+        if (d.Fixes.Count > 0)
+            res.Add(new("Correções da conferência", CheckStatus.Aviso, $"{d.Fixes.Count} número(s) lido(s) errado(s) e corrigido(s) pelo resto do texto: " +
+                string.Join("; ", d.Fixes.Take(3).Select(f => $"{f.What} {f.From} → {f.To}")) + ". Confira no documento."));
         int confs = d.Confrontantes.Count(x => x.Length > 0);
         int need = Math.Max(d.Confrontantes.Count, total);
         res.Add(new("Confrontantes", need > 0 && confs >= need ? CheckStatus.Ok : confs > 0 ? CheckStatus.Aviso : CheckStatus.Falha,

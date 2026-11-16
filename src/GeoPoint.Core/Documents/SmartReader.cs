@@ -129,7 +129,7 @@ public static class SmartReader
 
     /// <summary>Nome de vértice depois de "vértice", "marco", "ponto", "estaca".</summary>
     private static readonly Regex NameKwRx = new(
-        @"(?i:\b(?:v[ée]rtices?|marcos?|pontos?|estacas?|piquetes?|pts?\.))\s*(?i:n[º°o]\.?\s*)?(?<n>[A-Z0-9]{2,6}-[A-Z]{1,2}-\d{1,6}[A-Z]?|[A-Z]{1,6}[-_]?\d{1,5}[A-Z]?|\d{1,4}[A-Z]?|[A-Z]{1,3})(?![\p{L}\d,.°']|\.\d)", Opt);
+        @"(?i:\b(?:v[ée]rtices?|marcos?|pontos?|estacas?|piquetes?|pts?\.))\s*(?i:n[º°o]\.?\s*)?(?<n>[A-Z0-9]{2,6}-[A-Z]{1,2}-\d{1,6}[A-Z]?|[A-Z]{1,6}[-_]?\d{1,5}[A-Z]?|\d{1,4}[A-Z]?|[A-Z]{1,3})(?![\p{L}\d°'-]|[.,]\d)", Opt);
     /// <summary>Código do INCRA ("ABCD-M-1234") ou nomes curtos como P-01, M-02, V1, PP-1.</summary>
     private static readonly Regex NameCodeRx = new(
         @"(?<![\p{L}\d])(?<n>[A-Z0-9]{3,6}-[A-Z]{1,2}-\d{1,6}[A-Z]?|(?:PP|MP|EST|PT|P|M|V|E|A|B|C|D)-\d{1,4}[A-Z]?|(?:PP|MP|EST|PT|P|M|V|A|B|C|D)\d{1,4}[A-Z]?)(?![\p{L}\d]|[.,]\d)", Opt);
@@ -398,7 +398,12 @@ public static class SmartReader
         double a = Math.Abs(t.Value);
         if (t.Label == "AREA" || t.Unit is "m²" or "ha") return TokenRole.Area;
         if (model is ReadingModel.Courses or ReadingModel.Bearings)
+        {
+            // Só trechos – mas a coordenada do ponto inicial (com rótulo) continua valendo para começar o desenho nela.
+            if (t.Label == "N" && UtmN(a)) return TokenRole.North;
+            if (t.Label == "E" && UtmE(a)) return TokenRole.East;
             return t.Label == "DIST" || t.Unit == "m" ? (a > 0 && a < 100_000 ? TokenRole.Distance : TokenRole.None) : TokenRole.None;
+        }
         // Graus decimais com rótulo ("Lat -6,3336567") ou muitas casas.
         if (t.Label is "LAT" && a <= 90) return TokenRole.Lat;
         if (t.Label is "LON" && a <= 180) return TokenRole.Lon;
@@ -514,12 +519,18 @@ public static class SmartReader
         if (model is ReadingModel.Courses or ReadingModel.Bearings)
         {
             // Só a coordenada do ponto inicial (para começar o desenho nela).
-            var first = Pairs(toks).FirstOrDefault();
-            if (first.A is not null) AddVertex(res, first, names, 0, s);
+            if (Pairs(toks).FirstOrDefault() is { A: not null, B: not null } first)
+            {
+                AddVertex(res, first, names, 0, s);
+                res.Kind = PerimeterCoordKind.Utm;
+                res.Format = "memorial";
+                CleanupVertices(res);
+            }
             return;
         }
-        var pairs = Pairs(toks);
+        // Colunas em bloco primeiro (senão o último E da coluna se junta ao primeiro N da coluna seguinte).
         var blocks = BlockPairs(toks, names);
+        var pairs = Pairs(toks);
         if (blocks.Count > 0)
         {
             pairs = pairs.Concat(blocks).OrderBy(p => p.Start).ToList();
@@ -574,8 +585,10 @@ public static class SmartReader
         for (int i = 0; i < runs.Count; i++)
         {
             var r1 = runs[i];
-            if (r1.Count < 3 || r1[0].Used) continue;
-            var r2 = runs.Skip(i + 1).FirstOrDefault(x => !x[0].Used && Complement(r1[0].Role, x[0].Role) && x.Count == r1.Count);
+            // Coluna: pelo menos 3 valores, um por linha.
+            static bool Column(List<ReadToken> run) => run.Count >= 3 && run.Zip(run.Skip(1)).All(p => p.Second.Line > p.First.Line);
+            if (!Column(r1) || r1[0].Used) continue;
+            var r2 = runs.Skip(i + 1).FirstOrDefault(x => !x[0].Used && Complement(r1[0].Role, x[0].Role) && x.Count == r1.Count && Column(x));
             if (r2 is null) continue;
             var nm = names.Where(n => n.End <= r1[0].Start).TakeLast(r1.Count).ToList();
             bool geo = r1[0].Role is TokenRole.Lat or TokenRole.Lon;
@@ -595,7 +608,7 @@ public static class SmartReader
     {
         var res = new List<CoordPair>();
         ReadToken? pending = null;
-        foreach (var t in toks.Where(t => t.Role is TokenRole.East or TokenRole.North or TokenRole.Lat or TokenRole.Lon))
+        foreach (var t in toks.Where(t => !t.Used && t.Role is TokenRole.East or TokenRole.North or TokenRole.Lat or TokenRole.Lon))
         {
             if (pending is not null && t.Start - pending.End < 160 && t.Line - pending.Line <= 2)
             {
@@ -607,7 +620,7 @@ public static class SmartReader
                     (TokenRole.Lat, TokenRole.Lon) => new(pending, t, true),
                     (TokenRole.Lon, TokenRole.Lat) => new(t, pending, true),
                     // Hemisfério norte do Brasil (N menor que 1.000.000): dois números na faixa do E sem rótulo = E e N, nessa ordem.
-                    (TokenRole.East, TokenRole.East) when pending.Label.Length == 0 && t.Label.Length == 0 => new(pending, t, false),
+                    (TokenRole.East, TokenRole.East) when pending.Label.Length == 0 && t.Label.Length == 0 && t.Line == pending.Line => new(pending, t, false),
                     _ => null,
                 };
                 if (cp is not null)

@@ -111,7 +111,33 @@ public static class PerimeterText
     /// Documento importado (certidão): só aceita tabela de vértices com cabeçalho (Vértice | E | N…). Sem isso, números soltos do
     /// documento (datas, protocolos, valores) virariam vértices.
     /// </param>
-    public static CoordinateTextResult ParseCoordinates(string text, bool tableNeedsHeader = false)
+    public static CoordinateTextResult ParseCoordinates(string text, bool tableNeedsHeader = false,
+        Documents.ReadingModel model = Documents.ReadingModel.Auto) =>
+        ParseCoordinates(text, tableNeedsHeader, model, out _);
+
+    /// <summary>
+    /// Coordenadas dos vértices: a melhor leitura entre o leitor inteligente (papéis dos números por rótulo, faixa de valores e
+    /// cabeçalho; conferência cruzada) e o leitor de expressões fixas. Com um modelo escolhido, só o leitor inteligente.
+    /// </summary>
+    /// <param name="smartUsed">A leitura inteligente, quando foi ela a escolhida (modelo identificado, correções).</param>
+    public static CoordinateTextResult ParseCoordinates(string text, bool tableNeedsHeader, Documents.ReadingModel model, out Documents.SmartReading? smartUsed)
+    {
+        var sm = Documents.SmartReader.Read(text ?? "", model);
+        var smart = sm.Coordinates;
+        if (smart.Format.Length == 0 && smart.Vertices.Count > 0) smart.Format = "memorial";
+        if (model != Documents.ReadingModel.Auto)
+        {
+            smartUsed = sm;
+            return smart;
+        }
+        var legacy = ParseCoordinatesLegacy(text ?? "", tableNeedsHeader);
+        bool useSmart = Documents.ReadingChoice.Score(smart) >= Documents.ReadingChoice.Score(legacy) && smart.Vertices.Count > 0;
+        smartUsed = useSmart ? sm : null;
+        return useSmart ? smart : legacy;
+    }
+
+    /// <summary>Leitor de expressões fixas (versões anteriores): memorial com rótulos N/E ou latitude/longitude, ou tabela.</summary>
+    public static CoordinateTextResult ParseCoordinatesLegacy(string text, bool tableNeedsHeader = false)
     {
         var res = new CoordinateTextResult();
         text ??= "";
