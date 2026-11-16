@@ -222,6 +222,65 @@ public partial class PerimeterWindow : Window
     public PerimeterDrawingData? ResultData { get; private set; }
     public bool UseDetailLines => DetailLines.IsChecked == true;
 
+    /// <summary>Modelo de texto escolhido (Automático = identificar sozinho).</summary>
+    private ReadingModel Model => ModelPick is null ? ReadingModel.Auto : (ReadingModel)Math.Max(0, ModelPick.SelectedIndex);
+
+    /// <summary>Outro modelo de texto: lê de novo os documentos importados e os textos das abas.</summary>
+    private void Model_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || Source is null || CoordSource is null) return;
+        if (_docs.Count > 0)
+        {
+            var again = _docs.Select(d => (d.Path, d.Read, Cert: CertidaoParser.Parse(d.Read.Doc.Text, Model))).ToList();
+            foreach (var x in again) if (Settings is not null) LearnedFixes.Apply(x.Cert, Settings.Reading.Fixes);
+            _docs.Clear();
+            _docs.AddRange(again);
+            ApplyDocument(_docs[0].Path, _docs[0].Read, _docs[0].Cert);
+            return;
+        }
+        if (CoordMode) ParseCoordText(quiet: true); else ParseText(quiet: true);
+    }
+
+    private (string Model, List<string> Evidence, List<ReadingFix> Fixes, List<string> Warnings)? _infoAz, _infoCoord;
+
+    /// <summary>Guarda o que a leitura de uma aba identificou e mostra o da aba aberta.</summary>
+    private void ShowReadInfo(bool coordTab, string model, IEnumerable<string> evidence, IReadOnlyList<ReadingFix> fixes, IEnumerable<string> warnings)
+    {
+        var info = (model, evidence.ToList(), fixes.ToList(), warnings.ToList());
+        if (coordTab) _infoCoord = info; else _infoAz = info;
+        RenderReadInfo();
+    }
+
+    private void RenderReadInfo()
+    {
+        if ((CoordMode ? _infoCoord : _infoAz) is { } i) RenderReadInfo(i.Model, i.Evidence, i.Fixes, i.Warnings);
+        else if (ReadInfoBox is not null) ReadInfoBox.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>Mostra o que a leitura identificou e o que a conferência corrigiu (amarelo quando houve correção).</summary>
+    private void RenderReadInfo(string model, IEnumerable<string> evidence, IReadOnlyList<ReadingFix> fixes, IEnumerable<string> warnings)
+    {
+        if (ReadInfo is null || ReadInfoBox is null) return;
+        var sb = new System.Text.StringBuilder();
+        if (model.Length > 0)
+        {
+            sb.Append("Leitura: ").Append(model);
+            var ev = evidence.Distinct().Take(4).ToList();
+            if (ev.Count > 0) sb.Append(" (").Append(string.Join("; ", ev)).Append(')');
+            if (Model != ReadingModel.Auto) sb.Append(" – modelo escolhido por você");
+            sb.Append('.');
+        }
+        foreach (var f in fixes)
+            sb.Append(sb.Length > 0 ? "\n" : "").Append($"Corrigido – {f.What}: lido {f.From}, ficou {f.To} ({f.Why}). Confira no documento.");
+        foreach (var w in warnings.Where(w => !w.Contains("corrigido")).Take(2))
+            sb.Append(sb.Length > 0 ? "\n" : "").Append("⚠ ").Append(w);
+        ReadInfo.Text = sb.ToString();
+        ReadInfoBox.Visibility = sb.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        bool attention = fixes.Count > 0 || warnings.Any(w => !w.Contains("corrigido"));
+        ReadInfoBox.Background = new SolidColorBrush(attention ? System.Windows.Media.Color.FromRgb(255, 248, 225) : System.Windows.Media.Color.FromRgb(234, 242, 251));
+        ReadInfoBox.BorderBrush = new SolidColorBrush(attention ? System.Windows.Media.Color.FromRgb(230, 195, 106) : System.Windows.Media.Color.FromRgb(183, 204, 230));
+    }
+
     /// <summary>
     /// A vista atual aceita as linhas de detalhe do perímetro (planta). Linhas de detalhe são o padrão; numa vista que não aceita
     /// (3D, prancha, corte), o desenho é com linhas de modelo.
@@ -269,7 +328,7 @@ public partial class PerimeterWindow : Window
     {
         string text = Source.Text ?? "";
         // Coordenadas no mesmo texto: ponto de partida georreferenciado e sugestão de desenhar pelas coordenadas.
-        var c = PerimeterText.ParseCoordinates(text);
+        var c = PerimeterText.ParseCoordinates(text, false, Model);
         _azCoords = c.Format == "memorial" && c.Vertices.Count >= 1 ? c : null;
         if (_azCoords is { Vertices.Count: >= 3 } ac)
         {
@@ -278,7 +337,10 @@ public partial class PerimeterWindow : Window
         }
         else CoordHint.Visibility = Visibility.Collapsed;
 
-        var list = MemorialTextParser.Parse(text);
+        // Trechos: a melhor leitura (leitor inteligente com a conferência pelo fechamento, ou o de expressões fixas).
+        var cr = ReadingChoice.Courses(text, Model);
+        var list = cr.Courses;
+        ShowReadInfo(false, cr.Model.Length > 0 && list.Count >= 3 ? cr.Model : list.Count >= 3 ? "Azimutes e distâncias" : "", cr.Evidence, cr.Fixes, cr.Warnings);
         if (list.Count == 0)
         {
             if (!quiet)
@@ -535,7 +597,9 @@ public partial class PerimeterWindow : Window
         string text = CoordSource.Text ?? "";
         // Texto vindo do documento: tabela só com cabeçalho E/N (números soltos de protocolo, emolumentos etc. não viram vértices).
         bool fromDoc = _docCoordText is not null && text == _docCoordText;
-        var t = PerimeterText.ParseCoordinates(text, tableNeedsHeader: fromDoc);
+        var t = PerimeterText.ParseCoordinates(text, fromDoc, Model, out var smartUsed);
+        if (smartUsed is not null) ShowReadInfo(true, smartUsed.Model, smartUsed.Evidence, smartUsed.Fixes, new List<string>());
+        else ShowReadInfo(true, t.Vertices.Count >= 3 ? (t.Format == "tabela" ? "Tabela de coordenadas" : "Memorial com coordenadas") : "", new List<string>(), new List<ReadingFix>(), new List<string>());
         if (t.Vertices.Count < 2)
         {
             if (!quiet)
@@ -819,7 +883,7 @@ public partial class PerimeterWindow : Window
                 try
                 {
                     var r = await System.Threading.Tasks.Task.Run(() => DocumentReader.ReadAsync(path, p2, Confirm));
-                    var cert = CertidaoParser.Parse(r.Doc.Text);
+                    var cert = CertidaoParser.Parse(r.Doc.Text, Model);
                     if (Settings is not null) LearnedFixes.Apply(cert, Settings.Reading.Fixes);
                     read.Add((path, r, cert));
                 }
@@ -937,6 +1001,7 @@ public partial class PerimeterWindow : Window
             }
             Recalc();
             what = "medidas dos lados (sem ângulos)";
+            ShowReadInfo(false, cert.Model, cert.Evidence, cert.Fixes, new List<string>());
         }
         else
         {
@@ -1114,6 +1179,7 @@ public partial class PerimeterWindow : Window
         if (!ReferenceEquals(e.OriginalSource, Tabs) || _loading) return;
         _coordMode = Tabs.SelectedIndex == 1;
         if (CoordMode && _coords.Count == 0) ParseCoordText(quiet: true);
+        RenderReadInfo();
         Recalc();
     }
 

@@ -17,12 +17,28 @@
                    Text="Desenhe o contorno do lote por azimutes e distâncias ou pelas coordenadas dos vértices: digite, cole o texto de um memorial (inclusive do SIGEF) ou as linhas de uma planilha, ou importe a certidão. O texto é lido enquanto você digita; a prévia e a conferência aparecem ao lado. As linhas desenhadas servem para o Reconhecer Lotes, que já aplica os confrontantes informados aqui."/>
         <Border DockPanel.Dock="Top" Background="#F4F6F9" BorderBrush="#C9D1DB" BorderThickness="1" Padding="8,5" Margin="0,4,0,6">
             <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="10,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="Modelo do texto:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox x:Name="ModelPick" Width="250" SelectedIndex="0" SelectionChanged="Model_Changed"
+                              ToolTip="Automático: o GeoPoint identifica sozinho se o texto traz coordenadas UTM, geográficas ou locais, azimutes ou rumos, em memorial ou tabela, e confere uma informação com a outra. Escolha um modelo só se a leitura automática errar o tipo.">
+                        <ComboBoxItem Content="Automático (recomendado)"/>
+                        <ComboBoxItem Content="Coordenadas UTM (E, N)"/>
+                        <ComboBoxItem Content="Coordenadas geográficas (latitude, longitude)"/>
+                        <ComboBoxItem Content="Coordenadas locais (X, Y)"/>
+                        <ComboBoxItem Content="Azimutes e distâncias"/>
+                        <ComboBoxItem Content="Rumos e distâncias (NE, SE, SO, NO)"/>
+                    </ComboBox>
+                </StackPanel>
                 <Button x:Name="ImportBtn" DockPanel.Dock="Left" Margin="0" Style="{StaticResource Primary}" Click="ImportDoc_Click"
                         Content="Importar certidão ou memorial (PDF, foto ou imagem)…"
                         ToolTip="Lê só a descrição do perímetro: coordenadas ou azimutes e distâncias de cada trecho, a divisa (frente, fundos, laterais) e o confrontante. PDF digital: o texto do próprio PDF (exato). PDF escaneado, foto ou imagem: reconhecimento de texto (OCR) no próprio computador – Tesseract, com o do Windows de reserva. Pode escolher vários arquivos (ex.: o memorial e as matrículas): o melhor perímetro é desenhado e os outros servem de conferência."/>
                 <TextBlock x:Name="ImportStatus" VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="Wrap" Foreground="#5F6B7A"
                            Text="Leia o perímetro e os confrontantes direto da certidão ou do memorial. Tudo o que for lido aparece nas tabelas para conferir antes de desenhar."/>
             </DockPanel>
+        </Border>
+        <!-- O que a leitura identificou (modelo do texto) e os números lidos errados que a conferência corrigiu. -->
+        <Border x:Name="ReadInfoBox" DockPanel.Dock="Top" Visibility="Collapsed" Background="#FFF8E1" BorderBrush="#E6C36A" BorderThickness="1" Padding="8,4" Margin="0,0,0,6">
+            <TextBlock x:Name="ReadInfo" TextWrapping="Wrap" FontSize="11.5"/>
         </Border>
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
             <Button Content="Desenhar" Style="{StaticResource Primary}" Click="Ok_Click" IsDefault="True"/>

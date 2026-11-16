@@ -23,6 +23,65 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 
 ---
 
+## Novidades da versão 1.9
+
+**Leitura inteligente de coordenadas, azimutes e distâncias**
+- O GeoPoint agora **entende o papel de cada número** do texto, em vez de procurar só frases prontas. Cada número vira coordenada E ou
+  N, latitude, longitude, azimute, rumo, distância, área, ou é ignorado. Ele decide por três sinais:
+  - o **rótulo** antes ou depois do número ("N", "E", "Este", "Norte (Y)", "Latitude", "azimute", "rumo", "distância", "m", "m²",
+    "235142,50 mE");
+  - a **faixa de valores** (N de UTM tem 7 dígitos e E tem 6; latitude no Brasil fica entre −34° e +6°, longitude entre −74° e −28°);
+  - o **cabeçalho da tabela** (Vértice | Este | Norte | Azimute | Distância…, inclusive com colunas vazias ou a mais).
+- **Modelos lidos**:
+  - memorial INCRA/SIGEF em UTM ou em latitude/longitude;
+  - E antes de N ou N antes de E, com o rótulo antes ou depois do número;
+  - tabelas de coordenadas UTM, geográficas (com S/W ou com sinal) e locais (X, Y);
+  - quadro do SIGEF (longitude, latitude, altitude, azimute, distância);
+  - graus decimais;
+  - números com espaço no milhar (`8 828 696,86`) ou no formato americano (`8,105,458.48`);
+  - rumos (`45°30' NE`, `N 45°30' E`, `NE 45°30'`);
+  - azimutes em graus decimais;
+  - só a coordenada do ponto inicial, seguida de azimutes e distâncias;
+  - colunas de tabela que vieram uma depois da outra (texto copiado de PDF).
+- **Ignora** números de documentos: matrícula, CPF, CNPJ, CEP, datas, valores em R$, protocolo, "SIRGAS 2000", fuso e meridiano.
+- **Erros comuns de OCR corrigidos antes da leitura**:
+  - número partido na quebra de linha (`729.830,` / `10m`);
+  - espaço depois da vírgula (`8295860, 18`);
+  - "!" no lugar do apóstrofo dos minutos;
+  - letras no lugar de dígitos nos minutos (`os` → `05`);
+  - marca dos minutos perdida (`24°2701,840"`);
+  - letra do hemisfério ilegível (no Brasil não há longitude leste).
+- **Conferência cruzada, que corrige o número lido errado.** O memorial diz a mesma coisa de mais de um jeito: as coordenadas, os
+  azimutes e distâncias, o polígono que fecha e a área. O GeoPoint usa isso para achar o número errado:
+  - **trechos que não fecham** – procura o único trecho em que trocar um dígito, a vírgula, os graus, os minutos, os segundos ou o
+    quadrante do rumo fecha o polígono (e confere a área, se o documento traz);
+  - **trecho com valor ilegível** – calcula o que falta pelo fechamento;
+  - **coordenada que não bate com os dois trechos vizinhos** – recalcula pelo azimute e distância do texto;
+  - **coordenada muito longe das outras** (dígito trocado ou perdido) – acha o dígito que a traz para junto das outras.
+
+  O GeoPoint só corrige quando a correção é única e explica tudo. Num retângulo, por exemplo, um erro na frente e nos fundos explica
+  igual: aí ele só avisa onde pode estar o erro. Toda correção aparece em amarelo na janela e no Diagnóstico ("lido 36,44 m, ficou
+  31,44 m"). Confira no documento.
+- **Modelo do texto** (no alto da janela): *Automático* é o padrão e identifica sozinho. Se a leitura errar o tipo, escolha *UTM*,
+  *Geográficas*, *Locais*, *Azimutes e distâncias* ou *Rumos e distâncias*, e o texto é lido de novo seguindo o modelo.
+- **"Leitura:"** abaixo da barra de importação mostra o modelo identificado e como ele foi reconhecido (rótulos, faixa de valores,
+  cabeçalho). A aba **Diagnóstico** ganhou as etapas *Modelo do texto* e *Correções da conferência*.
+- **Resultado medido** num conjunto de 48 memoriais fictícios em 16 modelos, cada um em texto e em OCR de folha limpa, escaneada e
+  fotografada (336 leituras): **92,9% de acerto** (eram 47% na 1.8). Nos textos sem OCR, **todos os modelos** são lidos. Os seus 5
+  documentos reais continuam corretos.
+
+**Imagens de satélite: galeria sem erro e fácil de achar**
+- **Corrigido o erro "Object reference not set to an instance of an object"** ao abrir a galeria. Ele acontecia logo na abertura da
+  janela e podia fechar o Revit.
+- **Proteção contra queda**: um erro dentro de uma janela do GeoPoint vira uma mensagem, a janela continua aberta e o Revit não fecha.
+  Os detalhes ficam no registro, em `%AppData%\GeoPoint\logs` (envie para o suporte).
+- **Onde fica a galeria**:
+  - na janela de **Pranchas**, no quadro azul **Imagem de satélite (localização)** logo abaixo da prévia: botão **Galeria de imagens…**
+    (ou clique no espaço da imagem na própria prévia);
+  - na faixa do GeoPoint, botão **Galeria de Imagens**, de qualquer vista: adicione arquivos ou cole o print, renomeie, remova e
+    escolha a imagem geral. Com uma prancha do GeoPoint aberta, ele abre a galeria **para essa prancha**.
+- A coluna de opções da janela de Pranchas tem **barra de rolagem**: em telas mais baixas, nada fica cortado.
+
 ## Novidades da versão 1.8
 
 **Leitura de certidões e memoriais**
@@ -53,7 +112,7 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 **Imagens de satélite**
 - **Galeria do projeto**: guarde quantas imagens quiser (arquivo ou print colado), com nome e miniatura. Fica dentro do projeto.
 - **Imagem por prancha, escolhida clicando no espaço**: na prévia da janela de *Pranchas*, **clique no espaço da imagem** (ou em
-  *Galeria…*); ou, com a prancha aberta no Revit, use o novo botão **Imagem de Localização** e clique no espaço. A galeria abre:
+  *Galeria de imagens…*); ou, com a prancha aberta no Revit, use o botão **Galeria de Imagens** (na 1.8, *Imagem de Localização*). A galeria abre:
   escolha a imagem, **arraste para enquadrar e use a roda do mouse para aproximar**, e clique em *Usar nesta prancha*, *Usar em todas as
   pranchas da fase* (menos as **fixadas**), *Usar como imagem geral* ou *Sem imagem nesta prancha*. Prancha já gerada é atualizada na hora.
 - **Contorno do lote sobre a imagem**: liga o contorno (norte verdadeiro para cima), ajusta o tamanho e, com Ctrl + arrastar, a
@@ -526,12 +585,13 @@ As edificações aparecem no **memorial** (seção *ÁREA EDIFICADA* com as dist
   projeção, fuso, meridiano central, EPSG, **escala** e **escala gráfica**), o espaço da **imagem de localização**, o espaço da **logomarca do
   escritório** e o **título** com a **FOLHA**;
 - **folhas numeradas por projeto** (FOLHA 01, 02, 03…; uma prancha substituída mantém o número);
-- **imagem de satélite**: espaço sem título no carimbo. **Clique no espaço da imagem na prévia** (ou em *Galeria…*): abre a **galeria
+- **imagem de satélite**: espaço sem título no carimbo. **Clique no espaço da imagem na prévia** (ou em *Galeria de imagens…*, no quadro
+  azul abaixo da prévia): abre a **galeria
   do projeto** (adicione arquivos ou cole o print), escolha a imagem, arraste para enquadrar, aproxime com a roda do mouse e, se quiser,
   ligue o **contorno do lote** por cima (tamanho no controle; Ctrl + arrastar move). Depois: *Usar nesta prancha*, *Usar em todas as
   pranchas da fase* (as **fixadas** não mudam), *Usar como imagem geral* ou *Sem imagem nesta prancha*. Cada prancha usa a sua imagem,
-  senão a padrão da fase, senão a geral. As imagens ficam guardadas no projeto. Com a prancha já gerada aberta, o botão **Imagem de
-  Localização** faz o mesmo: clique no espaço da imagem e escolha;
+  senão a padrão da fase, senão a geral. As imagens ficam guardadas no projeto. Com a prancha já gerada aberta, o botão **Galeria de
+  Imagens** faz o mesmo (em outra vista, ele abre a galeria para organizar as imagens);
 - **prévia** da prancha selecionada (mesmo encaixe, carimbo, anotações e imagem), com avisos de legibilidade e a **revisão automática**
   (grade sobre textos ou desenho, imagem com menos de 150 dpi no espaço, convenções × desenho);
 - **pranchas já geradas**: a tabela mostra se você **editou** a prancha e você escolhe *Substituir*, *Manter a atual* ou *Nova versão ao lado*;
