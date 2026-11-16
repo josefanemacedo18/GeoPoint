@@ -99,6 +99,13 @@ public sealed class SheetPreviewControl : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
+        // Um erro no desenho da prévia não pode chegar ao Revit: registra e segue.
+        try { Draw(dc); }
+        catch (Exception ex) { GeoPoint.Revit.Infrastructure.Logger.Error("Prévia da prancha: desenhar", ex); }
+    }
+
+    private void Draw(DrawingContext dc)
+    {
         double aw = ActualWidth, ah = ActualHeight;
         if (aw < 10 || ah < 10) return;
         double s = Math.Min((aw - 8) / _w, (ah - 8) / _h);
@@ -111,6 +118,7 @@ public sealed class SheetPreviewControl : FrameworkElement
         foreach (var l in _prims.OfType<PLine>().Where(l => l.Style == PLineStyle.Grade)) dc.DrawLine(gridPen, P(l.A), P(l.B));
         foreach (var (pts, fill) in _shapes)
         {
+            if (pts is not { Count: >= 2 }) continue;
             var g = new StreamGeometry();
             using (var c = g.Open())
             {
@@ -164,7 +172,7 @@ public sealed class SheetPreviewControl : FrameworkElement
                     var a = P(new Vec2(im.Rect.X0, im.Rect.Y1));
                     var r = new Rect(a.X, a.Y, im.Rect.Width * s, im.Rect.Height * s);
                     if (im.Key == "logo" && _logo is not null) dc.DrawImage(_logo, r);
-                    else if (im.Key == "croqui" && Croqui is BitmapSource cq && cq.PixelWidth > 0)
+                    else if (im.Key == "croqui" && Croqui is BitmapSource cq && cq.PixelWidth > 0 && cq.PixelHeight > 0 && im.Rect.Width > 0 && im.Rect.Height > 0)
                     {
                         // O mesmo recorte da prancha (enquadramento escolhido, preenchendo o espaço sem distorcer).
                         var (cx, cy, cw, _) = GeoPoint.Core.Sheets.LocationImages.Crop(cq.PixelWidth, cq.PixelHeight, im.Rect.Width / im.Rect.Height, CroquiChoice);
@@ -173,7 +181,7 @@ public sealed class SheetPreviewControl : FrameworkElement
                         dc.DrawImage(cq, new Rect(r.X - cx * k, r.Y - cy * k, cq.PixelWidth * k, cq.PixelHeight * k));
                         if (CroquiChoice is { ShowOutline: true } ch && CroquiOutline.Count > 0)
                             foreach (var ring in GeoPoint.Core.Sheets.LocationImages.OutlineInRect(CroquiOutline, im.Rect, ch))
-                                for (int q = 0; q < ring.Count; q++)
+                                for (int q = 0; ring.Count >= 2 && q < ring.Count; q++)
                                     dc.DrawLine(new Pen(Brushes.Red, Math.Max(0.8, 0.3 * s)), P(ring[q]), P(ring[(q + 1) % ring.Count]));
                         dc.Pop();
                     }

@@ -8,6 +8,7 @@ using System.Windows.Media.Imaging;
 using GeoPoint.Core.Geometry;
 using GeoPoint.Core.Model;
 using GeoPoint.Core.Sheets;
+using GeoPoint.Revit.Infrastructure;
 
 namespace GeoPoint.Revit.UI;
 
@@ -58,9 +59,16 @@ public sealed class CropEditor : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
+        // Um erro no desenho da janela não pode chegar ao Revit: registra e mostra o quadro vazio.
+        try { Draw(dc); }
+        catch (Exception ex) { Logger.Error("Galeria: desenhar o enquadramento", ex); }
+    }
+
+    private void Draw(DrawingContext dc)
+    {
         dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(60, 64, 70)), null, new Rect(0, 0, ActualWidth, ActualHeight));
         var f = Frame();
-        if (_img is null)
+        if (_img is null || _img.PixelWidth <= 0 || _img.PixelHeight <= 0)
         {
             dc.DrawRectangle(Brushes.White, FramePen, f);
             var ft = new FormattedText("Escolha uma imagem da galeria", System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
@@ -69,12 +77,14 @@ public sealed class CropEditor : FrameworkElement
             return;
         }
         var (x, y, w, h) = LocationImages.Crop(_img.PixelWidth, _img.PixelHeight, _aspect, _c);
+        if (w <= 0 || h <= 0) return;
         double k = f.Width / w;
         dc.PushClip(new RectangleGeometry(f));
         dc.DrawImage(_img, new Rect(f.X - x * k, f.Y - y * k, _img.PixelWidth * k, _img.PixelHeight * k));
         if (_c.ShowOutline && _outline.Count > 0)
             foreach (var ring in LocationImages.OutlineInRect(_outline, new PaperRect(0, 0, f.Width, f.Height), _c))
             {
+                if (ring.Count < 2) continue;
                 var geo = new StreamGeometry();
                 using (var g = geo.Open())
                 {
@@ -99,7 +109,7 @@ public sealed class CropEditor : FrameworkElement
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
-        if (_drag is not Point p0 || _img is null) return;
+        if (_drag is not Point p0 || _img is null || _img.PixelWidth <= 0 || _img.PixelHeight <= 0) return;
         var p = e.GetPosition(this);
         var f = Frame();
         double dx = (p.X - p0.X) / f.Width, dy = (p.Y - p0.Y) / f.Height;
@@ -133,7 +143,7 @@ public sealed class CropEditor : FrameworkElement
 
     public void SetZoom(double z)
     {
-        if (_img is null) return;
+        if (_img is null || _img.PixelWidth <= 0 || _img.PixelHeight <= 0 || double.IsNaN(z)) return;
         _c.Zoom = Math.Clamp(z, 1, 6);
         (_c.CX, _c.CY) = LocationImages.Pan(_img.PixelWidth, _img.PixelHeight, _aspect, _c, 0, 0);
         InvalidateVisual();

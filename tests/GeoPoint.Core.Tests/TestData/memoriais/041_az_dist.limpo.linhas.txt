@@ -1,0 +1,8 @@
+Partindo do vértice P-01; segue na distância de 9,73 metros e azimute de 355º 17' 07",
+confrontando com Lote 07 da Quadra B, até o vértice P-02; deste, segue na distância de 11,30
+metros e azimute de 85º 16' 42", confrontando com Travessa Sete, até o vértice P-03; deste, segue
+na distância de 4,94 metros e azimute de 165º 27' 26”, confrontando com Rua Ipê Amarelo, até o
+vértice P-04; deste, segue na distância de 4,94 metros e azimute de 185º 06' 38”, confrontando
+com Travessa Sete, até o vértice P-05; deste, segue com azimute de 260º13'40" e distância de 5,77
+metros até o vértice P-06; deste, segue com azimute de 270º30'52" e distância de 5,57 metros até
+o vértice P-01; fechando assim o perímetro, com área de 116,94 m?.

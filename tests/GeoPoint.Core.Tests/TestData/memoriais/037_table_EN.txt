@@ -1,0 +1,7 @@
+QUADRO DE COORDENADAS – SIRGAS 2000 – UTM fuso 22S
+Vértice  Este (X)  Norte (Y)  Azimute  Distância (m)  Confrontante
+P-01  591.536,33  9.079.068,28  198°28'36"  30,32  Lote 05 da Quadra B
+P-02  591.526,72  9.079.039,52  289°05'39"  34,09  Lote 03
+P-03  591.494,51  9.079.050,67  287°46'27"  29,61  Lote 12
+P-04  591.466,31  9.079.059,71  18°28'36"  30,32  Estrada Municipal
+P-05  591.475,92  9.079.088,47  108°28'50"  63,69  Área Remanescente

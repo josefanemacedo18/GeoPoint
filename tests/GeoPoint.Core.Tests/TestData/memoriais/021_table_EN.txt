@@ -1,0 +1,7 @@
+QUADRO DE COORDENADAS – SIRGAS 2000 – UTM fuso 23S
+Vértice  Este (X)  Norte (Y)  Azimute  Distância (m)  Confrontante
+P-01  535.676,95  7.525.110,46  259°53'19"  43,69  Área Remanescente
+P-02  535.633,94  7.525.102,79  348°56'14"  40,02  Rua Ipê Amarelo
+P-03  535.626,26  7.525.142,07  351°14'19"  28,49  Avenida Central
+P-04  535.621,92  7.525.170,23  79°53'11"  43,68  Área Remanescente
+P-05  535.664,92  7.525.177,90  169°53'09"  68,50  Lote 12

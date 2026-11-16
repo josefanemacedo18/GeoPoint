@@ -1,0 +1,7 @@
+O imóvel tem os seguintes vértices, no sentido horário: vértice Vi (639235,60 mE;
+9557605,41 mN), vértice V2 (639253,67 ME; 9557632,94 mN), vértice V3 (639289,83 ME;
+
+9557609,22 mN), vértice V4 (639271,77 mE; 9557581,68 mN). Sistema de projeção UTM,
+Sul, SIRGAS2000. Área de 1.424,40 m2.
+
+zona 24

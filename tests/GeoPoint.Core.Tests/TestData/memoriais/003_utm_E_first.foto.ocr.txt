@@ -1,0 +1,6 @@
+Partindo do ponto P-01, de coordenadas E=525.654,61 e N=9.123.296,60; daí segue com azimute 75"25'08" e
+distância de 20,66m, até o ponto P-02 (E=525.674,60 e N=9.123.301,80); daí segue com azimute 91º46'13" e
+distância de 18,13m, até o ponto P-03 (E=525.692,72 e N=9.123.301,24); daí segue com azimute 173º0410" e
+distância de 43,09m, até o ponto P-04 (E=525.697,92 e N=9.123.258,46); daí segue com azimute 263º04'23" e
+distância de 38,39m, até o ponto P-05 (E=525.659,81 e N=9.123.253,83); daí segue com azimute 353º04'05" e
+distância de 43,08m, até o ponto P-01, início desta descrição. Coordenadas UTM, fuso 24 S, datum SIRGAS 2000.

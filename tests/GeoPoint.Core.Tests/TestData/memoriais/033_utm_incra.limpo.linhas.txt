@@ -1,0 +1,17 @@
+Inicia-se a descrição deste perímetro no vértice AVHJ-M-1886, de coordenadas N
+7.914.054,10m e E 259.346, 01M;
+deste, segue confrontando com Rua Ipê Amarelo, com os seguintes azimute e distância:
+196º20'29" e 51,85 m, até o vértice AVHJ-P-1887, de coordenadas N 7.914.004,34m e E
+259.331, 42m;
+deste, segue confrontando com Avenida Central, com os seguintes azimute e distância:
+286º20'29" e 84,48 m, até o vértice AvHJ-M-1888, de coordenadas N 7.914.028,11m e E
+259.250, 35m;
+deste, segue confrontando com Rua Projetada A, com os seguintes azimute e distância:
+16º21'08" e 51,86 m, até o vértice AVHJ-P-1889, de coordenadas N 7.914.077,87Mm e E
+259.264, 95M;
+deste, segue confrontando com Lote 12, com os seguintes azimute e distância: 106º20'36" e
+84,47 m, até o vértice AVHJ-M-1886, ponto inicial da descrição deste perímetro. Todas as
+coordenadas aqui descritas estão georreferenciadas ao Sistema Geodésico Brasileiro, e
+encontram-se representadas no Sistema UTM, referenciadas ao Meridiano Central nº -51º w6r,
+tendo como datum o SIRGAS2000. Todos os azimutes e distâncias, área e perímetro foram
+calculados no plano de projeção UTM.

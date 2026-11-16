@@ -170,7 +170,8 @@ public static class LocationImages
     public static List<List<Vec2>> OutlineInRect(IReadOnlyList<List<Vec2>> rings, PaperRect r, SheetImageChoice c)
     {
         var res = new List<List<Vec2>>();
-        if (rings.Count == 0 || r.Width <= 0 || r.Height <= 0) return res;
+        rings = rings.Where(x => x is { Count: >= 2 } && x.All(p => double.IsFinite(p.X) && double.IsFinite(p.Y))).ToList();
+        if (rings.Count == 0 || !(r.Width > 0) || !(r.Height > 0) || c is null) return res;
         var bb = BBox.Of(rings.SelectMany(x => x));
         double w = Math.Max(bb.Width, 1e-6), h = Math.Max(bb.Height, 1e-6);
         double k = Math.Clamp(c.OutlineSize, 0.05, 0.95) * r.Width / w;

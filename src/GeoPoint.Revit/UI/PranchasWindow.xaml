@@ -16,6 +16,20 @@
             <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold" Text="Prévia da prancha selecionada" Margin="0,0,0,2"/>
             <TextBlock DockPanel.Dock="Top" x:Name="PreviewInfo" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,0,0,4"
                        Text="Selecione uma prancha na tabela. A prévia usa o modelo escolhido; no Revit o desenho é a cópia da sua planta."/>
+            <!-- Imagem de satélite: ao lado da prévia, sempre visível (o espaço da imagem na prévia também abre a galeria). -->
+            <Border DockPanel.Dock="Bottom" Margin="0,8,0,0" Padding="8,6" Background="#EAF2FB" BorderBrush="#B7CCE6" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock FontWeight="SemiBold" Text="Imagem de satélite (localização)"/>
+                    <TextBlock x:Name="ImageInfo" TextWrapping="Wrap" Margin="0,2,0,6" Foreground="#3D4A5A"
+                               ToolTip="Imagem da prancha selecionada: a escolhida para ela, senão a padrão da fase, senão a geral."/>
+                    <WrapPanel>
+                        <Button Margin="0,0,6,0" Style="{StaticResource Primary}" Content="Galeria de imagens…" Click="Images_Click"
+                                ToolTip="Abre a galeria do projeto: adicione arquivos ou cole o print do satélite, escolha a imagem desta prancha, enquadre e aplique nesta prancha, em toda a fase ou como imagem geral."/>
+                    </WrapPanel>
+                    <TextBlock Style="{StaticResource Hint}" Margin="0,4,0,0" TextWrapping="Wrap"
+                               Text="Dica: clicar no espaço da imagem, na prévia acima, abre a mesma galeria."/>
+                </StackPanel>
+            </Border>
             <Border BorderBrush="#DDD" BorderThickness="1" Background="#F4F4F4">
                 <ui:SheetPreviewControl x:Name="SheetPreview"/>
             </Border>
@@ -80,7 +94,9 @@
                     </DataGrid.Columns>
                 </DataGrid>
             </DockPanel>
-            <StackPanel Grid.Column="2">
+            <!-- Rolagem: em telas mais baixas, as opções da folha não ficam cortadas. -->
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
                 <GroupBox Header="Situações">
                     <StackPanel>
                         <CheckBox x:Name="Atual" Content="Situação atual (todos os lotes juntos)" Click="Changed"/>
@@ -118,14 +134,10 @@
                             <ComboBoxItem Content="UTM (E, N) – SIRGAS 2000"/>
                             <ComboBoxItem Content="O primeiro sistema do memorial (Configurações)"/>
                         </ComboBox>
-                        <Label Grid.Row="4" Content="Imagem de satélite:" VerticalAlignment="Top"/>
-                        <TextBlock Grid.Row="4" Grid.Column="1" x:Name="ImageInfo" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,4,0,4" Foreground="#5F6B7A"
-                                   ToolTip="Imagem de satélite da prancha selecionada: a escolhida para ela, senão a padrão da fase, senão a geral. Clique no espaço da imagem na prévia para trocar."/>
-                        <Button Grid.Row="4" Grid.Column="2" Content="Galeria…" Click="Images_Click" VerticalAlignment="Top"
-                                ToolTip="Galeria de imagens de satélite do projeto: adicionar, colar o print e escolher a imagem da prancha selecionada (também clicando no espaço da imagem na prévia)."/>
                     </Grid>
                 </GroupBox>
             </StackPanel>
+            </ScrollViewer>
         </Grid>
     </DockPanel>
 </Window>

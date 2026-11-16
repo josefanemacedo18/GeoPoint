@@ -1,0 +1,6 @@
+Partindo do vértice P-01; segue na distância de 29,08 metros e azimute de 82º 05! 34",
+confrontando com Avenida Central, até o vértice P-02; deste, segue com azimute de
+172º05'54" e distância de 42,92 metros até o vértice P-03; deste, segue com azimute de
+262º05'24" e distância de 29,07 metros até o vértice P-04; deste, segue com azimute de
+352º05'06" e distância de 42,92 metros até o vértice P-01; fechando assim o perímetro, com
+área de 1.247,70 m?.,

@@ -1,0 +1,10 @@
+QUADRO DE COORDENADAS – SIRGAS 2000 – UTM fuso 22S
+Vértice  Este (X)  Norte (Y)  Azimute  Distância (m)  Confrontante
+P-01  709.598,39  9.142.612,10  324°57'03"  32,86  Área Remanescente
+P-02  709.579,52  9.142.639,00  270°08'14"  20,87  Rua das Acácias
+P-03  709.558,65  9.142.639,05  333°08'33"  49,05  Lote 12
+P-04  709.536,49  9.142.682,81  324°06'42"  37,24  Estrada Municipal
+P-05  709.514,66  9.142.712,98  318°12'58"  32,90  Rua Projetada A
+P-06  709.492,74  9.142.737,51  49°53'12"  201,21  Estrada Municipal
+P-07  709.646,62  9.142.867,15  139°53'09"  163,97  Rua Projetada A
+P-08  709.752,27  9.142.741,75  229°53'04"  201,22  Estrada Municipal

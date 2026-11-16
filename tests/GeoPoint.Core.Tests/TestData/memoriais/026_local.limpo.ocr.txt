@@ -1,0 +1,14 @@
+Levantamento planimétrico - coordenadas locais (estação total)
+Ponto x (m) Y (m)
+
+P-01 1000, 000 1000, 000
+
+P-02 1005, 020 996, 980
+
+P-03 1006, 260 995,4170
+
+P-04 1009, 450 994, 480
+
+P-05 998,220 975,250
+
+P-06 988,1710 980,1710

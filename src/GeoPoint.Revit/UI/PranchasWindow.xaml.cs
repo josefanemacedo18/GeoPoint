@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using GeoPoint.Core.Model;
 using GeoPoint.Core.Settings;
 using GeoPoint.Core.Sheets;
+using GeoPoint.Revit.Infrastructure;
 
 namespace GeoPoint.Revit.UI;
 
@@ -244,12 +245,21 @@ public partial class PranchasWindow : Window
     private void Images_Click(object sender, RoutedEventArgs e)
     {
         if (_manageImages is null) return;
-        double aspect = SelectedTemplate?.CroquiAspect() ?? 0;
-        var spec = (SheetsGrid.SelectedItem as SheetRow ?? _sheetRows.FirstOrDefault())?.Spec;
-        if (_manageImages(this, aspect, spec) is string summary)
+        try
         {
-            ImageInfo.Text = summary;
-            ShowPreview();
+            double aspect = SelectedTemplate?.CroquiAspect() ?? 0;
+            var spec = (SheetsGrid.SelectedItem as SheetRow ?? _sheetRows.FirstOrDefault())?.Spec;
+            if (_manageImages(this, aspect, spec) is string summary)
+            {
+                ImageInfo.Text = summary;
+                ShowPreview();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Pranchas: galeria de imagens", ex);
+            Fmt.Msg("Não foi possível abrir a galeria de imagens: " + ex.Message + "\n\nO Revit continua aberto. Detalhes no registro: " + Logger.Folder,
+                icon: MessageBoxImage.Warning);
         }
     }
 

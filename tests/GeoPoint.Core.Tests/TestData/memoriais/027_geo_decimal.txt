@@ -1,0 +1,1 @@
+Vértices do imóvel (graus decimais, SIRGAS 2000): P-01: Lat -19,0425133, Long -52,6886911; P-02: Lat -19,0421064, Long -52,6887333; P-03: Lat -19,0419489, Long -52,6870608; P-04: Lat -19,0423556, Long -52,6870186.

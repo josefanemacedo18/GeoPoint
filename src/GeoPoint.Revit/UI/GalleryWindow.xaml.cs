@@ -49,10 +49,12 @@ public partial class GalleryWindow : Window
     private readonly ObservableCollection<GalleryItem> _items = new();
     private readonly ParcelProject _project;
     private readonly Func<string, byte[]?> _load;
-    private readonly double _aspect;
-    private readonly List<List<Vec2>> _outline;
+    private readonly double _aspect = 4.0 / 3;
+    private readonly List<List<Vec2>> _outline = new();
     private readonly bool _sheetMode;
-    private SheetImageChoice _choice;
+    // Inicializados antes do InitializeComponent: os controles deslizantes disparam ValueChanged enquanto a janela é montada
+    // (o mínimo do controle muda o valor), e os eventos usam a escolha e os textos.
+    private SheetImageChoice _choice = new();
     private bool _loading = true;
 
     /// <param name="sheetTitle">Prancha cuja imagem está sendo escolhida ("" = só organizar a galeria).</param>
@@ -61,10 +63,11 @@ public partial class GalleryWindow : Window
         List<List<Vec2>> outline, bool locked)
     {
         InitializeComponent();
+        Logger.Info($"Galeria: abrir ({(sheetTitle.Length > 0 ? "prancha " + sheetTitle : "organizar")}, {project.SatelliteImages.Count} imagem(ns))");
         _project = project;
         _load = load;
         _aspect = aspect > 0.2 && aspect < 5 ? aspect : 4.0 / 3;
-        _outline = outline;
+        _outline = outline ?? new List<List<Vec2>>();
         _sheetMode = sheetTitle.Length > 0;
         _choice = current?.Clone() ?? new SheetImageChoice();
         ContextText.Text = _sheetMode
@@ -77,13 +80,14 @@ public partial class GalleryWindow : Window
         foreach (var img in project.SatelliteImages.OrderByDescending(i => i.Added))
         {
             var it = new GalleryItem { Id = img.Id, Name = img.Nome, OriginalName = img.Nome, Info = InfoOf(img, LocationImages.Uses(project, img.Id)) };
-            if (load(img.Id) is byte[] b) { try { it.Full = ImageCodec.Decode(b); it.Thumb = it.Full; } catch { } }
+            try { if (load(img.Id) is byte[] b) { it.Full = ImageCodec.Decode(b); it.Thumb = it.Full; } }
+            catch (Exception ex) { Logger.Error($"Galeria: ler a imagem {img.Nome}", ex); it.Info += " · não foi possível ler"; }
             _items.Add(it);
         }
         List.ItemsSource = _items;
         Outline.IsChecked = _choice.ShowOutline;
-        Outline.IsEnabled = OutlineSlider.IsEnabled = outline.Count > 0;
-        if (outline.Count == 0) Outline.ToolTip = "Sem lotes nesta prancha para desenhar o contorno.";
+        Outline.IsEnabled = OutlineSlider.IsEnabled = _outline.Count > 0;
+        if (_outline.Count == 0) Outline.ToolTip = "Sem lotes nesta prancha para desenhar o contorno.";
         OutlineSlider.Value = _choice.OutlineSize;
         ZoomSlider.Value = _choice.Zoom;
         Editor.Changed += (_, _) => { _loading = true; ZoomSlider.Value = _choice.Zoom; _loading = false; UpdateTexts(); };
@@ -114,19 +118,24 @@ public partial class GalleryWindow : Window
 
     private void UpdateTexts()
     {
-        ZoomText.Text = $"{_choice.Zoom:0.0}×";
-        OutlineText.Text = $"{_choice.OutlineSize * 100:0}%";
+        if (ZoomText is not null) ZoomText.Text = $"{_choice.Zoom:0.0}×";
+        if (OutlineText is not null) OutlineText.Text = $"{_choice.OutlineSize * 100:0}%";
     }
 
     private void List_SelectionChanged(object sender, SelectionChangedEventArgs e) { if (!_loading) ShowSelected(); }
 
-    private void Zoom_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) { if (!_loading) Editor.SetZoom(ZoomSlider.Value); UpdateTexts(); }
+    private void Zoom_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_loading || Editor is null || ZoomSlider is null) return;
+        Editor.SetZoom(ZoomSlider.Value);
+        UpdateTexts();
+    }
 
-    private void Outline_Click(object sender, RoutedEventArgs e) { _choice.ShowOutline = Outline.IsChecked == true; Editor.Refresh(); }
+    private void Outline_Click(object sender, RoutedEventArgs e) { _choice.ShowOutline = Outline.IsChecked == true; Editor?.Refresh(); }
 
     private void OutlineSize_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (_loading) return;
+        if (_loading || Editor is null || OutlineSlider is null) return;
         _choice.OutlineSize = OutlineSlider.Value;
         Editor.Refresh();
         UpdateTexts();

@@ -1,0 +1,7 @@
+Inicia- se no vértice P-01, de coordenadas N 7.672.647,07 me E 396.688,51 m;
+deste, segue com azimute de 356º56'19" e distância de 19,85 m até o vértice P-02,
+deste, segue com azimute de 86º56'15" e distância de 44,92 m até o vértice P-083;
+deste, segue com azimute de 167º06'52" e distância de 7,49 m até o vértice P-04,;
+deste, segue com azimute de 182º44'37" e distância de 12,53 m até o vértice P-05;
+deste, segue com azimute de 266º56'18" e distância de 44,93 m até o vértice P-01, ponto
+inicial.

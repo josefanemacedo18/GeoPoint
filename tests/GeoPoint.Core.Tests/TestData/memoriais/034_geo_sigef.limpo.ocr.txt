@@ -1,0 +1,29 @@
+Inicia-se a descrição deste perímetro no vértice BZZG-M-5087, de coordenadas
+Longitude: -39º20'31,191", Latitude: -2º58'23,440" e Altitude: 332,12 m;
+
+deste, segue com azimute de 320º30'57" e distância de 235,01 m, confrontando com Área
+Remanescente, até o vértice BZZG-P-5088, de coordenadas Longitude: -39º20'36,030",
+Latitude: -2º58'17,535" e Altitude: 705,15 m;
+
+deste, segue com azimute de 51º37'24" e distância de 232,88 m, confrontando com Rua
+das Acácias, até o vértice BZZG-M-5089, de coordenadas Longitude: -39º20'30,118",
+Latitude: -2º58'12,828" e Altitude: 398,78 m;
+
+deste, segue com azimute de 39º43'05" e distância de 75,87 m, confrontando com
+Travessa Sete, até o vértice BZZG-P-5090, de coordenadas Longitude: -39º20'28,548",
+Latitude: -2º58'10,928" e Altitude: 767,84 m;
+
+deste, segue com azimute de 58º02'48" e distância de 74,17 m, confrontando com Lote
+07 da Quadra B, até o vértice BZZG-M-5091, de coordenadas Longitude: -39º20'26,510",
+Latitude: -2º58'09,650" e Altitude: 491,51 m;
+
+deste, segue com azimute de 140º31'14" e distância de 235,03 m, confrontando com Rua
+Projetada A, até o vértice BZZG-P-5092, de coordenadas Longitude: -39º20'21,671",
+Latitude: -2º58'15,556" e Altitude: 591,35 m;
+
+deste, segue com azimute de 230º31'14" e distância de 380,88 m, confrontando com
+Avenida Central, até o vértice BZZG-M-5087, ponto inicial da descrição deste
+
+perímetro. Todas as coordenadas aqui descritas estão georreferenciadas ao Sistema
+Geodésico Brasileiro, a partir das coordenadas geodésicas, datum SIRGAS2000. Os
+azimutes e distâncias foram calculados pelo método geodésico.

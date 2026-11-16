@@ -470,68 +470,62 @@ public sealed class CmdVias : CommandBase
 }
 
 /// <summary>
-/// Imagem de localização da prancha aberta: clique no espaço da imagem e a galeria do projeto abre para escolher a imagem, enquadrar e
-/// aplicar só nesta prancha, em toda a fase ou como imagem geral.
+/// Galeria de imagens de satélite do projeto, de qualquer vista: adicionar arquivos ou colar o print, renomear, remover e escolher a
+/// imagem geral. Com uma prancha gerada pelo GeoPoint aberta, a galeria abre para essa prancha: escolher a imagem, enquadrar e aplicar
+/// só nela, em toda a fase ou como imagem geral.
 /// </summary>
 [Transaction(TransactionMode.Manual)]
 public sealed class CmdImagemLocalizacao : CommandBase
 {
-    protected override string Title => "Imagem de localização";
-    protected override string? BackupReason => "imagem de localizacao";
+    protected override string Title => "Galeria de imagens";
+    protected override string? BackupReason => "galeria de imagens";
 
     protected override Result Run(GpSession s)
     {
         LocationImageService.Prepare(s);
         var p = s.Project;
-        if (s.ActiveView is not ViewSheet sheet)
-        {
-            Ui.Info("Abra a prancha", "Abra a prancha gerada pelo GeoPoint e use este comando: clique no espaço da imagem de localização (no carimbo) para escolher a imagem na galeria.\n\nPara organizar a galeria ou escolher antes de gerar, use Pranchas › Galeria.");
-            return Result.Cancelled;
-        }
-        var g = p.Sheets.FirstOrDefault(x => x.SheetId == sheet.UniqueId);
-        if (g is null)
-        {
-            Ui.Info("Prancha não gerada pelo GeoPoint", "Esta prancha não foi gerada pelo GeoPoint (comando Pranchas): coloque a imagem pelo Revit (Inserir › Imagem) ou gere a prancha pelo GeoPoint.");
-            return Result.Cancelled;
-        }
-        if (g.CroquiX1 - g.CroquiX0 < 1 || g.CroquiY1 - g.CroquiY0 < 1)
-        {
-            Ui.Info("Prancha de uma versão anterior", "Esta prancha foi gerada antes da galeria de imagens (ou com carimbo próprio). Gere a prancha de novo pelo comando Pranchas para escolher a imagem por aqui.");
-            return Result.Cancelled;
-        }
-        var r = new PaperRect(g.CroquiX0, g.CroquiY0, g.CroquiX1, g.CroquiY1);
-        try
-        {
-            var pt = s.UiDoc.Selection.PickPoint("GeoPoint: clique no espaço da imagem de localização (Esc para cancelar)");
-            var mm = new GeoPoint.Core.Geometry.Vec2(pt.X * 304.8, pt.Y * 304.8);
-            if (!r.Inset(-6).Contains(mm))
-            {
-                Ui.Info("Fora do espaço da imagem", "Clique dentro do espaço da imagem de localização, no carimbo da prancha.");
-                return Result.Cancelled;
-            }
-        }
-        catch (Autodesk.Revit.Exceptions.OperationCanceledException) { return Result.Cancelled; }
-        catch (Autodesk.Revit.Exceptions.InvalidOperationException) { /* sem plano de trabalho: abre a galeria direto */ }
+        GeneratedSheet? g = s.ActiveView is ViewSheet sheet ? p.Sheets.FirstOrDefault(x => x.SheetId == sheet.UniqueId) : null;
+        bool sheetMode = g is not null && g.CroquiX1 - g.CroquiX0 >= 1 && g.CroquiY1 - g.CroquiY0 >= 1;
+        if (g is not null && !sheetMode)
+            Ui.Info("Prancha de uma versão anterior",
+                "Esta prancha foi gerada antes da galeria de imagens (ou com carimbo próprio): a galeria abre para organizar as imagens. " +
+                "Para colocar a imagem nesta prancha, gere-a de novo pelo comando Pranchas.");
 
-        var current = LocationImages.Resolve(p, g.Key, g.FaseId);
-        bool locked = p.SheetImages.TryGetValue(g.Key, out var own) && own.Locked;
-        var gw = new GalleryWindow(p, id => ImageStore.Load(s.Doc, id), r.Width / r.Height, $"{g.Title} (FOLHA {g.Folha:00})", current,
-            LocationImageService.OutlineFor(s, g.LotIds), locked);
+        string faseId = sheetMode ? g!.FaseId : p.Fase.Id;
+        GalleryWindow gw;
+        if (sheetMode)
+        {
+            var r = new PaperRect(g!.CroquiX0, g.CroquiY0, g.CroquiX1, g.CroquiY1);
+            var current = LocationImages.Resolve(p, g.Key, g.FaseId);
+            bool locked = p.SheetImages.TryGetValue(g.Key, out var own) && own.Locked;
+            gw = new GalleryWindow(p, id => ImageStore.Load(s.Doc, id), r.Width / r.Height, $"{g.Title} (FOLHA {g.Folha:00})", current,
+                LocationImageService.OutlineFor(s, g.LotIds), locked);
+        }
+        else
+            gw = new GalleryWindow(p, id => ImageStore.Load(s.Doc, id), 4.0 / 3, "", null, new List<List<GeoPoint.Core.Geometry.Vec2>>(), false);
         if (Ui.ShowDialog(gw, s.MainWindow) != true) return Result.Cancelled;
+        if (gw.Result.Action == GalleryAction.None && !gw.Result.AnyGalleryChange) return Result.Cancelled;
+
         var warnings = new List<string>();
         int n;
-        using (var t = new Transaction(s.Doc, "GeoPoint: imagem de localização"))
+        using (var t = new Transaction(s.Doc, "GeoPoint: galeria de imagens"))
         {
             t.Start();
-            var keysOfFase = p.Sheets.Where(x => x.FaseId == g.FaseId).Select(x => x.Key).ToList();
-            var changed = LocationImageService.Apply(s, gw.Result, g.Key, g.FaseId, keysOfFase);
+            var keysOfFase = p.Sheets.Where(x => x.FaseId == faseId).Select(x => x.Key).ToList();
+            var changed = LocationImageService.Apply(s, gw.Result, sheetMode ? g!.Key : null, faseId, keysOfFase);
             n = LocationImageService.Replace(s, p.Sheets.Where(x => changed.Contains(x.Key)).ToList(), warnings);
             ProjectStore.Save(s.Doc, p);
             t.Commit();
         }
-        string msg = n == 0 ? "Nenhuma prancha mudou." : $"{n} prancha(s) com a imagem atualizada.";
-        if (warnings.Count > 0) Ui.Warn("Imagem de localização", msg + "\n\n" + string.Join("\n", warnings.Distinct().Take(10)));
-        else if (gw.Result.Action != GalleryAction.None || gw.Result.AnyGalleryChange) Ui.Info("Imagem de localização", msg);
+        var r0 = gw.Result;
+        string gal = r0.AnyGalleryChange
+            ? $"Galeria: {r0.Added.Count} imagem(ns) adicionada(s), {r0.Renamed.Count} renomeada(s), {r0.Removed.Count} removida(s). Total: {p.SatelliteImages.Count}.\n"
+            : "";
+        string msg = gal + (n == 0 ? "Nenhuma prancha gerada mudou de imagem." : $"{n} prancha(s) com a imagem atualizada.");
+        if (!sheetMode && r0.Action == GalleryAction.None)
+            msg += "\n\nPara colocar uma imagem numa prancha: abra a prancha e use este botão, ou no comando Pranchas clique no espaço da imagem na prévia.";
+        if (warnings.Count > 0) Ui.Warn("Galeria de imagens", msg + "\n\n" + string.Join("\n", warnings.Distinct().Take(10)));
+        else Ui.Info("Galeria de imagens", msg);
         return Result.Succeeded;
     }
 }

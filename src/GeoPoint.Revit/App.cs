@@ -20,6 +20,8 @@ public sealed class App : IExternalApplication
     public Result OnStartup(UIControlledApplication app)
     {
         AppDomain.CurrentDomain.AssemblyResolve += ResolveLocal;
+        // Erros nas janelas do GeoPoint viram mensagem e registro, sem fechar o Revit.
+        try { Infrastructure.CrashGuard.Install(); } catch { }
         // Sem croqui de satélite: apaga a chave do Google guardada pelas versões 1.5.3–1.5.5.
         Infrastructure.LegacyCredentials.DeleteGoogleKey();
         try
@@ -55,7 +57,7 @@ public sealed class App : IExternalApplication
             Add(docs, "Memorial\nDescritivo", typeof(Commands.CmdMemorial), "Gera o memorial descritivo em Word (lote, desmembramento, remembramento ou loteamento).", IconKind.Memorial);
             Add(docs, "Anuência de\nConfrontantes", typeof(Commands.CmdAnuencia), "Declaração de anuência (limite) para cada confrontante, com a descrição da divisa comum, em Word.", IconKind.Signature);
             Add(docs, "Pranchas", typeof(Commands.CmdPranchas), "Pranchas por situação (atual, proposta, cada lote e total) pelo modelo escolhido: mapa com grade de coordenadas, norte, tabela de coordenadas, coordenada de referência, imagem de satélite (da galeria do projeto) e carimbo.", IconKind.Sheet);
-            Add(docs, "Imagem de\nLocalização", typeof(Commands.CmdImagemLocalizacao), "Com a prancha aberta, clique no espaço da imagem de localização: abre a galeria de imagens de satélite do projeto para escolher, enquadrar (arrastar e aproximar) e, se quiser, desenhar o contorno do lote por cima. Só nesta prancha, em toda a fase ou como imagem geral.", IconKind.Globe);
+            Add(docs, "Galeria de\nImagens", typeof(Commands.CmdImagemLocalizacao), "Galeria de imagens de satélite do projeto: adicione arquivos ou cole o print do satélite, renomeie, remova e escolha a imagem geral. Com uma prancha do GeoPoint aberta, escolha a imagem dessa prancha, enquadre (arrastar e aproximar), desenhe o contorno do lote por cima e aplique só nela, em toda a fase ou como imagem geral.", IconKind.Globe);
             Add(docs, "Exportar\nPDF", typeof(Commands.CmdExportarPdf), "Exporta as pranchas em PDF pelo recurso do próprio Revit, em escala real e no papel de cada prancha (um arquivo só ou um por prancha).", IconKind.Pdf);
             Add(docs, "Google Earth\n/ QGIS", typeof(Commands.CmdExportarSig), "Exporta KMZ/KML (Google Earth) e GeoJSON (QGIS) para conferir sobre imagem de satélite.", IconKind.Globe);
             Add(docs, "Planilha\nExcel", typeof(Commands.CmdExportarExcel), "Exporta lotes, coordenadas e segmentos para Excel.", IconKind.Excel);
@@ -78,6 +80,7 @@ public sealed class App : IExternalApplication
     public Result OnShutdown(UIControlledApplication app)
     {
         AppDomain.CurrentDomain.AssemblyResolve -= ResolveLocal;
+        try { Infrastructure.CrashGuard.Uninstall(); } catch { }
         return Result.Succeeded;
     }
 

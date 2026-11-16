@@ -1,0 +1,28 @@
+Inicia-se a descrição deste perímetro no vértice GEFZ-M-3431, de coordenadas
+Longitude: -51º04'19,091", Latitude: -3º43'34,614" e Altitude: 387,23 m;
+
+deste, segue com azimute de 299º44'44" e distância de 300,38 m, confrontando com
+Chácara Boa Vista, até o vértice GEFZ-P-3432, de coordenadas Longitude:
+-51º04'27,543", Latitude: -3º43'29,762" e Altitude: 329,79 m;
+
+deste, segue com azimute de 24º08'47" e distância de 296,53 m, confrontando com
+Travessa Sete, até o vértice GEFZ-M-3433, de coordenadas Longitude: -51º04'23,612",
+Latitude: -3º43'20,953" e Altitude: 516,17 m;
+
+deste, segue com azimute de 39º41'59" e distância de 167,43 m, confrontando com
+Chácara Boa Vista, até o vértice GEFZ-P-3434, de coordenadas Longitude:
+-51º04'20,146", Latitude: -3º43'16,759" e Altitude: 163,91 m;
+
+deste, segue com azimute de 127º39'33" e distância de 158,72 m, confrontando com
+Avenida Central, até o vértice GEFZ-M-3435, de coordenadas Longitude: -51º04'16,074",
+Latitude: -3º43'19,916" e Altitude: 181,85 m;
+
+deste, segue com azimute de 111º04'04" e distância de 144,84 m, confrontando com Lote
+12, até o vértice GEFZ-P-3436, de coordenadas Longitude: -51º04'11,694", Latitude:
+-3º43'21,611" e Altitude: 165,92 m;
+
+deste, segue com azimute de 209º44'49" e distância de 460,02 m, confrontando com
+Avenida Central, até o vértice GEFZ-M-3431, ponto inicial da descrição deste
+perímetro. Todas as coordenadas aqui descritas estão georreferenciadas ao Sistema
+Geodésico Brasileiro, a partir das coordenadas geodésicas, datum SIRGAS2000. Os
+azimutes e distâncias foram calculados pelo método geodésico.
