@@ -110,6 +110,8 @@ public partial class PranchasWindow : Window
         Coordenadas.IsChecked = st.Coordenadas;
         Vias.IsChecked = st.Vias;
         Norte.IsChecked = st.NorteParaCima;
+        ModoPranchas.IsChecked = st.ComPranchas;
+        ModoVistas.IsChecked = !st.ComPranchas;
         _st = st;
         LoadTemplates(st.Template, st.Orientation == 1 ? SheetOrientation.Paisagem : SheetOrientation.Retrato);
         Coords.SelectedIndex = (int)st.SistemaCoordenadas;
@@ -126,6 +128,8 @@ public partial class PranchasWindow : Window
     public Func<SheetSpec?, string>? ImageSummary { get; set; }
 
     public PranchasAction Action { get; private set; }
+    /// <summary>Só as vistas de cada situação, sem pranchas.</summary>
+    public bool ViewsOnly => ModoVistas.IsChecked == true;
     public OperationRecord? Operation => (Source.SelectedItem as SourceChoice)?.Operation;
     public List<LotRecord> SelectedLots => _rows.Where(r => r.Selected).Select(r => r.Lot).ToList();
     public List<SheetSpec> Specs { get; private set; } = new();
@@ -144,6 +148,7 @@ public partial class PranchasWindow : Window
         st.Anotacoes = Anotacoes.IsChecked == true; st.Hachuras = Hachuras.IsChecked == true; st.Quadro = Quadro.IsChecked == true;
         st.Coordenadas = Coordenadas.IsChecked == true;
         st.Vias = Vias.IsChecked == true; st.NorteParaCima = Norte.IsChecked == true;
+        st.ComPranchas = !ViewsOnly;
         if (SelectedTemplate is { } t) { st.Template = t.Name; st.Orientation = t.Orientation == SheetOrientation.Paisagem ? 1 : 0; }
         st.AutoScale = Scale.SelectedIndex <= 0;
         if (!st.AutoScale && SelectedTemplate is { } t2) st.Scale = t2.ScaleList[Math.Min(Scale.SelectedIndex - 1, t2.ScaleList.Count - 1)];
@@ -179,9 +184,15 @@ public partial class PranchasWindow : Window
         if (_sheetRows.Count > 0 && SheetsGrid.SelectedItem is null) SheetsGrid.SelectedIndex = 0;
         ShowPreview();
         int edits = _sheetRows.Count(r => r.Edited);
+        bool views = ViewsOnly;
+        // Só as vistas: tabelas são da folha; as pranchas existentes não são tocadas.
+        Quadro.IsEnabled = Coordenadas.IsEnabled = !views;
+        OkButton.Content = views ? "Gerar vistas" : "Gerar pranchas";
         Summary.Text = Specs.Count == 0
-            ? "Nenhuma prancha: marque as situações e os lotes."
-            : $"{Specs.Count} prancha(s)." + (edits > 0 ? $"  ⚠ {edits} já existe(m) e foi(ram) EDITADA(S) por você: escolha em 'Se já existir' (padrão: manter a atual)." : "");
+            ? "Nenhuma situação: marque as situações e os lotes."
+            : views
+                ? $"{Specs.Count} vista(s), sem pranchas (as pranchas existentes não são alteradas). A tabela abaixo mostra as situações que viram vistas."
+                : $"{Specs.Count} prancha(s)." + (edits > 0 ? $"  ⚠ {edits} já existe(m) e foi(ram) EDITADA(S) por você: escolha em 'Se já existir' (padrão: manter a atual)." : "");
         OkButton.IsEnabled = Specs.Count > 0;
     }
 
@@ -292,7 +303,8 @@ public partial class PranchasWindow : Window
     {
         SaveRows();
         if (Specs.Count == 0) return;
-        var replacing = _sheetRows.Where(r => r.Exists && r.Edited && r.Replace == SheetReplace.Substituir).ToList();
+        // Só as vistas: as pranchas existentes não são tocadas (nada a substituir).
+        var replacing = ViewsOnly ? new List<SheetRow>() : _sheetRows.Where(r => r.Exists && r.Edited && r.Replace == SheetReplace.Substituir).ToList();
         if (replacing.Count > 0 && MessageBox.Show(
                 "Estas pranchas foram editadas por você e serão SUBSTITUÍDAS (as edições se perdem):\n\n" + string.Join("\n", replacing.Select(r => "• " + r.Title)) + "\n\nContinuar?",
                 "GeoPoint", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;

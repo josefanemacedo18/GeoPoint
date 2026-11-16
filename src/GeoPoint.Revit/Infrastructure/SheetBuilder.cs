@@ -26,6 +26,11 @@ public sealed class SheetBuildOptions
     public Func<SheetSpec, (string Id, byte[] Jpeg, SheetImageChoice Choice)?>? ImageFor { get; set; }
     public string NumberPrefix { get; set; } = "GP";
     public string Font { get; set; } = "Arial";
+    /// <summary>
+    /// Só as vistas de cada situação, sem prancha: cópia da planta recortada, na escala, com anotações, hachuras, vias e
+    /// edificações. Ficam de fora o que é da folha: carimbo, grade de coordenadas, tabela, norte e imagem de satélite.
+    /// </summary>
+    public bool ViewsOnly { get; set; }
 }
 
 /// <summary>
@@ -58,6 +63,8 @@ public sealed class SheetBuilder
     public IReadOnlyList<string> Created => _created;
     /// <summary>Pranchas mantidas (já existiam e foram preservadas).</summary>
     public int Kept { get; private set; }
+    /// <summary>Vistas criadas no modo "só as vistas".</summary>
+    public List<View> Views { get; } = new();
 
     private static XYZ P(double xMm, double yMm) => new(xMm / Ft, yMm / Ft, 0);
 
@@ -65,6 +72,18 @@ public sealed class SheetBuilder
     public List<ViewSheet> Build(IReadOnlyList<SheetSpec> specs)
     {
         var sheets = new List<ViewSheet>();
+        if (_o.ViewsOnly)
+        {
+            // Só as vistas: as pranchas que já existem não são tocadas.
+            foreach (var spec in specs)
+                try { BuildOne(spec, null, 0); }
+                catch (Exception ex)
+                {
+                    Logger.Error("Vista " + spec.Title, ex);
+                    Warnings.Add($"{spec.Title}: {ex.Message}");
+                }
+            return sheets;
+        }
         foreach (var spec in specs)
         {
             var old = SheetRegistry.Find(_s, spec.Key);
@@ -79,8 +98,7 @@ public sealed class SheetBuilder
                     SheetRegistry.Delete(_s, old);
                 }
                 if (folha <= 0) folha = _s.Project.Sheets.Select(g => g.Folha).DefaultIfEmpty(0).Max() + 1;
-                var sheet = BuildOne(spec, number, folha);
-                sheets.Add(sheet);
+                if (BuildOne(spec, number, folha) is { } sheet) sheets.Add(sheet);
             }
             catch (Exception ex)
             {
@@ -118,7 +136,8 @@ public sealed class SheetBuilder
         return new RefCallout(v.Internal, v.Name, SheetTexts.CalloutLines(ctx.Coords, fmt, def, v.Internal));
     }
 
-    private ViewSheet BuildOne(SheetSpec spec, string? number, int folha)
+    /// <summary>Uma prancha (ou, no modo "só as vistas", só a vista: devolve null).</summary>
+    private ViewSheet? BuildOne(SheetSpec spec, string? number, int folha)
     {
         var tpl = _o.Template;
         var st = tpl.Styles;
@@ -132,7 +151,8 @@ public sealed class SheetBuilder
 
         // ---- Tabela dentro do mapa: coordenadas (um lote) ou quadro de áreas (vários lotes).
         SheetTable? table = null;
-        if (tpl.TablesInsideMap)
+        bool viewsOnly = _o.ViewsOnly;
+        if (tpl.TablesInsideMap && !viewsOnly)
         {
             try
             {
@@ -150,6 +170,8 @@ public sealed class SheetBuilder
                 Warnings.Add($"{spec.Title}: o texto da tabela foi reduzido para {table.TextMm:0.0} mm para caber.");
         }
         var northRect = SheetRenderer.NorthRect(tpl);
+        // Só a vista: sem norte nem tabela da folha, o desenho fica centrado no recorte.
+        PaperRect? northSpace = viewsOnly ? null : northRect;
 
         // ---- Vista: cópia da planta original (o desenho original não é alterado).
         var view = DuplicateView(spec, lots);
@@ -160,7 +182,7 @@ public sealed class SheetBuilder
         double minX = local3.Min(p => p.X), maxX = local3.Max(p => p.X), minY = local3.Min(p => p.Y), maxY = local3.Max(p => p.Y);
         double wM = (maxX - minX) * RvtUnits.FtToM, hM = (maxY - minY) * RvtUnits.FtToM;
         double marginMm = tpl.DrawingMarginMm + (_o.Vias && _s.Project.Vias.Count > 0 ? 8 : 0);
-        var fit = MapFit.Fit(map, wM, hM, marginMm, table is null ? null : (table.Width, table.Height), northRect, tpl.TableCorner, tpl.ScaleList, _o.Scale);
+        var fit = MapFit.Fit(map, wM, hM, marginMm, table is null ? null : (table.Width, table.Height), northSpace, tpl.TableCorner, tpl.ScaleList, _o.Scale);
         if (!fit.Fits)
             Warnings.Add(_o.Scale > 0
                 ? $"{spec.Title}: na escala 1:{fit.Scale} o desenho não cabe livre de tabela/norte; use 'Automática' ou outra escala."
@@ -193,17 +215,26 @@ public sealed class SheetBuilder
         double mPerMm = scale / 1000.0;
         Obb Obst(PaperRect r) => Obb.Of(ToModel(r.Center), viewAngle, r.Width / 2 * mPerMm, r.Height / 2 * mPerMm);
 
+        // ---- Só a vista (sem prancha): o desenho na vista e pronto.
+        if (viewsOnly)
+        {
+            DrawOnView(spec, view, lots, ctx, def, map, null, Obst, textObstacles);
+            _doc.Regenerate();
+            Views.Add(view);
+            return null;
+        }
+
         // ---- Prancha (o número entra no carimbo).
         var sheet = CreateSheet(spec, number);
         _created.Add(sheet.UniqueId);
         bool customTitleBlock = !string.IsNullOrWhiteSpace(_s.Settings.Sheets.TitleBlock) && TitleBlockId() != ElementId.InvalidElementId;
 
+        // ---- Desenho na vista: vias, hachuras, edificações e anotações (desviando do norte e da tabela da folha).
+        var reserved = new List<PaperRect> { northRect };
+        if (fit.Table is PaperRect tbr) reserved.Add(tbr);
+        var buildings = DrawOnView(spec, view, lots, ctx, def, map, reserved, Obst, textObstacles);
+
         // ---- Conteúdo do carimbo e elementos da folha.
-        // Edificações dos lotes da prancha (área edificada).
-        var buildings = new List<GeoPoint.Core.Urban.BuildingReport>();
-        foreach (var l in lots)
-            foreach (var b in GeoPoint.Core.Urban.BuildingAnalyzer.Of(_s.Project, l))
-                try { buildings.Add(GeoPoint.Core.Urban.BuildingAnalyzer.Analyze(ctx.Report(l), b)); } catch { }
         var content = SheetContent.Build(_ctx, _fmt, spec, lots, def, vias: _o.Vias && _s.Project.Vias.Count > 0, edificacoes: buildings.Count > 0);
         var images = new HashSet<string>();
         // Espaço da imagem de localização: a imagem de satélite da prancha (dela, da fase ou a geral), ou em branco.
@@ -216,40 +247,6 @@ public sealed class SheetBuilder
         string? logo = null;
         try { logo = SheetTemplateLibrary.LogoFile(tpl); } catch (Exception ex) { Logger.Error("Logomarca", ex); Warnings.Add("Logomarca do escritório: " + ex.Message); }
         if (logo is not null) images.Add("logo");
-        if (_o.Vias && _s.Project.Vias.Count > 0)
-            foreach (var w in StreetDrawer.Draw(_doc, view, _ctx, lots, _s.Settings.Streets, _o.Font)) Warnings.Add($"{spec.Title}: {w}");
-        if (spec.Hatch)
-            Hatcher.Apply(_doc, view, lots, l => spec.Colors.TryGetValue(l.Id, out int c) ? c : 0);
-        double annoMm = st.DesenhoMm > 0 ? st.DesenhoMm : _s.Settings.Annotation.TextSizeMm;
-        if (buildings.Count > 0)
-            BuildingDrawer.Draw(_doc, view, buildings, _fmt, annoMm, string.IsNullOrWhiteSpace(st.Font) ? _o.Font : st.Font, setbacks: spec.Detailed);
-        if (_o.Anotacoes)
-        {
-            var obstacles = new List<Obb> { Obst(northRect) };
-            var buildingBoxes = BuildingDrawer.LabelBoxes(buildings, view, annoMm, _fmt).ToList();
-            obstacles.AddRange(buildingBoxes);
-            textObstacles.AddRange(buildingBoxes);
-            if (fit.Table is PaperRect tbr) obstacles.Add(Obst(tbr));
-            obstacles.AddRange(SheetRenderer.OutsideMap(map).Select(Obst));
-            var fails = new List<string>();
-            var ao = Annotator.Options.From(_s.Settings.Annotation);
-            if (st.DesenhoMm > 0) ao.TextMm = st.DesenhoMm;
-            ao.Font = string.IsNullOrWhiteSpace(st.Font) ? ao.Font : st.Font;
-            ao.Edges = true;
-            ao.Confrontantes = true;
-            ao.Area = true;
-            if (spec.Detailed) { ao.Vertices = true; ao.EdgeAngle = true; ao.Dots = true; }
-            else { ao.Vertices = false; ao.EdgeAngle = false; ao.Dots = true; }   // geral: só os pontos dos vértices
-            var callCtx = ctx;
-            // Prancha geral (vários lotes): visão do conjunto, sem coordenadas de referência.
-            Func<LotReport, RefCallout?>? refc = spec.Detailed ? r => Callout(r, callCtx, _fmt, def) : null;
-            Annotator.Annotate(_doc, view, lots, ctx, _fmt, ao, fails, null, obstacles, refCallout: refc);
-            Warnings.AddRange(fails.Select(f => $"{spec.Title}: {f}"));
-            if (Annotator.LastConflicts > 0)
-                Warnings.Add($"{spec.Title}: {Annotator.LastConflicts} texto(s) sem espaço livre (ficaram na posição de menor conflito) – confira e arraste se precisar.");
-            if (Annotator.LastOversized > 0)
-                Warnings.Add($"{spec.Title}: {Annotator.LastOversized} texto(s) ficaram maiores no Revit que o previsto (a fonte \"{_o.Font}\" pode ser mais larga que o Arial) – confira se encostam em outros.");
-        }
         // ---- Caixas dos textos do desenho (no papel): a grade não passa por elas.
         var textHoles = new List<PaperRect>();
         if (_o.Anotacoes)
@@ -301,6 +298,54 @@ public sealed class SheetBuilder
             g.CroquiIds.AddRange(_imgIds);
         }
         return sheet;
+    }
+
+    /// <summary>
+    /// Desenho na cópia da planta: vias, hachuras, edificações e anotações. Os textos desviam das áreas reservadas da folha
+    /// (norte, tabela) e ficam dentro do recorte. Devolve as edificações dos lotes (para o carimbo).
+    /// </summary>
+    private List<GeoPoint.Core.Urban.BuildingReport> DrawOnView(SheetSpec spec, View view, List<LotRecord> lots, ProjectContext ctx, CrsDef def,
+        PaperRect map, IEnumerable<PaperRect>? reserved, Func<PaperRect, Obb> obst, List<Obb> textObstacles)
+    {
+        var st = _o.Template.Styles;
+        // Edificações dos lotes (área edificada).
+        var buildings = new List<GeoPoint.Core.Urban.BuildingReport>();
+        foreach (var l in lots)
+            foreach (var b in GeoPoint.Core.Urban.BuildingAnalyzer.Of(_s.Project, l))
+                try { buildings.Add(GeoPoint.Core.Urban.BuildingAnalyzer.Analyze(ctx.Report(l), b)); } catch { }
+        if (_o.Vias && _s.Project.Vias.Count > 0)
+            foreach (var w in StreetDrawer.Draw(_doc, view, _ctx, lots, _s.Settings.Streets, _o.Font)) Warnings.Add($"{spec.Title}: {w}");
+        if (spec.Hatch)
+            Hatcher.Apply(_doc, view, lots, l => spec.Colors.TryGetValue(l.Id, out int c) ? c : 0);
+        double annoMm = st.DesenhoMm > 0 ? st.DesenhoMm : _s.Settings.Annotation.TextSizeMm;
+        if (buildings.Count > 0)
+            BuildingDrawer.Draw(_doc, view, buildings, _fmt, annoMm, string.IsNullOrWhiteSpace(st.Font) ? _o.Font : st.Font, setbacks: spec.Detailed);
+        if (_o.Anotacoes)
+        {
+            var obstacles = (reserved ?? Enumerable.Empty<PaperRect>()).Select(obst).ToList();
+            var buildingBoxes = BuildingDrawer.LabelBoxes(buildings, view, annoMm, _fmt).ToList();
+            obstacles.AddRange(buildingBoxes);
+            textObstacles.AddRange(buildingBoxes);
+            obstacles.AddRange(SheetRenderer.OutsideMap(map).Select(obst));
+            var fails = new List<string>();
+            var ao = Annotator.Options.From(_s.Settings.Annotation);
+            if (st.DesenhoMm > 0) ao.TextMm = st.DesenhoMm;
+            ao.Font = string.IsNullOrWhiteSpace(st.Font) ? ao.Font : st.Font;
+            ao.Edges = true;
+            ao.Confrontantes = true;
+            ao.Area = true;
+            if (spec.Detailed) { ao.Vertices = true; ao.EdgeAngle = true; ao.Dots = true; }
+            else { ao.Vertices = false; ao.EdgeAngle = false; ao.Dots = true; }   // geral: só os pontos dos vértices
+            // Vista geral (vários lotes): visão do conjunto, sem coordenadas de referência.
+            Func<LotReport, RefCallout?>? refc = spec.Detailed ? r => Callout(r, ctx, _fmt, def) : null;
+            Annotator.Annotate(_doc, view, lots, ctx, _fmt, ao, fails, null, obstacles, refCallout: refc);
+            Warnings.AddRange(fails.Select(f => $"{spec.Title}: {f}"));
+            if (Annotator.LastConflicts > 0)
+                Warnings.Add($"{spec.Title}: {Annotator.LastConflicts} texto(s) sem espaço livre (ficaram na posição de menor conflito) – confira e arraste se precisar.");
+            if (Annotator.LastOversized > 0)
+                Warnings.Add($"{spec.Title}: {Annotator.LastOversized} texto(s) ficaram maiores no Revit que o previsto (a fonte \"{_o.Font}\" pode ser mais larga que o Arial) – confira se encostam em outros.");
+        }
+        return buildings;
     }
 
     /// <summary>Direção do norte (o mesmo dos azimutes) no papel, pela orientação da vista.</summary>

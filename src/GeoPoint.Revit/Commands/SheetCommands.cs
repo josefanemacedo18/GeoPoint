@@ -185,13 +185,14 @@ public sealed class CmdPranchas : CommandBase
                 lot.RefY = pt.Y;
             }
         var template = w.SelectedTemplate ?? SheetTemplateLibrary.Find(st.Template);
+        bool viewsOnly = w.ViewsOnly;
 
-        // Conferência antes de emitir: dados que faltam ou diferem da matrícula.
+        // Conferência antes de emitir: dados que faltam ou diferem da matrícula (são do carimbo: só com pranchas).
         var pend = new List<string>();
         var pendLots = new HashSet<string>();
         var fmtC = new ValueFormatter(s.Settings.Format);
         var defC = s.Settings.SheetCrs();
-        foreach (var sp in specs)
+        foreach (var sp in viewsOnly ? new List<SheetSpec>() : specs)
         {
             var ls = sp.LotIds.Select(s.Project.FindLot).Where(l => l is not null).Select(l => l!).ToList();
             try
@@ -202,7 +203,8 @@ public sealed class CmdPranchas : CommandBase
             }
             catch { }
         }
-        foreach (var warn in template.Validate()) pend.Add("Modelo de prancha: " + warn);
+        if (!viewsOnly)
+            foreach (var warn in template.Validate()) pend.Add("Modelo de prancha: " + warn);
         pend = pend.Distinct().ToList();
         if (pend.Count > 0)
         {
@@ -220,7 +222,7 @@ public sealed class CmdPranchas : CommandBase
             if (res == TaskDialogResult.CommandLink3) LotServices.SelectSources(s, pendLots.Select(s.Project.FindLot).Where(l => l is not null).Select(l => l!));
             if (res != TaskDialogResult.CommandLink1) return false;
         }
-        if (s.Project.Fases.Count > 1)
+        if (s.Project.Fases.Count > 1 && !viewsOnly)
             foreach (var sp in specs) sp.Subtitle = string.Join(" – ", new[] { sp.Subtitle, s.Project.Fase.Label.ToUpperInvariant() }.Where(x => x.Length > 0));
         var chosenOp = w.Operation;
 
@@ -230,15 +232,28 @@ public sealed class CmdPranchas : CommandBase
             Scale = st.AutoScale ? 0 : st.Scale,
             Anotacoes = st.Anotacoes, Vias = st.Vias, NorteParaCima = st.NorteParaCima,
             ImageFor = sp => LocationImageService.ForSheet(s, sp.Key, s.Project.Fase.Id), NumberPrefix = st.NumberPrefix, Font = s.Settings.Annotation.Font,
+            ViewsOnly = viewsOnly,
         });
         List<ViewSheet> sheets;
-        using (var t = new Transaction(s.Doc, "GeoPoint: pranchas"))
+        using (var t = new Transaction(s.Doc, viewsOnly ? "GeoPoint: vistas das situações" : "GeoPoint: pranchas"))
         {
             t.Start();
             sheets = builder.Build(specs);
             if (chosenOp is not null) chosenOp.GeneratedIds.AddRange(builder.Created);
             ProjectStore.Save(s.Doc, s.Project);
             t.Commit();
+        }
+        if (viewsOnly)
+        {
+            // Só as vistas: abre a primeira e lista os nomes (ficam no Navegador de Projeto, em Plantas).
+            var views = builder.Views;
+            if (views.Count > 0)
+                try { s.UiDoc.ActiveView = views[0]; } catch { }
+            string vmsg = $"{views.Count} vista(s) criada(s), sem pranchas:\n• " + string.Join("\n• ", views.Select(v => v.Name)) +
+                          "\n\nElas ficam no Navegador de Projeto (Plantas). Para colocá-las em pranchas depois, use 'Pranchas' com 'Vistas e pranchas' (que cria cópias novas) ou arraste a vista para uma folha sua.";
+            if (builder.Warnings.Count > 0) Ui.Warn("Vistas geradas com avisos", vmsg + "\n\n" + string.Join("\n", builder.Warnings.Distinct().Take(20)));
+            else Ui.Info("Vistas geradas", vmsg);
+            return views.Count > 0;
         }
         if (sheets.Count > 0)
         {

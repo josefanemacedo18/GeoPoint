@@ -25,6 +25,11 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 
 ## Novidades da versão 1.10 – o desenho só sai direto quando confere
 
+**Vistas das situações sem pranchas (atualização 1.10)**
+- Desmembrou ou remembrou e quer só as vistas de cada situação? Na janela de *Pranchas*, em **Gerar**, escolha **Só as vistas de cada
+  situação (sem pranchas)**: o botão vira *Gerar vistas* e nenhuma prancha é criada. As pranchas continuam opcionais – escolha
+  *Vistas e pranchas* quando quiser emiti-las.
+
 **Precisão do próprio documento**
 - Cada número lido guarda a precisão com que foi escrito, pelas casas decimais:
   - "12,00 metros" → centímetro;
@@ -623,6 +628,11 @@ As edificações aparecem no **memorial** (seção *ÁREA EDIFICADA* com as dist
 **Anuência de Confrontantes** – declaração para cada confrontante, com a descrição da divisa comum e assinaturas.
 
 **Pranchas** – cada prancha usa uma **cópia** da planta (o desenho original não é alterado):
+- **Gerar** (no topo das opções): *Vistas e pranchas* (padrão) ou **Só as vistas de cada situação (sem pranchas)**. Só as vistas cria as
+  cópias da planta de cada situação marcada (atual, proposta, cada lote), recortadas e na escala, com anotações, hachuras, vias e
+  edificações – sem carimbo, grade de coordenadas, tabela, norte e imagem de satélite, que são da folha. As pranchas existentes não são
+  alteradas. As vistas ficam no Navegador de Projeto (*Plantas*, nome `GP - <situação> - <lotes>`); a escolha fica guardada para a
+  próxima vez. No Desmembramento e no Remembramento, a opção *Gerar as vistas das situações* abre esta janela, onde você escolhe;
 - *Situação atual* e *Situação proposta*, juntas e/ou **cada lote individualmente**; sem operação: planta de situação dos lotes marcados;
 - **modelo de prancha** escolhido na janela (botão *Modelos…* abre a biblioteca, ver abaixo);
 - **mapa**: a vista é recortada exatamente na área do mapa do modelo, na **escala que melhor cabe** (a menor da lista do modelo em que o

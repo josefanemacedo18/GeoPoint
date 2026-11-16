@@ -97,6 +97,13 @@
             <!-- Rolagem: em telas mais baixas, as opções da folha não ficam cortadas. -->
             <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel>
+                <GroupBox Header="Gerar">
+                    <StackPanel>
+                        <RadioButton x:Name="ModoPranchas" GroupName="Modo" Content="Vistas e pranchas (cada vista colocada numa prancha do modelo)" Click="Changed"/>
+                        <RadioButton x:Name="ModoVistas" GroupName="Modo" Content="Só as vistas de cada situação (sem pranchas)" Click="Changed"
+                                     ToolTip="Cria só as cópias da planta de cada situação, recortadas e na escala, com anotações, hachuras, vias e edificações. Sem carimbo, grade, tabela, norte e imagem de satélite (são da folha). As pranchas existentes não são alteradas."/>
+                    </StackPanel>
+                </GroupBox>
                 <GroupBox Header="Situações">
                     <StackPanel>
                         <CheckBox x:Name="Atual" Content="Situação atual (todos os lotes juntos)" Click="Changed"/>

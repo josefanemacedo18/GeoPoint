@@ -129,7 +129,8 @@
                                 <Label Content="  Numeração inicial:"/>
                                 <TextBox x:Name="StartNumber" Width="60" Text="01" TextChanged="Any_Text"/>
                             </StackPanel>
-                            <CheckBox x:Name="Sheets" IsChecked="True" Content="Gerar pranchas (situação atual e proposta) ao registrar"/>
+                            <CheckBox x:Name="Sheets" IsChecked="True" Content="Gerar as vistas das situações (atual e proposta) ao registrar – com ou sem pranchas"
+                                      ToolTip="Ao registrar abre a janela de Pranchas: em 'Gerar' escolha 'Vistas e pranchas' ou 'Só as vistas de cada situação (sem pranchas)'."/>
                             <StackPanel Orientation="Horizontal">
                                 <Label Content="Observações:"/>
                                 <TextBox x:Name="Notes" Width="290"/>

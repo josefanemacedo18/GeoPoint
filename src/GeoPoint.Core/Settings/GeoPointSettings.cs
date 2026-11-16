@@ -199,6 +199,8 @@ public sealed class SheetSettings
     public bool Vias { get; set; } = true;
     public bool IndividualAtual { get; set; }
     public bool IndividualProposta { get; set; } = true;
+    /// <summary>Colocar cada vista de situação numa prancha (false = só as vistas, sem pranchas).</summary>
+    public bool ComPranchas { get; set; } = true;
     /// <summary>Quadro de coordenadas nas pranchas de um lote só.</summary>
     public bool Coordenadas { get; set; } = true;
     /// <summary>0 = retrato, 1 = paisagem (folha A4).</summary>
