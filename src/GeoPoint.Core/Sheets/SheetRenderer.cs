@@ -66,6 +66,16 @@ public static class SheetRenderer
         return MapFit.CornerRect(m, t.NorthCorner, s * 0.75, s * 1.15, 2.5);
     }
 
+    /// <summary>Espaço da imagem de localização na folha (mm): o bloco do croqui sem o cabeçalho e com 1,2 mm de margem; null = sem.</summary>
+    public static PaperRect? CroquiRect(SheetTemplate t)
+    {
+        var b = t.Block(SheetBlockKind.Croqui);
+        if (b is null || b.W <= 2 || b.H <= 2) return null;
+        var r = b.Rect;
+        if (b.Title.Length > 0) r = new PaperRect(r.X0, r.Y0, r.X1, r.Y1 - t.Styles.CabecalhoMm * 2.15);
+        return r.Inset(1.2);
+    }
+
     /// <summary>Faixas em volta do mapa (obstáculos para as anotações não saírem do mapa).</summary>
     public static List<PaperRect> OutsideMap(PaperRect m, double t = 80) => new()
     {

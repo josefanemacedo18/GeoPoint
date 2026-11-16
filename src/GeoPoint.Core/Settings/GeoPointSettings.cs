@@ -236,6 +236,14 @@ public sealed class KmlSettings
     public bool OneFilePerLot { get; set; } = true;
 }
 
+/// <summary>Leitura de certidões e memoriais: correções de nomes aprendidas.</summary>
+public sealed class ReadingSettings
+{
+    public List<GeoPoint.Core.Documents.LearnedFix> Fixes { get; set; } = new();
+    /// <summary>Avisar da qualidade da foto antes do OCR.</summary>
+    public bool CheckPhotoQuality { get; set; } = true;
+}
+
 public sealed class GeoPointSettings
 {
     public int Version { get; set; } = 4;
@@ -248,6 +256,7 @@ public sealed class GeoPointSettings
     public KmlSettings Kml { get; set; } = new();
     public StreetSettings Streets { get; set; } = new();
     public SheetSettings Sheets { get; set; } = new();
+    public ReadingSettings Reading { get; set; } = new();
     public List<RuleProfile> RuleProfiles { get; set; } = RuleProfile.Defaults();
     public string DefaultRuleProfile { get; set; } = "Lei 6.766/79 (mínimos federais)";
     public string LastExportFolder { get; set; } = "";
@@ -356,6 +365,8 @@ public static class SettingsStore
         s.Kml ??= new();
         s.Streets ??= new();
         s.Sheets ??= new();
+        s.Reading ??= new();
+        s.Reading.Fixes ??= new();
         s.Streets.Largura = Math.Clamp(s.Streets.Largura, 1, 200);
         s.Streets.Calcada = Math.Clamp(s.Streets.Calcada, 0, 50);
         s.Streets.RaioEsquina = Math.Clamp(s.Streets.RaioEsquina, 0, 50);

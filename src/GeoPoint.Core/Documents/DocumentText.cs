@@ -82,7 +82,20 @@ public static class OcrCleanup
         s = s.Replace('’', '\'').Replace('‘', '\'').Replace('´', '\'').Replace('`', '\'').Replace('′', '\'')
              .Replace('”', '"').Replace('“', '"').Replace('″', '"').Replace("''", "\"");
         // Símbolo de grau lido como "o", "*" ou "º" com espaços: "268o15'23"" → "268°15'23"".
-        s = Regex.Replace(s, @"(?<=\b\d{1,3})\s*[o*ºª]\s*(?=\d{1,2}\s*')", "°");
+        s = Regex.Replace(s, @"(?<=\b\d{1,3})\s*[o*ºª]\s*(?=\d{1,2}\s*['’′])", "°");
+        // Marca dos segundos repetida ("38"”") ou lida como aspa simples ("292°12'38' e 12,00m").
+        s = Regex.Replace(s, @"(?<=\d)[""”″]{2,}", "\"");
+        s = Regex.Replace(s, @"(\d{1,3}\s*[°º]\s*\d{1,2}\s*['’′]\s*\d{1,2}(?:[.,]\d+)?)['’′](?!\d)", "$1\"");
+        // Grau lido como aspas ou dois-pontos: "-47"22'50,886"" e "47:22'51,247"" → "47°22'…" (sempre seguido de minutos e ').
+        s = Regex.Replace(s, @"(?<![\d:])(\d{1,3})[""”″:](?=\d{2}\s*['’′])", "$1°");
+        // "MC-45"W": o meridiano central com aspas no lugar do grau.
+        s = Regex.Replace(s, @"(?<=\b(?:MC|mc)\s*[-:]?\s*-?\d{2})[""”″](?=\s*[WO]\b)", "°");
+        // Ângulo sem os símbolos de grau e de minuto: "1121238"" → "112°12'38"" (minutos e segundos sempre com 2 dígitos).
+        s = Regex.Replace(s, @"(?<![\d.,°º'’])(\d{1,3})(\d{2})(\d{2}(?:[.,]\d+)?)(?=[""”″])", m =>
+            ValidDms(m.Groups[1].Value, m.Groups[2].Value, m.Groups[3].Value) ? $"{m.Groups[1].Value}°{m.Groups[2].Value}'{m.Groups[3].Value}" : m.Value);
+        // Grau perdido antes dos minutos: "-4722'51,554"" → "-47°22'51,554"".
+        s = Regex.Replace(s, @"(?<![\d.,°º'’])(\d{1,3})(\d{2})(?=['’′]\s*\d)", m =>
+            ValidDms(m.Groups[1].Value, m.Groups[2].Value, "0") ? $"{m.Groups[1].Value}°{m.Groups[2].Value}" : m.Value);
         // Letras no meio de números: O/o → 0, l/I/| → 1 (ex.: "9.298.53l,391", "2O,00").
         s = Regex.Replace(s, @"(?<=\d[.,]?)[Oo](?=[\d.,]*\d)", "0");
         s = Regex.Replace(s, @"(?<=\d[.,]?)[lI|](?=[\d.,]*\d)", "1");
@@ -91,10 +104,18 @@ public static class OcrCleanup
         // Ângulo com espaços entre as partes: "268° 15' 23"" → "268°15'23"".
         s = Regex.Replace(s, @"(\d{1,3})\s*°\s*(\d{1,2})\s*'\s*(\d{1,2}(?:[.,]\d+)?)\s*""", "$1°$2'$3\"");
         s = Regex.Replace(s, @"(\d{1,3})\s*°\s*(\d{1,2})\s*'(?!\d)", "$1°$2'");
-        // Metro quadrado.
+        // Metro quadrado ("m2", "m^2" e o "²" lido como "?").
         s = Regex.Replace(s, @"\bm\s*2\b|\bm\^2\b", "m²");
+        s = Regex.Replace(s, @"(?<=\d\s?)m\?", "m²");
+        // Barra solta dentro do número ("12,/00m") e "&" no lugar de "e" ("azimutes & distâncias").
+        s = Regex.Replace(s, @"(?<=\d[.,])/(?=\d)", "");
+        s = Regex.Replace(s, @"(?<=\s)&(?=\s)", "e");
         return s;
     }
+
+    private static bool ValidDms(string d, string m, string s) =>
+        int.TryParse(d, out int dd) && dd <= 360 && int.TryParse(m, out int mm) && mm < 60 &&
+        double.TryParse(s.Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double ss) && ss < 60;
 
     /// <summary>Valor numérico de um texto de documento (número com vírgula/ponto ou ângulo °'"); null = não é número.</summary>
     public static double? Number(string text)

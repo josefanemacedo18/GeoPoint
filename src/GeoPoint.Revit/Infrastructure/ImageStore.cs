@@ -143,13 +143,19 @@ public static class ImageCodec
     /// Arquivo JPEG recortado na proporção do espaço da prancha, na pasta de cache (o Revit insere a imagem a partir de um arquivo e
     /// guarda uma cópia no modelo). Mesmo id e mesma proporção = mesmo arquivo (o tipo de imagem do Revit é reaproveitado).
     /// </summary>
-    public static string CroppedFile(byte[] jpeg, string id, double aspect)
+    public static string CroppedFile(byte[] jpeg, string id, double aspect, GeoPoint.Core.Model.SheetImageChoice? choice = null)
     {
         string folder = Path.Combine(SettingsStore.DefaultFolder, "imagens");
         Directory.CreateDirectory(folder);
-        string path = Path.Combine(folder, $"localizacao-{id[..Math.Min(12, id.Length)]}-{Math.Round(aspect * 1000):0}.jpg");
+        var c = choice ?? new GeoPoint.Core.Model.SheetImageChoice();
+        string key = FormattableString.Invariant($"{Math.Round(aspect * 1000):0}-{Math.Round(c.CX * 1000):0}-{Math.Round(c.CY * 1000):0}-{Math.Round(c.Zoom * 100):0}");
+        string path = Path.Combine(folder, $"localizacao-{id[..Math.Min(12, id.Length)]}-{key}.jpg");
         if (File.Exists(path)) return path;
-        var cropped = Cover(Decode(jpeg), aspect);
+        var src = Decode(jpeg);
+        var (x, y, w, h) = LocationImages.Crop(src.PixelWidth, src.PixelHeight, aspect, c);
+        BitmapSource cropped = new CroppedBitmap(src, new System.Windows.Int32Rect(x, y, w, h));
+        // Recorte pequeno (muito zoom): ampliado para a prancha não ficar serrilhada.
+        if (w < 1200) cropped = new TransformedBitmap(cropped, new ScaleTransform(1200.0 / w, 1200.0 / w));
         File.WriteAllBytes(path, Jpeg(cropped, 92));
         return path;
     }

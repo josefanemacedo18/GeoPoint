@@ -212,8 +212,16 @@ public sealed class CmdCaminhamento : CommandBase
         var zone = ctx0.Coords.AutoZone;
         int zn = zone?.Number ?? (s.Settings.Memorial.CoordinateSystems.FirstOrDefault(c => c.Kind == CrsKind.Utm && c.UtmZone > 0)?.UtmZone ?? 23);
         var w = new PerimeterWindow(s.Project.Reference.IsSet, new GeoPoint.Core.Memorial.ValueFormatter(s.Settings.Format), zn, zone?.South ?? true,
-            s.Project.Reference.IsSet ? s.Project.Reference.Height : 0);
-        if (Ui.ShowDialog(w, s.MainWindow) != true || w.ResultData is null) return Result.Cancelled;
+            s.Project.Reference.IsSet ? s.Project.Reference.Height : 0)
+        {
+            Settings = s.Settings,
+            // Linhas de detalhe na vista atual são o padrão; fora de uma planta, linhas de modelo.
+            DetailAvailable = ElementUtil.SupportsDetails(s.ActiveView) && ElementUtil.IsPlanLike(s.ActiveView),
+        };
+        bool ok = Ui.ShowDialog(w, s.MainWindow) == true;
+        // Correções de confrontantes aprendidas na janela ficam guardadas mesmo se você cancelar.
+        if (w.LearnedSomething) { try { s.SaveSettings(); } catch (Exception ex) { Logger.Error("Salvar correções aprendidas", ex); } }
+        if (!ok || w.ResultData is null) return Result.Cancelled;
         var d = w.ResultData;
         var view = s.ActiveView;
 
@@ -274,7 +282,7 @@ public sealed class CmdCaminhamento : CommandBase
         var created = target.Create(s.Doc, curves, null);
         // Confrontantes (da certidão ou digitados) guardados com as linhas: o Reconhecer Lotes aplica no lote deste contorno.
         int pending = d.Closed && created.Count == curves.Count
-            ? GeoPoint.Core.Operations.PendingConfrontantes.Store(s.Project, curves, created.Select(c => c.UniqueId).ToList(), d.Confrontantes, d.SourceFile)
+            ? GeoPoint.Core.Operations.PendingConfrontantes.Store(s.Project, curves, created.Select(c => c.UniqueId).ToList(), d.Confrontantes, d.SourceFile, d.Lados)
             : 0;
         if (refChanged) ControlPointDrawer.RedrawAll(s);
         if (refChanged || pending > 0) ProjectStore.Save(s.Doc, s.Project);

@@ -14,7 +14,7 @@ public static class PendingConfrontantes
 
     /// <summary>Guarda o confrontante de cada linha desenhada (mesma ordem de <paramref name="lines"/>); devolve quantos.</summary>
     public static int Store(ParcelProject p, IReadOnlyList<Curve2> lines, IReadOnlyList<string> lineIds,
-        IReadOnlyList<(string Name, bool Testada)> confrontantes, string sourceFile)
+        IReadOnlyList<(string Name, bool Testada)> confrontantes, string sourceFile, IReadOnlyList<string>? lados = null)
     {
         if (lines.Count < 3 || lineIds.Count != lines.Count) return 0;
         Vec2 inside;
@@ -32,10 +32,48 @@ public static class PendingConfrontantes
             {
                 Line = EdgeDto.FromCurve(lines[i], new[] { lineIds[i] }),
                 IX = inside.X, IY = inside.Y, Confrontante = name, Testada = testada, SourceFile = sourceFile ?? "",
+                Lado = lados is not null && i < lados.Count ? lados[i] ?? "" : "",
             });
             n++;
         }
         return n;
+    }
+
+    public static LadoLote LadoOf(string lado) => (lado ?? "").Trim().ToLowerInvariant() switch
+    {
+        "frente" => LadoLote.Frente,
+        "fundos" => LadoLote.Fundos,
+        "lado direito" => LadoLote.LateralDireita,
+        "lado esquerdo" => LadoLote.LateralEsquerda,
+        _ => LadoLote.Automatico,
+    };
+
+    private static readonly System.Text.RegularExpressions.Regex LotRx = new(@"\blote\s*(?:n[ºo°.]?\s*)?(?<n>\d+)\s*(?<s>[a-z])?\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    private static readonly System.Text.RegularExpressions.Regex QuadraRx = new(@"\b(?:quadra|qd\.?|q\.)\s*[-.]?\s*(?<q>[\w]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private static string NormNum(string s)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(s ?? "", @"\d+");
+        return m.Success ? (m.Value.TrimStart('0') is { Length: > 0 } t ? t : "0") + s![(m.Index + m.Length)..].Trim().ToUpperInvariant() : "";
+    }
+
+    /// <summary>
+    /// Lote do projeto citado no confrontante ("Lote 09 – João…", "Lote 10 Quadra B"): mesmo número (zeros à esquerda não contam) e
+    /// mesma quadra – a citada, senão a do próprio lote. Só quando há um único candidato na fase.
+    /// </summary>
+    public static LotRecord? FindLot(ParcelProject p, string confrontante, LotRecord self)
+    {
+        var m = LotRx.Match(confrontante ?? "");
+        if (!m.Success) return null;
+        string num = NormNum(m.Groups["n"].Value + (m.Groups["s"].Success ? m.Groups["s"].Value : ""));
+        var qm = QuadraRx.Match(confrontante!);
+        string quadra = qm.Success ? qm.Groups["q"].Value : self.Quadra;
+        string fase = p.Fase.Id;
+        var cands = p.Lots.Where(l => (l.FaseId == fase || l.FaseId.Length == 0) && l.Id != self.Id && l.Status == LotStatus.Ativo &&
+                                           (NormNum(l.Numero) == num || NormNum(l.Nome) == num)).ToList();
+        if (cands.Count > 1 && quadra.Length > 0)
+            cands = cands.Where(l => string.Equals(l.Quadra.Trim(), quadra.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        return cands.Count == 1 ? cands[0] : null;
     }
 
     /// <summary>Tira os pendentes cujas linhas não existem mais no modelo; devolve quantos.</summary>
@@ -73,7 +111,14 @@ public static class PendingConfrontantes
                     var old = lot.EdgeInfos.Where(i => new Vec2(i.MX, i.MY).DistanceTo(mid) <= 0.01).ToList();
                     if (old.Any(i => !i.IsEmpty)) continue;
                     foreach (var i in old) lot.EdgeInfos.Remove(i);
-                    lot.EdgeInfos.Add(new EdgeInfo { MX = mid.X, MY = mid.Y, Confrontante = pc.Confrontante, Testada = pc.Testada });
+                    var info = new EdgeInfo { MX = mid.X, MY = mid.Y, Confrontante = pc.Confrontante, Testada = pc.Testada, Lado = LadoOf(pc.Lado) };
+                    // "Lote 09 …" que já existe no projeto: a divisa fica ligada a esse lote (nome e proprietário vêm dele).
+                    if (!pc.Testada && FindLot(p, pc.Confrontante, lot) is { } other)
+                    {
+                        info.Tipo = ConfrontanteTipo.Lote;
+                        info.LotId = other.Id;
+                    }
+                    lot.EdgeInfos.Add(info);
                     n++;
                 }
             }

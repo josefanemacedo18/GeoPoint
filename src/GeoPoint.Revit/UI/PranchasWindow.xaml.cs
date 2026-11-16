@@ -73,12 +73,12 @@ public partial class PranchasWindow : Window
 
     private readonly Func<SheetSpec, SheetTemplate, int, GeoPoint.Core.Settings.SheetCoordSystem, SheetComposition?>? _preview;
     /// <summary>Abre a janela das imagens de satélite (proporção do espaço do modelo) e devolve o novo resumo; null = nada mudou.</summary>
-    private readonly Func<Window, double, string?>? _manageImages;
+    private readonly Func<Window, double, SheetSpec?, string?>? _manageImages;
 
     public PranchasWindow(ParcelProject project, SheetSettings st, IEnumerable<LotRow> rows, OperationRecord? preselect, PranchasState state,
         Func<SheetSpec, List<IdText>> refOptions, Func<SheetSpec, (bool exists, bool edited)> existing,
         Func<SheetSpec, SheetTemplate, int, GeoPoint.Core.Settings.SheetCoordSystem, SheetComposition?>? preview = null,
-        Func<Window, double, string?>? manageImages = null, string imagesSummary = "")
+        Func<Window, double, SheetSpec?, string?>? manageImages = null, string imagesSummary = "")
     {
         InitializeComponent();
         _preview = preview;
@@ -114,12 +114,15 @@ public partial class PranchasWindow : Window
         Coords.SelectedIndex = (int)st.SistemaCoordenadas;
         Prefix.Text = st.NumberPrefix;
         ImageInfo.Text = imagesSummary;
+        SheetPreview.CroquiClicked += (_, _) => Images_Click(this, new RoutedEventArgs());
         _loading = false;
         Refresh();
     }
 
     /// <summary>Imagem de satélite das pranchas desta fase (para a prévia).</summary>
-    public Func<System.Windows.Media.ImageSource?>? CroquiProvider { get; set; }
+    public Func<SheetSpec, (System.Windows.Media.ImageSource Img, GeoPoint.Core.Model.SheetImageChoice Choice, List<List<GeoPoint.Core.Geometry.Vec2>> Outline)?>? CroquiProvider { get; set; }
+    /// <summary>Resumo da imagem da prancha selecionada.</summary>
+    public Func<SheetSpec?, string>? ImageSummary { get; set; }
 
     public PranchasAction Action { get; private set; }
     public OperationRecord? Operation => (Source.SelectedItem as SourceChoice)?.Operation;
@@ -220,7 +223,11 @@ public partial class PranchasWindow : Window
             int scale = Scale.SelectedIndex > 0 ? tpl.ScaleList[Math.Min(Scale.SelectedIndex - 1, tpl.ScaleList.Count - 1)] : 0;
             var comp = _preview(row.Spec, tpl, scale, (GeoPoint.Core.Settings.SheetCoordSystem)Math.Max(0, Coords.SelectedIndex));
             if (comp is null) return;
-            SheetPreview.Croqui = CroquiProvider?.Invoke();
+            var cq = CroquiProvider?.Invoke(row.Spec);
+            SheetPreview.Croqui = cq?.Img;
+            SheetPreview.CroquiChoice = cq?.Choice;
+            SheetPreview.CroquiOutline = cq?.Outline ?? new();
+            if (ImageSummary is not null) ImageInfo.Text = ImageSummary(row.Spec);
             SheetPreview.Show(tpl, comp.All.ToList());
             PreviewInfo.Text = $"{row.Title} – escala 1:{comp.Fit.Scale}." + (comp.Warnings.Count > 0 ? "  ⚠ " + string.Join(" ", comp.Warnings) : "");
         }
@@ -238,7 +245,8 @@ public partial class PranchasWindow : Window
     {
         if (_manageImages is null) return;
         double aspect = SelectedTemplate?.CroquiAspect() ?? 0;
-        if (_manageImages(this, aspect) is string summary)
+        var spec = (SheetsGrid.SelectedItem as SheetRow ?? _sheetRows.FirstOrDefault())?.Spec;
+        if (_manageImages(this, aspect, spec) is string summary)
         {
             ImageInfo.Text = summary;
             ShowPreview();

@@ -1,0 +1,77 @@
+<Window x:Class="GeoPoint.Revit.UI.GalleryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:GeoPoint.Revit.UI"
+        Title="GeoPoint – Galeria de imagens de satélite" Width="1100" Height="720" MinWidth="860" MinHeight="520"
+        FontFamily="Segoe UI" FontSize="12" ResizeMode="CanResizeWithGrip">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/GeoPoint.Revit;component/UI/Theme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+    <DockPanel Margin="14">
+        <TextBlock DockPanel.Dock="Top" Text="Galeria de imagens de satélite" Style="{StaticResource H1}"/>
+        <TextBlock DockPanel.Dock="Top" x:Name="ContextText" Style="{StaticResource Hint}"/>
+        <WrapPanel DockPanel.Dock="Bottom" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button x:Name="UseSheet" Content="Usar nesta prancha" Style="{StaticResource Primary}" Click="UseSheet_Click"
+                    ToolTip="Só esta prancha recebe a imagem (com este enquadramento)."/>
+            <Button x:Name="UseFase" Content="Usar em todas as pranchas da fase" Click="UseFase_Click"
+                    ToolTip="Vira a imagem padrão da fase e substitui a das pranchas da fase, menos as fixadas."/>
+            <Button x:Name="UseGeral" Content="Usar como imagem geral" Click="UseGeral_Click"
+                    ToolTip="Imagem das pranchas que não têm imagem própria nem padrão da fase."/>
+            <Button x:Name="NoImage" Content="Sem imagem nesta prancha" Click="NoImage_Click"
+                    ToolTip="O espaço desta prancha fica em branco, mesmo com imagem da fase ou geral."/>
+            <Button x:Name="CloseBtn" Content="Salvar a galeria" Click="Close_Click" ToolTip="Guarda as imagens adicionadas, renomeadas ou removidas."/>
+            <Button Content="Cancelar" IsCancel="True"/>
+        </WrapPanel>
+        <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="330"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <DockPanel>
+                <WrapPanel DockPanel.Dock="Top" Margin="0,4,0,6">
+                    <Button Content="Adicionar arquivo…" Margin="0,0,6,4" Click="Add_Click" ToolTip="PNG, JPG, BMP ou TIF – um print Full HD (1920×1080) é o ideal."/>
+                    <Button Content="Colar print" Margin="0,0,6,4" Click="Paste_Click" ToolTip="A imagem copiada (Print Screen, Win+Shift+S ou Copiar imagem no navegador/Google Earth)."/>
+                    <Button Content="Remover" Margin="0,0,6,4" Click="Remove_Click"/>
+                </WrapPanel>
+                <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Hint}" Margin="0,4,0,0"
+                           Text="As imagens ficam guardadas dentro do projeto. O nome pode ser trocado na lista."/>
+                <ListBox x:Name="List" SelectionChanged="List_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <DockPanel Margin="2,4">
+                                <Border DockPanel.Dock="Left" Width="112" Height="70" BorderBrush="#9AA4AE" BorderThickness="1" Background="#EEF0F3">
+                                    <Image Source="{Binding Thumb}" Stretch="UniformToFill"/>
+                                </Border>
+                                <StackPanel Margin="8,0,0,0">
+                                    <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" MinWidth="150" ToolTip="Nome da imagem (pode trocar)"/>
+                                    <TextBlock Text="{Binding Info}" Foreground="#5F6B7A" FontSize="11" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+            <DockPanel Grid.Column="2">
+                <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold" Text="Enquadramento no espaço da prancha"/>
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Margin="0,0,0,4"
+                           Text="Arraste a imagem para posicionar e use a roda do mouse (ou o controle) para aproximar. Com o contorno ligado, Ctrl + arrastar move o contorno; ajuste o tamanho até ele cobrir o lote na imagem."/>
+                <StackPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                    <DockPanel>
+                        <Label Content="Aproximação:" Width="110"/>
+                        <TextBlock x:Name="ZoomText" DockPanel.Dock="Right" Width="44" VerticalAlignment="Center"/>
+                        <Slider x:Name="ZoomSlider" Minimum="1" Maximum="6" SmallChange="0.1" LargeChange="0.5" VerticalAlignment="Center" ValueChanged="Zoom_Changed"/>
+                    </DockPanel>
+                    <DockPanel>
+                        <CheckBox x:Name="Outline" Content="Contorno do lote sobre a imagem" Width="230" VerticalAlignment="Center" Click="Outline_Click"
+                                  ToolTip="Desenha o contorno do lote (norte para cima) no espaço – use para conferir se a imagem está no lugar certo."/>
+                        <TextBlock x:Name="OutlineText" DockPanel.Dock="Right" Width="44" VerticalAlignment="Center"/>
+                        <Slider x:Name="OutlineSlider" Minimum="0.05" Maximum="0.95" SmallChange="0.01" LargeChange="0.05" VerticalAlignment="Center" ValueChanged="OutlineSize_Changed"/>
+                    </DockPanel>
+                    <CheckBox x:Name="Lock" Margin="0,4,0,0" Content="Fixar nesta prancha (não muda quando trocar a imagem de toda a fase)"/>
+                </StackPanel>
+                <Border BorderBrush="#C9D1DB" BorderThickness="1"><ui:CropEditor x:Name="Editor"/></Border>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</Window>

@@ -20,34 +20,93 @@ public class V17Tests
     }
 
     [Fact]
-    public void LocationImage_PhaseImage_ElseGeneral_ElseNone()
+    public void LocationImage_SheetChoice_ElsePhaseDefault_ElseGeneral()
     {
         var p = TwoPhases(out var f0, out var f1);
-        Assert.Null(LocationImages.For(p, f0.Id));
-
+        Assert.Null(LocationImages.Resolve(p, "k1", f0.Id));
         var geral = new SatelliteImage { Nome = "geral.png" };
-        Assert.Null(LocationImages.Set(p, geral));
-        Assert.Same(geral, LocationImages.For(p, f0.Id));
-        Assert.Same(geral, LocationImages.For(p, f1.Id));   // fase sem imagem própria usa a geral
+        var fase = new SatelliteImage { Nome = "fase1.png" };
+        var lote = new SatelliteImage { Nome = "lote.png" };
+        p.SatelliteImages.AddRange(new[] { geral, fase, lote });
+        p.ImageDefaults[""] = new SheetImageChoice { ImageId = geral.Id };
+        Assert.Equal(geral.Id, LocationImages.Resolve(p, "k1", f1.Id)!.ImageId);       // sem nada da fase: a geral
+        p.ImageDefaults[f1.Id] = new SheetImageChoice { ImageId = fase.Id };
+        Assert.Equal(fase.Id, LocationImages.Resolve(p, "k1", f1.Id)!.ImageId);        // padrão da fase
+        Assert.Equal(geral.Id, LocationImages.Resolve(p, "k1", f0.Id)!.ImageId);
+        p.SheetImages["k1"] = new SheetImageChoice { ImageId = lote.Id, Zoom = 2 };
+        Assert.Equal(lote.Id, LocationImages.Resolve(p, "k1", f1.Id)!.ImageId);        // a da prancha
+        Assert.Equal("desta prancha", LocationImages.Origin(p, "k1", f1.Id));
+        Assert.Equal("padrão da fase", LocationImages.Origin(p, "k2", f1.Id));
 
-        var propria = new SatelliteImage { Nome = "fase1.png", FaseId = f1.Id };
-        LocationImages.Set(p, propria);
-        Assert.Same(propria, LocationImages.For(p, f1.Id));
-        Assert.Same(geral, LocationImages.For(p, f0.Id));
-        Assert.Null(LocationImages.Own(p, f0.Id));
+        // Usar em todas as pranchas da fase: as próprias saem, menos as fixadas.
+        p.SheetImages["k2"] = new SheetImageChoice { ImageId = lote.Id, Locked = true };
+        var changed = LocationImages.ApplyToFase(p, f1.Id, new SheetImageChoice { ImageId = geral.Id, Zoom = 1.5 }, new[] { "k1", "k2", "k3" });
+        Assert.Equal(new[] { "k1", "k3" }, changed);
+        Assert.Equal(geral.Id, LocationImages.Resolve(p, "k1", f1.Id)!.ImageId);
+        Assert.Equal(lote.Id, LocationImages.Resolve(p, "k2", f1.Id)!.ImageId);
+        Assert.Equal(1.5, p.ImageDefaults[f1.Id].Zoom);
 
-        // Trocar a imagem do escopo: a anterior sai (para apagar os bytes).
-        var nova = new SatelliteImage { Nome = "geral2.png" };
-        Assert.Same(geral, LocationImages.Set(p, nova));
-        Assert.Equal(2, p.SatelliteImages.Count);
+        // Tirar da galeria limpa as escolhas que a usavam.
+        Assert.Equal(2, LocationImages.Uses(p, geral.Id));
+        LocationImages.Remove(p, geral.Id);
+        Assert.Equal(0, LocationImages.Uses(p, geral.Id));
+        Assert.Null(LocationImages.Resolve(p, "k1", f0.Id));
+    }
 
-        // Fase removida: a imagem dela sai na limpeza.
-        p.Fases.Remove(f1);
-        var gone = LocationImages.Prune(p);
-        Assert.Same(propria, Assert.Single(gone));
-        Assert.Same(nova, Assert.Single(p.SatelliteImages));
+    [Fact]
+    public void LocationImage_17Data_IsConvertedToGallery()
+    {
+        var p = TwoPhases(out _, out var f1);
+        var g = new SatelliteImage { Nome = "geral.png", FaseId = "" };
+        var f = new SatelliteImage { Nome = "fase.png", FaseId = f1.Id };
+        p.SatelliteImages.AddRange(new[] { g, f });
+        Assert.True(LocationImages.Migrate(p));
+        Assert.Equal(g.Id, p.ImageDefaults[""].ImageId);
+        Assert.Equal(f.Id, p.ImageDefaults[f1.Id].ImageId);
+        Assert.False(LocationImages.Migrate(p));     // só uma vez
+    }
 
-        Assert.Equal("Geral (todas as pranchas)", LocationImages.ScopeLabel(p, ""));
+    [Fact]
+    public void Crop_WithZoomAndPan_StaysInsideTheImage()
+    {
+        var c = new SheetImageChoice { Zoom = 2, CX = 0.5, CY = 0.5 };
+        Assert.Equal((660, 270, 600, 540), LocationImages.Crop(1920, 1080, 600.0 / 540, c));
+        // Arrastar para a direita mostra o que está à esquerda; não passa da borda.
+        var (cx, cy) = LocationImages.Pan(1920, 1080, 600.0 / 540, c, 10, 0);
+        Assert.Equal(300.0 / 1920, cx, 6);
+        Assert.Equal(0.5, cy, 6);
+        c.CX = cx;
+        Assert.Equal(0, LocationImages.Crop(1920, 1080, 600.0 / 540, c).X);
+        // Zoom 1 = o mesmo recorte central que preenche o espaço.
+        Assert.Equal(LocationImages.Cover(1920, 1080, 1.0), LocationImages.Crop(1920, 1080, 1.0, new SheetImageChoice()));
+    }
+
+    [Fact]
+    public void Outline_InTheImageSpace()
+    {
+        var lot = TestProjects.Rect(0, 0, 12, 30, "01");
+        var ctx = TestProjects.Context(TestProjects.Project(lot));
+        var rings = LocationImages.Outline(ctx, new[] { lot });
+        var ring = Assert.Single(rings);
+        Assert.Equal(4, ring.Count);
+        var r = new PaperRect(0, 0, 60, 50);
+        var inRect = LocationImages.OutlineInRect(rings, r, new SheetImageChoice { OutlineSize = 0.2 });
+        var bb = BBox.Of(inRect[0]);
+        Assert.Equal(12, bb.Width, 1);           // 20% de 60 mm
+        Assert.Equal(30, bb.Height, 1);
+        Assert.Equal(30, bb.Center.X, 6);
+        Assert.Equal(25, bb.Center.Y, 6);
+        // Alto demais para o espaço: limitado a 95% da altura.
+        var big = LocationImages.OutlineInRect(rings, r, new SheetImageChoice { OutlineSize = 0.9 });
+        Assert.InRange(BBox.Of(big[0]).Height, 47, 47.6);
+    }
+
+    [Fact]
+    public void CroquiRect_IsTheImageSpace()
+    {
+        var t = SheetTemplate.Default();
+        var r = SheetRenderer.CroquiRect(t)!.Value;
+        Assert.Equal(t.CroquiAspect(), r.Width / r.Height, 6);
     }
 
     [Theory]
@@ -85,11 +144,16 @@ public class V17Tests
     public void SatelliteImages_SurviveProjectJson()
     {
         var p = TwoPhases(out _, out var f1);
-        LocationImages.Set(p, new SatelliteImage { Nome = "print.png", FaseId = f1.Id, Width = 1920, Height = 1080, Bytes = 400000 });
+        var img = new SatelliteImage { Nome = "print.png", Width = 1920, Height = 1080, Bytes = 400000 };
+        p.SatelliteImages.Add(img);
+        p.ImageDefaults[f1.Id] = new SheetImageChoice { ImageId = img.Id };
+        p.SheetImages["prancha-1"] = new SheetImageChoice { ImageId = img.Id, Zoom = 2.5, CX = 0.3, ShowOutline = true, Locked = true };
         var back = System.Text.Json.JsonSerializer.Deserialize<ParcelProject>(System.Text.Json.JsonSerializer.Serialize(p))!;
-        var img = Assert.Single(back.SatelliteImages);
-        Assert.Equal(f1.Id, img.FaseId);
-        Assert.Equal(1920, img.Width);
+        Assert.Equal(1920, Assert.Single(back.SatelliteImages).Width);
+        Assert.Equal(img.Id, back.ImageDefaults[f1.Id].ImageId);
+        var c = back.SheetImages["prancha-1"];
+        Assert.Equal(2.5, c.Zoom);
+        Assert.True(c.ShowOutline && c.Locked);
     }
 
     [Fact]

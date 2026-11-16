@@ -18,8 +18,8 @@
         <Border DockPanel.Dock="Top" Background="#F4F6F9" BorderBrush="#C9D1DB" BorderThickness="1" Padding="8,5" Margin="0,4,0,6">
             <DockPanel>
                 <Button x:Name="ImportBtn" DockPanel.Dock="Left" Margin="0" Style="{StaticResource Primary}" Click="ImportDoc_Click"
-                        Content="Importar certidão ou memorial (PDF ou imagem)…"
-                        ToolTip="Lê só a descrição do perímetro: coordenadas ou azimutes e distâncias de cada trecho e o confrontante de cada divisa. PDF digital: o texto do próprio PDF (exato). PDF escaneado, foto ou imagem: reconhecimento de texto (OCR) do Windows, sem enviar o documento para fora do computador."/>
+                        Content="Importar certidão ou memorial (PDF, foto ou imagem)…"
+                        ToolTip="Lê só a descrição do perímetro: coordenadas ou azimutes e distâncias de cada trecho, a divisa (frente, fundos, laterais) e o confrontante. PDF digital: o texto do próprio PDF (exato). PDF escaneado, foto ou imagem: reconhecimento de texto (OCR) no próprio computador – Tesseract, com o do Windows de reserva. Pode escolher vários arquivos (ex.: o memorial e as matrículas): o melhor perímetro é desenhado e os outros servem de conferência."/>
                 <TextBlock x:Name="ImportStatus" VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="Wrap" Foreground="#5F6B7A"
                            Text="Leia o perímetro e os confrontantes direto da certidão ou do memorial. Tudo o que for lido aparece nas tabelas para conferir antes de desenhar."/>
             </DockPanel>
@@ -31,8 +31,10 @@
         <GroupBox DockPanel.Dock="Bottom" Header="Desenho e posição">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <RadioButton x:Name="ModelLines" GroupName="lt" IsChecked="True" Content="Linhas de modelo"/>
-                    <RadioButton x:Name="DetailLines" GroupName="lt" Content="Linhas de detalhe (vista atual)"/>
+                    <RadioButton x:Name="DetailLines" GroupName="lt" IsChecked="True" Content="Linhas de detalhe (vista atual)"
+                                 ToolTip="Padrão do GeoPoint: as linhas aparecem só na vista atual e servem para o Reconhecer Lotes."/>
+                    <RadioButton x:Name="ModelLines" GroupName="lt" Content="Linhas de modelo"
+                                 ToolTip="As linhas aparecem em todas as vistas de planta do nível."/>
                 </StackPanel>
                 <WrapPanel>
                     <RadioButton x:Name="PosClick" GroupName="pos" IsChecked="True" Content="Clicar onde fica o primeiro vértice" Checked="Pos_Changed"/>
@@ -64,11 +66,48 @@
                             <Button Content="Largura" MinWidth="0" Padding="8,2" Margin="3,0,0,0" VerticalAlignment="Center" Click="DocZoomFit_Click" ToolTip="Página inteira na largura do painel"/>
                             <Button Content="Abrir o arquivo" MinWidth="0" Padding="8,2" Margin="3,0,0,0" VerticalAlignment="Center" Click="OpenDoc_Click" ToolTip="Abre o documento no visualizador do Windows."/>
                         </WrapPanel>
-                        <TextBlock DockPanel.Dock="Top" Margin="1,2,0,4" TextWrapping="Wrap" Foreground="#5F6B7A" FontSize="11"
-                                   Text="Em amarelo: os números que entraram no desenho."/>
+                        <ComboBox x:Name="DocPick" DockPanel.Dock="Top" Margin="0,2,0,2" Visibility="Collapsed" SelectionChanged="DocPick_Changed"
+                                  ToolTip="Documentos importados: o primeiro é o do desenho; os outros servem de conferência."/>
+                        <WrapPanel DockPanel.Dock="Top" Margin="1,2,0,4">
+                            <TextBlock Foreground="#5F6B7A" FontSize="11" Text="O que foi lido: " VerticalAlignment="Center"/>
+                            <Border Width="10" Height="10" Background="#7FBFE1FF" BorderBrush="#1F6FD0" BorderThickness="1" Margin="2,0,2,0" VerticalAlignment="Center"/>
+                            <TextBlock FontSize="11" Text="coordenadas  " VerticalAlignment="Center"/>
+                            <Border Width="10" Height="10" Background="#7FFFD27F" BorderBrush="#D07A00" BorderThickness="1" Margin="2,0,2,0" VerticalAlignment="Center"/>
+                            <TextBlock FontSize="11" Text="azimutes  " VerticalAlignment="Center"/>
+                            <Border Width="10" Height="10" Background="#7FB9F2B0" BorderBrush="#2E8B2E" BorderThickness="1" Margin="2,0,2,0" VerticalAlignment="Center"/>
+                            <TextBlock FontSize="11" Text="distâncias e área  " VerticalAlignment="Center"/>
+                            <Border Width="10" Height="10" Background="#7FE3C7F5" BorderBrush="#8A3FBF" BorderThickness="1" Margin="2,0,2,0" VerticalAlignment="Center"/>
+                            <TextBlock FontSize="11" Text="confrontantes" VerticalAlignment="Center"/>
+                            <TextBlock FontSize="11" Foreground="#5F6B7A" Text="  – clique numa linha da tabela para ir até ela" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                        </WrapPanel>
                         <ScrollViewer x:Name="DocScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Background="#EEE"
                                       SizeChanged="DocScroll_SizeChanged">
                             <ui:DocumentView x:Name="DocView" Margin="4"/>
+                        </ScrollViewer>
+                    </DockPanel>
+                </TabItem>
+                <TabItem Header="Diagnóstico" x:Name="DiagTab">
+                    <DockPanel Margin="4">
+                        <Button DockPanel.Dock="Bottom" HorizontalAlignment="Left" Margin="0,6,0,0" Content="Copiar diagnóstico" Click="CopyDiag_Click"
+                                ToolTip="Copia um relatório da leitura (sem a imagem, com CPF, documentos e nomes mascarados) para você colar num e-mail ou mensagem."/>
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock FontWeight="SemiBold" Text="Etapas da leitura" Margin="0,0,0,2"/>
+                                <ItemsControl x:Name="StepsList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <DockPanel Margin="0,1">
+                                                <TextBlock DockPanel.Dock="Left" Width="18" Text="{Binding Icon}" FontWeight="Bold" Foreground="{Binding Color}"/>
+                                                <TextBlock TextWrapping="Wrap"><Run Text="{Binding Name, Mode=OneWay}" FontWeight="SemiBold"/><Run Text=": "/><Run Text="{Binding Detail, Mode=OneWay}"/></TextBlock>
+                                            </DockPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock FontWeight="SemiBold" Text="Conferência do perímetro" Margin="0,10,0,2"/>
+                                <ItemsControl x:Name="ChecksList" ItemTemplate="{Binding ItemTemplate, ElementName=StepsList}"/>
+                                <TextBlock FontWeight="SemiBold" Text="Tentativas de leitura" Margin="0,10,0,2"/>
+                                <TextBlock x:Name="AttemptsText" TextWrapping="Wrap" Foreground="#5F6B7A" FontSize="11"/>
+                            </StackPanel>
                         </ScrollViewer>
                     </DockPanel>
                 </TabItem>
@@ -86,19 +125,31 @@
                         </Grid.RowDefinitions>
                         <TextBox x:Name="Source" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
                                  TextChanged="Source_TextChanged" FontFamily="Consolas"/>
-                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,6,0,6">
+                        <WrapPanel Grid.Row="1" Margin="0,6,0,6">
                             <Button Content="Modelo de texto" Margin="0" Click="Template_Click" ToolTip="Insere um texto pronto para você só trocar os valores."/>
                             <Button Content="Interpretar texto" Click="Parse_Click" Style="{StaticResource Primary}"/>
                             <Button Content="Adicionar trecho" Click="Add_Click"/>
-                            <Button Content="Remover trecho" Click="Remove_Click"/>
-                        </StackPanel>
+                            <Button Content="Remover selecionados" Click="Remove_Click"
+                                    ToolTip="Remove os trechos selecionados na tabela (Ctrl ou Shift + clique para selecionar vários; a tecla Delete também remove)."/>
+                            <Button Content="Remover todos" Click="RemoveAll_Click" ToolTip="Esvazia a tabela de trechos (o texto acima continua)."/>
+                            <Button Content="▲ Subir" MinWidth="0" Padding="8,2" Click="Up_Click" ToolTip="Sobe os trechos selecionados uma posição (Alt + ↑)."/>
+                            <Button Content="▼ Descer" MinWidth="0" Padding="8,2" Click="Down_Click" ToolTip="Desce os trechos selecionados uma posição (Alt + ↓)."/>
+                        </WrapPanel>
                         <Border x:Name="CoordHint" Grid.Row="2" Visibility="Collapsed" Background="#EAF2FB" BorderBrush="#B7CCE6" BorderThickness="1" Padding="8,5" Margin="0,0,0,6">
                             <DockPanel>
                                 <Button DockPanel.Dock="Right" Content="Desenhar pelas coordenadas" Click="UseCoords_Click"/>
                                 <TextBlock x:Name="CoordHintText" TextWrapping="Wrap" VerticalAlignment="Center"/>
                             </DockPanel>
                         </Border>
-                        <DataGrid x:Name="Grid" Grid.Row="3" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Single" CellEditEnding="Grid_CellEditEnding">
+                        <DataGrid x:Name="Grid" Grid.Row="3" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" CanUserSortColumns="False"
+                                  HeadersVisibility="All" SelectionMode="Extended" SelectionUnit="FullRow"
+                                  CellEditEnding="Grid_CellEditEnding" SelectionChanged="Row_Selected" PreviewKeyDown="Grid_PreviewKeyDown">
+                            <DataGrid.RowHeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock MinWidth="18" TextAlignment="Right" Foreground="#5F6B7A"
+                                               Text="{Binding DataContext.Num, RelativeSource={RelativeSource AncestorType=DataGridRow}}"/>
+                                </DataTemplate>
+                            </DataGrid.RowHeaderTemplate>
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Azimute (ex.: 299°36'55&quot;)" Binding="{Binding Az, UpdateSourceTrigger=LostFocus}" Width="140"/>
                                 <DataGridTextColumn Header="Distância / corda (m)" Binding="{Binding Dist, UpdateSourceTrigger=LostFocus}" Width="105"/>
@@ -106,6 +157,7 @@
                                 <DataGridCheckBoxColumn Header="Arco à dir." Binding="{Binding Right, UpdateSourceTrigger=PropertyChanged}" Width="55"/>
                                 <DataGridTextColumn Header="No formato do projeto" Binding="{Binding Output}" Width="160" IsReadOnly="True"/>
                                 <DataGridCheckBoxColumn Header="Testada" Binding="{Binding Testada, UpdateSourceTrigger=PropertyChanged}" Width="55"/>
+                                <DataGridTextColumn Header="Divisa" Binding="{Binding Lado, UpdateSourceTrigger=LostFocus}" Width="85"/>
                                 <DataGridTextColumn Header="Confrontante (pode corrigir)" Binding="{Binding Confrontante, UpdateSourceTrigger=LostFocus}" Width="*" MinWidth="150"/>
                                 <DataGridTextColumn Header="Trecho encontrado no texto" Binding="{Binding Source}" Width="150" IsReadOnly="True"/>
                             </DataGrid.Columns>
@@ -147,14 +199,26 @@
                         </WrapPanel>
                         <TextBox x:Name="CoordSource" Grid.Row="1" AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top"
                                  TextChanged="CoordSource_TextChanged" FontFamily="Consolas"/>
-                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,6,0,6">
+                        <WrapPanel Grid.Row="2" Margin="0,6,0,6">
                             <Button Content="Modelo de texto" Margin="0" Click="CoordTemplate_Click" ToolTip="Insere um trecho de memorial com coordenadas para você trocar os valores."/>
                             <Button Content="Interpretar texto" Click="CoordParse_Click" Style="{StaticResource Primary}"/>
                             <Button Content="Adicionar vértice" Click="CoordAdd_Click"/>
-                            <Button Content="Remover vértice" Click="CoordRemove_Click"/>
+                            <Button Content="Remover selecionados" Click="CoordRemove_Click"
+                                    ToolTip="Remove os vértices selecionados na tabela (Ctrl ou Shift + clique para selecionar vários; a tecla Delete também remove)."/>
+                            <Button Content="Remover todos" Click="CoordRemoveAll_Click" ToolTip="Esvazia a tabela de vértices (o texto acima continua)."/>
+                            <Button Content="▲ Subir" MinWidth="0" Padding="8,2" Click="CoordUp_Click" ToolTip="Sobe os vértices selecionados uma posição (Alt + ↑)."/>
+                            <Button Content="▼ Descer" MinWidth="0" Padding="8,2" Click="CoordDown_Click" ToolTip="Desce os vértices selecionados uma posição (Alt + ↓)."/>
                             <Button Content="Inverter sentido" Click="CoordReverse_Click" ToolTip="Percorre os vértices no sentido contrário (o primeiro continua o primeiro)."/>
-                        </StackPanel>
-                        <DataGrid x:Name="CGrid" Grid.Row="3" AutoGenerateColumns="False" CanUserAddRows="False" HeadersVisibility="Column" SelectionMode="Single" CellEditEnding="Grid_CellEditEnding">
+                        </WrapPanel>
+                        <DataGrid x:Name="CGrid" Grid.Row="3" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" CanUserSortColumns="False"
+                                  HeadersVisibility="All" SelectionMode="Extended" SelectionUnit="FullRow"
+                                  CellEditEnding="Grid_CellEditEnding" SelectionChanged="Row_Selected" PreviewKeyDown="Grid_PreviewKeyDown">
+                            <DataGrid.RowHeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock MinWidth="18" TextAlignment="Right" Foreground="#5F6B7A"
+                                               Text="{Binding DataContext.Num, RelativeSource={RelativeSource AncestorType=DataGridRow}}"/>
+                                </DataTemplate>
+                            </DataGrid.RowHeaderTemplate>
                             <DataGrid.RowStyle>
                                 <Style TargetType="DataGridRow">
                                     <Style.Triggers>
@@ -173,6 +237,7 @@
                                 <DataGridTextColumn Header="Até o próximo – no desenho" Binding="{Binding Output}" Width="145" IsReadOnly="True"/>
                                 <DataGridTextColumn Header="Conferência" Binding="{Binding Check}" Width="95" IsReadOnly="True"/>
                                 <DataGridCheckBoxColumn Header="Testada" Binding="{Binding Testada, UpdateSourceTrigger=PropertyChanged}" Width="55"/>
+                                <DataGridTextColumn Header="Divisa" Binding="{Binding Lado, UpdateSourceTrigger=LostFocus}" Width="85"/>
                                 <DataGridTextColumn Header="Confrontante até o próximo (pode corrigir)" Binding="{Binding Confrontante, UpdateSourceTrigger=LostFocus}" Width="*" MinWidth="150"/>
                             </DataGrid.Columns>
                         </DataGrid>

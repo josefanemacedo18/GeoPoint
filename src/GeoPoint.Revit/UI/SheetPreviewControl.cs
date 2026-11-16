@@ -19,13 +19,36 @@ public sealed class SheetPreviewControl : FrameworkElement
     private List<(List<Vec2> Pts, Color Fill)> _shapes = new();
     private byte[] _grid = { 175, 175, 175 };
     private ImageSource? _logo;
-    /// <summary>Imagem de satélite das pranchas (desenhada no espaço de localização, recortada como na prancha).</summary>
+    /// <summary>Imagem de satélite da prancha (desenhada no espaço de localização, recortada como na prancha).</summary>
     public ImageSource? Croqui { get; set; }
+    /// <summary>Enquadramento da imagem (centro, zoom, contorno).</summary>
+    public GeoPoint.Core.Model.SheetImageChoice? CroquiChoice { get; set; }
+    /// <summary>Contorno dos lotes (norte para cima, m) para desenhar sobre a imagem.</summary>
+    public List<List<Vec2>> CroquiOutline { get; set; } = new();
+    /// <summary>Clique no espaço da imagem de localização (abre a galeria).</summary>
+    public event EventHandler? CroquiClicked;
+    private PaperRect? _croquiRect;
+    private double _s = 1, _ox, _oy;
+
+    public SheetPreviewControl()
+    {
+        MouseMove += (_, e) => Cursor = OverCroqui(e.GetPosition(this)) ? System.Windows.Input.Cursors.Hand : null;
+        MouseLeftButtonUp += (_, e) => { if (OverCroqui(e.GetPosition(this))) CroquiClicked?.Invoke(this, EventArgs.Empty); };
+        ToolTip = "Clique no espaço da imagem de localização para escolher a imagem de satélite desta prancha.";
+    }
+
+    private bool OverCroqui(Point p)
+    {
+        if (_croquiRect is not PaperRect r || CroquiClicked is null) return false;
+        double x = (p.X - _ox) / _s, y = _h - (p.Y - _oy) / _s;
+        return r.Contains(new Vec2(x, y));
+    }
     private string _logoKey = "";
 
     public void Show(SheetTemplate t, List<SheetPrim> prims, List<(List<Vec2> Pts, Color Fill)>? shapes = null)
     {
         (_w, _h) = t.PaperSize();
+        _croquiRect = SheetRenderer.CroquiRect(t);
         _prims = prims;
         _shapes = shapes ?? new();
         _grid = t.GridColor;
@@ -80,6 +103,7 @@ public sealed class SheetPreviewControl : FrameworkElement
         if (aw < 10 || ah < 10) return;
         double s = Math.Min((aw - 8) / _w, (ah - 8) / _h);
         double ox = (aw - _w * s) / 2, oy = (ah - _h * s) / 2;
+        (_s, _ox, _oy) = (s, ox, oy);
         Point P(Vec2 v) => new(ox + v.X * s, oy + (_h - v.Y) * s);
         dc.DrawRectangle(Brushes.White, new Pen(Brushes.Gray, 0.5), new Rect(ox, oy, _w * s, _h * s));
         var gridPen = new Pen(new SolidColorBrush(Color.FromRgb(_grid[0], _grid[1], _grid[2])), Math.Max(0.4, 0.13 * s));
@@ -140,13 +164,17 @@ public sealed class SheetPreviewControl : FrameworkElement
                     var a = P(new Vec2(im.Rect.X0, im.Rect.Y1));
                     var r = new Rect(a.X, a.Y, im.Rect.Width * s, im.Rect.Height * s);
                     if (im.Key == "logo" && _logo is not null) dc.DrawImage(_logo, r);
-                    else if (im.Key == "croqui" && Croqui is { Width: > 0, Height: > 0 } cq)
+                    else if (im.Key == "croqui" && Croqui is BitmapSource cq && cq.PixelWidth > 0)
                     {
-                        // Preenche o espaço inteiro sem distorcer (as sobras das bordas ficam de fora), como na prancha.
-                        double k = Math.Max(r.Width / cq.Width, r.Height / cq.Height);
-                        double iw = cq.Width * k, ih = cq.Height * k;
+                        // O mesmo recorte da prancha (enquadramento escolhido, preenchendo o espaço sem distorcer).
+                        var (cx, cy, cw, _) = GeoPoint.Core.Sheets.LocationImages.Crop(cq.PixelWidth, cq.PixelHeight, im.Rect.Width / im.Rect.Height, CroquiChoice);
+                        double k = r.Width / cw;
                         dc.PushClip(new RectangleGeometry(r));
-                        dc.DrawImage(cq, new Rect(r.X + (r.Width - iw) / 2, r.Y + (r.Height - ih) / 2, iw, ih));
+                        dc.DrawImage(cq, new Rect(r.X - cx * k, r.Y - cy * k, cq.PixelWidth * k, cq.PixelHeight * k));
+                        if (CroquiChoice is { ShowOutline: true } ch && CroquiOutline.Count > 0)
+                            foreach (var ring in GeoPoint.Core.Sheets.LocationImages.OutlineInRect(CroquiOutline, im.Rect, ch))
+                                for (int q = 0; q < ring.Count; q++)
+                                    dc.DrawLine(new Pen(Brushes.Red, Math.Max(0.8, 0.3 * s)), P(ring[q]), P(ring[(q + 1) % ring.Count]));
                         dc.Pop();
                     }
                     else dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(90, 122, 74)), null, r);

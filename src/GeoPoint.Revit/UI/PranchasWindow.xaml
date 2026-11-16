@@ -120,9 +120,9 @@
                         </ComboBox>
                         <Label Grid.Row="4" Content="Imagem de satélite:" VerticalAlignment="Top"/>
                         <TextBlock Grid.Row="4" Grid.Column="1" x:Name="ImageInfo" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,4,0,4" Foreground="#5F6B7A"
-                                   ToolTip="Print ou imagem do local no satélite, guardada no projeto: a geral vale para todas as pranchas e a de cada fase só para as pranchas daquela fase. Entra sozinha no espaço de localização, recortada para preencher o espaço."/>
-                        <Button Grid.Row="4" Grid.Column="2" Content="Imagens…" Click="Images_Click" VerticalAlignment="Top"
-                                ToolTip="Escolher ou colar o print do satélite: imagem geral e imagens de cada fase."/>
+                                   ToolTip="Imagem de satélite da prancha selecionada: a escolhida para ela, senão a padrão da fase, senão a geral. Clique no espaço da imagem na prévia para trocar."/>
+                        <Button Grid.Row="4" Grid.Column="2" Content="Galeria…" Click="Images_Click" VerticalAlignment="Top"
+                                ToolTip="Galeria de imagens de satélite do projeto: adicionar, colar o print e escolher a imagem da prancha selecionada (também clicando no espaço da imagem na prévia)."/>
                     </Grid>
                 </GroupBox>
             </StackPanel>

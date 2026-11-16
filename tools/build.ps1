@@ -11,6 +11,9 @@ if (Test-Path $pkg) { Remove-Item $pkg -Recurse -Force }
 New-Item -ItemType Directory -Force -Path "$pkg/GeoPoint" | Out-Null
 # GeoPoint + bibliotecas (PdfPig: texto de PDF; Microsoft.Windows.SDK.NET/WinRT.Runtime: OCR e páginas de PDF do Windows).
 Copy-Item "$out/*.dll" "$pkg/GeoPoint/"
+# OCR offline: Tesseract (só 64 bits) e o idioma português.
+Copy-Item "$out/x64", "$out/tessdata" "$pkg/GeoPoint/" -Recurse
+Copy-Item "$out/LICENSE_Tesseract.txt" "$pkg/GeoPoint/"
 Copy-Item "src/GeoPoint.Core/ThirdParty/PdfPig/LICENSE_PdfPig.txt" "$pkg/GeoPoint/"
 Copy-Item "src/GeoPoint.Core/ThirdParty/Clipper2/LICENSE_Clipper2.txt" "$pkg/GeoPoint/"
 Copy-Item "docs/MANUAL.md" "$pkg/GeoPoint/MANUAL.md"

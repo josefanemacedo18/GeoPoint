@@ -10,6 +10,9 @@ PKG=artifacts/GeoPoint-$VERSION
 rm -rf "$PKG" && mkdir -p "$PKG/GeoPoint"
 # GeoPoint + bibliotecas (PdfPig: texto de PDF; Microsoft.Windows.SDK.NET/WinRT.Runtime: OCR e páginas de PDF do Windows).
 cp "$OUT"/*.dll "$PKG/GeoPoint/"
+# OCR offline: Tesseract (só 64 bits – o Revit é 64 bits) e o idioma português.
+cp -r "$OUT/x64" "$OUT/tessdata" "$PKG/GeoPoint/"
+cp "$OUT/LICENSE_Tesseract.txt" "$PKG/GeoPoint/"
 cp src/GeoPoint.Core/ThirdParty/PdfPig/LICENSE_PdfPig.txt "$PKG/GeoPoint/"
 cp src/GeoPoint.Core/ThirdParty/Clipper2/LICENSE_Clipper2.txt "$PKG/GeoPoint/"
 cp docs/MANUAL.md "$PKG/GeoPoint/MANUAL.md"

@@ -107,6 +107,13 @@ public static class MemorialTextParser
     private static readonly Regex AzRx = new(@"azimute(?:s)?(?:\s+(?:de|igual a|plano|verdadeiro|geod[eé]sico))*\s*:?\s*" + Ang, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex RumoRx = new(@"rumo(?:\s+(?:de|igual a))?\s*:?\s*" + Ang + @"\s*(?<q>NE|SE|SO|SW|NO|NW)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex RumoRx2 = new(@"rumo(?:\s+(?:de|igual a))?\s*:?\s*(?<q1>[NS])\s*" + Ang + @"\s*(?<q2>[EWLO])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private const string NumD = @"(?<v>\d{1,3}(?:\.\d{3})*(?:,\d+)?|\d+(?:[.,]\d+)?)\s*(?:metros|m(?![²2a-zA-Z]))";
+    /// <summary>"com azimute e distância: 112°12'38" e 12,00m", "com os seguintes azimutes e distâncias: 292°12'38" e 12,00 m".</summary>
+    private static readonly Regex PairRx = new(@"azimutes?\s*(?:e|&)\s*dist[aâ]ncias?\s*:?\s*" + Ang + @"\s*(?:e|,|;|/|-|–)\s*" + NumD,
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    /// <summary>"deste segue com 292°12'38" e 12,00m": ângulo seguido da distância (não pega coordenadas: elas vêm com latitude/longitude).</summary>
+    private static readonly Regex BarePairRx = new(@"(?<!(?:itude|lat|lon|long)\.?\s*:?\s*-?\s*)(?<![-\d])" + Ang + @"\s*(?:e|,)\s*" + NumD,
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex DistRx = new(@"(?:dist[aâ]ncia|medindo|extens[aã]o|comprimento)(?:\s+(?:de|igual a|horizontal))*\s*:?\s*(?<v>\d{1,3}(?:\.\d{3})*(?:,\d+)?|\d+(?:[.,]\d+)?)\s*(?:metros|m(?![²2a-zA-Z]))", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private sealed record Token(int Pos, bool IsAngle, double Value, string Text);
@@ -121,29 +128,49 @@ public static class MemorialTextParser
     {
         var found = new List<(int Pos, double Az)>();
         if (AzRx.Match(text) is { Success: true } a && TryAngle(a, out double av)) found.Add((a.Index, av));
+        if (PairRx.Match(text) is { Success: true } pr && TryAngle(pr, out double pv)) found.Add((pr.Index, pv));
+        if (BarePairRx.Match(text) is { Success: true } bp && TryAngle(bp, out double bv)) found.Add((bp.Index, bv));
         if (RumoRx.Match(text) is { Success: true } r && TryAngle(r, out double rv)) found.Add((r.Index, BearingToAzimuth(rv, r.Groups["q"].Value)));
         if (RumoRx2.Match(text) is { Success: true } r2 && TryAngle(r2, out double r2v)) found.Add((r2.Index, BearingToAzimuth(r2v, r2.Groups["q1"].Value + r2.Groups["q2"].Value)));
         return found.Count == 0 ? null : found.OrderBy(f => f.Pos).First().Az;
     }
 
     /// <summary>Primeira distância escrita no texto ("distância de 7,35m", "medindo 12,00 m"); null = nenhuma.</summary>
-    public static double? FirstDistance(string text) =>
-        DistRx.Match(text) is { Success: true } m && AngleText.TryParseNumber(m.Groups["v"].Value, out double d) && d > 0 ? d : null;
+    public static double? FirstDistance(string text)
+    {
+        var found = new List<(int Pos, double D)>();
+        if (DistRx.Match(text) is { Success: true } m && AngleText.TryParseNumber(m.Groups["v"].Value, out double d) && d > 0) found.Add((m.Index, d));
+        foreach (var rx in new[] { PairRx, BarePairRx })
+            if (rx.Match(text) is { Success: true } p && TryAngle(p, out _) && AngleText.TryParseNumber(p.Groups["v"].Value, out double pd) && pd > 0) found.Add((p.Index, pd));
+        return found.Count == 0 ? null : found.OrderBy(f => f.Pos).First().D;
+    }
 
     public static List<Found> ParseDetailed(string text)
     {
+        // Pares escritos juntos ("azimute e distância: A e D", "segue com A e D"): já são trechos completos.
+        var pairs = new List<Found>();
+        var taken = new List<(int S, int E)>();
+        foreach (var rx in new[] { PairRx, BarePairRx })
+            foreach (Match m in rx.Matches(text))
+            {
+                if (taken.Any(t => m.Index < t.E && m.Index + m.Length > t.S)) continue;
+                if (!TryAngle(m, out double a) || !AngleText.TryParseNumber(m.Groups["v"].Value, out double d) || d <= 0) continue;
+                pairs.Add(new Found(new Course { AzimuthDeg = a, Distance = d, Source = m.Value.Trim() }, m.Index, m.Index + m.Length));
+                taken.Add((m.Index, m.Index + m.Length));
+            }
+        bool Free(Match m) => !taken.Any(t => m.Index < t.E && m.Index + m.Length > t.S);
         var tokens = new List<Token>();
         foreach (Match m in AzRx.Matches(text))
-            if (TryAngle(m, out double a)) tokens.Add(new Token(m.Index, true, a, m.Value));
+            if (Free(m) && TryAngle(m, out double a)) tokens.Add(new Token(m.Index, true, a, m.Value));
         foreach (Match m in RumoRx.Matches(text))
-            if (TryAngle(m, out double a)) tokens.Add(new Token(m.Index, true, BearingToAzimuth(a, m.Groups["q"].Value), m.Value));
+            if (Free(m) && TryAngle(m, out double a)) tokens.Add(new Token(m.Index, true, BearingToAzimuth(a, m.Groups["q"].Value), m.Value));
         foreach (Match m in RumoRx2.Matches(text))
-            if (TryAngle(m, out double a)) tokens.Add(new Token(m.Index, true, BearingToAzimuth(a, m.Groups["q1"].Value + m.Groups["q2"].Value), m.Value));
+            if (Free(m) && TryAngle(m, out double a)) tokens.Add(new Token(m.Index, true, BearingToAzimuth(a, m.Groups["q1"].Value + m.Groups["q2"].Value), m.Value));
         foreach (Match m in DistRx.Matches(text))
-            if (AngleText.TryParseNumber(m.Groups["v"].Value, out double d) && d > 0) tokens.Add(new Token(m.Index, false, d, m.Value));
+            if (Free(m) && AngleText.TryParseNumber(m.Groups["v"].Value, out double d) && d > 0) tokens.Add(new Token(m.Index, false, d, m.Value));
         tokens.Sort((x, y) => x.Pos.CompareTo(y.Pos));
 
-        var res = new List<Found>();
+        var res = new List<Found>(pairs);
         Token? pa = null, pd = null;
         foreach (var t in tokens)
         {
@@ -156,6 +183,7 @@ public static class MemorialTextParser
                 pa = null; pd = null;
             }
         }
+        res.Sort((x, y) => x.Start.CompareTo(y.Start));
         return res;
     }
 

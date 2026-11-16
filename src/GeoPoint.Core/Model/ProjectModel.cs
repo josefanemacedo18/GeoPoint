@@ -585,6 +585,37 @@ public sealed class GeneratedSheet
     public DateTime Created { get; set; } = DateTime.Now;
     /// <summary>Número da folha no projeto (FOLHA 01, 02...).</summary>
     public int Folha { get; set; }
+    /// <summary>Lotes da prancha (contorno sobre a imagem de satélite).</summary>
+    public List<string> LotIds { get; set; } = new();
+    /// <summary>Espaço da imagem de localização na folha (mm); largura 0 = o modelo não tem o espaço.</summary>
+    public double CroquiX0 { get; set; }
+    public double CroquiY0 { get; set; }
+    public double CroquiX1 { get; set; }
+    public double CroquiY1 { get; set; }
+    /// <summary>Elementos da imagem colocada (imagem e contorno), para trocar a imagem depois.</summary>
+    public List<string> CroquiIds { get; set; } = new();
+}
+
+/// <summary>Imagem escolhida para uma prancha (ou como padrão geral/da fase), com o enquadramento.</summary>
+public sealed class SheetImageChoice
+{
+    public string ImageId { get; set; } = "";
+    /// <summary>Centro do recorte na imagem (0–1, a partir do canto superior esquerdo).</summary>
+    public double CX { get; set; } = 0.5;
+    public double CY { get; set; } = 0.5;
+    /// <summary>1 = a imagem preenche o espaço (sobras das bordas cortadas); 2 = aproximada 2×…</summary>
+    public double Zoom { get; set; } = 1;
+    /// <summary>Desenhar o contorno do lote sobre a imagem (para conferir o enquadramento).</summary>
+    public bool ShowOutline { get; set; }
+    /// <summary>Largura do contorno em relação à largura do espaço (0,1–0,95).</summary>
+    public double OutlineSize { get; set; } = 0.35;
+    /// <summary>Contorno deslocado do centro do espaço (fração da largura e da altura; + direita, + baixo).</summary>
+    public double OutlineDX { get; set; }
+    public double OutlineDY { get; set; }
+    /// <summary>Fixa nesta prancha: não muda quando se troca a imagem de toda a fase.</summary>
+    public bool Locked { get; set; }
+
+    public SheetImageChoice Clone() => (SheetImageChoice)MemberwiseClone();
 }
 
 /// <summary>Cores das hachuras dos lotes (as mesmas no Revit, nas pranchas e no Google Earth).</summary>
@@ -629,6 +660,8 @@ public sealed class PendingConfrontante
     public double IY { get; set; }
     public string Confrontante { get; set; } = "";
     public bool Testada { get; set; }
+    /// <summary>Divisa escrita no documento ("Frente", "Fundos", "Lado direito", "Lado esquerdo"; vazio = automática).</summary>
+    public string Lado { get; set; } = "";
     /// <summary>Arquivo de onde veio (certidão ou memorial).</summary>
     public string SourceFile { get; set; } = "";
     public DateTime Created { get; set; } = DateTime.Now;
@@ -661,8 +694,14 @@ public sealed class ParcelProject
     public List<BuildingRecord> Buildings { get; set; } = new();
     /// <summary>Confrontantes das linhas desenhadas pela certidão, à espera do Reconhecer Lotes.</summary>
     public List<PendingConfrontante> PendingConfrontantes { get; set; } = new();
-    /// <summary>Imagens de satélite das pranchas: a geral (todas as pranchas) e as de cada fase.</summary>
+    /// <summary>Galeria de imagens de satélite do projeto (prints e imagens salvas).</summary>
     public List<SatelliteImage> SatelliteImages { get; set; } = new();
+    /// <summary>Imagem padrão: "" = geral (todas as pranchas), id da fase = pranchas da fase.</summary>
+    public Dictionary<string, SheetImageChoice> ImageDefaults { get; set; } = new();
+    /// <summary>Imagem escolhida para cada prancha (chave da prancha), com o enquadramento.</summary>
+    public Dictionary<string, SheetImageChoice> SheetImages { get; set; } = new();
+    /// <summary>2 = galeria (1.8); 0/1 = imagem por fase da 1.7 (convertida ao abrir).</summary>
+    public int ImagesVersion { get; set; }
 
     /// <summary>Edificações da fase ativa.</summary>
     [JsonIgnore] public IEnumerable<BuildingRecord> PhaseBuildings => Buildings.Where(b => b.FaseId == Fase.Id);

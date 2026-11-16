@@ -291,6 +291,7 @@ public static class PerimeterText
     private static void Cleanup(CoordinateTextResult res)
     {
         var v = res.Vertices;
+        if (res.Kind == PerimeterCoordKind.Geographic) FixSigns(res);
         double tol = res.Kind == PerimeterCoordKind.Geographic ? 1e-8 : 0.0005;
         bool Same(PerimeterVertex a, PerimeterVertex b) => Math.Abs(a.A - b.A) <= tol && Math.Abs(a.B - b.B) <= tol;
         for (int i = v.Count - 1; i > 0; i--)
@@ -306,6 +307,29 @@ public static class PerimeterText
             if (v[i].Name.Length > 0 && v.Take(i).Any(x => x.Name == v[i].Name)) v[i].Name = "";
         for (int i = 0; i < v.Count; i++)
             if (v[i].Name.Length == 0) v[i].Name = NextName(v, i);
+    }
+
+    /// <summary>
+    /// Sinal perdido no OCR ("Longitude: 47°22'51"" no meio de "-47°22'50""): a maioria das latitudes (e das longitudes) define o
+    /// hemisfério; um valor do mesmo tamanho com o sinal trocado é corrigido, com aviso.
+    /// </summary>
+    private static void FixSigns(CoordinateTextResult res)
+    {
+        var v = res.Vertices;
+        if (v.Count < 3) return;
+        int fixedN = 0;
+        void Fix(Func<PerimeterVertex, double> get, Action<PerimeterVertex, double> set)
+        {
+            int neg = v.Count(x => get(x) < 0), pos = v.Count(x => get(x) > 0);
+            if (neg == 0 || pos == 0 || neg == pos) return;
+            bool wantNeg = neg > pos;
+            double med = v.Select(x => Math.Abs(get(x))).OrderBy(x => x).ElementAt(v.Count / 2);
+            foreach (var x in v)
+                if ((get(x) < 0) != wantNeg && Math.Abs(Math.Abs(get(x)) - med) < 0.5) { set(x, -get(x)); fixedN++; }
+        }
+        Fix(x => x.A, (x, val) => x.A = val);
+        Fix(x => x.B, (x, val) => x.B = val);
+        if (fixedN > 0) res.Warnings.Add($"{fixedN} coordenada(s) sem o sinal (provável erro de leitura): ficou o hemisfério das demais. Confira.");
     }
 
     private static string NextName(List<PerimeterVertex> v, int i)

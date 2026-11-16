@@ -23,6 +23,52 @@ Para remover: feche o Revit e execute **`Desinstalar.bat`**.
 
 ---
 
+## Novidades da versão 1.8
+
+**Leitura de certidões e memoriais**
+- **Memoriais com coordenadas geográficas e "azimute e distância"**: lê o modelo *"…com azimute e distância: 112°12'38" e 12,00m até o
+  vértice M-02, de coordenadas Longitude:-47°22'50,886", Latitude:-6°20'34,920"…"*, inclusive *"com os seguintes azimutes e distâncias"*
+  e *"deste segue com 292°12'38" e 12,00m"* (o trecho sem confrontante herda o do trecho anterior). Lê as **divisas** (*Frente*,
+  *Fundos*, *Lado direito*, *Lado esquerdo*) e o **quadro de CONFRONTAÇÕES** do fim do memorial, que serve de conferência.
+- **OCR mais forte e sem internet**: fotos e PDFs escaneados são lidos pelo **Tesseract** (instalado junto com o GeoPoint), com a imagem
+  preparada antes (ampliada, contraste e nitidez); se a leitura não fechar, o GeoPoint tenta de novo de outros jeitos (correção de
+  sombra, bloco único e o OCR do Windows) e fica com a **melhor leitura**. Erros comuns de foto são corrigidos sozinhos: grau sumido
+  ("1121238"" → 112°12'38"), grau lido como aspas ou dois-pontos, aspas repetidas, sinal de menos perdido, "&" no lugar de "e", "m?" no
+  lugar de "m²". Na sua foto do memorial: 6 de 6 trechos conferidos e área de 599,50 m² × 600 m² do documento.
+- **Aviso de qualidade da foto** antes de ler (pequena, escura, sem contraste, tremida ou com sombra): você lê assim mesmo ou tira outra.
+- **Aba Diagnóstico**: as etapas da leitura (foto → texto → descrição → vértices → trechos → confrontantes, com ✓ ⚠ ✗ mostrando onde
+  parou), a **conferência** do perímetro (fechamento e precisão, trechos × texto, área e perímetro × documento, quadro de confrontações,
+  confrontante em todas as divisas, fuso/datum) e as tentativas de OCR. *Copiar diagnóstico* gera um relatório para enviar, **sem a
+  imagem e com CPF, documentos e nomes mascarados**.
+- **O que foi lido, em cores** (aba Documento): coordenadas em azul, azimutes em laranja, distâncias e área em verde, confrontantes em
+  roxo. **Clique numa linha da tabela** e o documento rola até a palavra correspondente (marcada em vermelho).
+- **Coluna Divisa** nas tabelas (Frente, Fundos, Lado direito, Lado esquerdo): vai para o lote no *Reconhecer Lotes*.
+- **Correções aprendidas**: corrigiu um confrontante lido do documento? Na próxima leitura em que o mesmo nome aparecer, ele já vem
+  corrigido (as correções ficam nas Configurações do seu computador; números não são "aprendidos").
+- **Vários documentos de uma vez** (ex.: o memorial e as matrículas de uma fusão): o de melhor leitura é desenhado; os outros servem de
+  conferência (soma das áreas × desenho e vértices em comum). Escolha qual ver na aba Documento.
+- **Confrontante ligado ao lote do projeto**: no *Reconhecer Lotes*, uma divisa "Lote 09 – …" vira ligação com o Lote 09 que já existe
+  no projeto (mesma quadra), e a divisa (frente, fundos, laterais) vem do documento.
+
+**Imagens de satélite**
+- **Galeria do projeto**: guarde quantas imagens quiser (arquivo ou print colado), com nome e miniatura. Fica dentro do projeto.
+- **Imagem por prancha, escolhida clicando no espaço**: na prévia da janela de *Pranchas*, **clique no espaço da imagem** (ou em
+  *Galeria…*); ou, com a prancha aberta no Revit, use o novo botão **Imagem de Localização** e clique no espaço. A galeria abre:
+  escolha a imagem, **arraste para enquadrar e use a roda do mouse para aproximar**, e clique em *Usar nesta prancha*, *Usar em todas as
+  pranchas da fase* (menos as **fixadas**), *Usar como imagem geral* ou *Sem imagem nesta prancha*. Prancha já gerada é atualizada na hora.
+- **Contorno do lote sobre a imagem**: liga o contorno (norte verdadeiro para cima), ajusta o tamanho e, com Ctrl + arrastar, a
+  posição – para conferir se a imagem está no lugar certo. Sai na prancha em vermelho.
+- **Revisão automática da prancha** (na prévia e ao gerar): grade sobre textos ou desenho, imagem com resolução baixa no espaço (menos de
+  150 dpi) e convenções que não batem com o desenho.
+
+**Tabelas do Desenhar Perímetro**
+- **Remover selecionados** e **Remover todos**: selecione vários trechos (ou vértices) com Ctrl ou Shift + clique e remova só eles (a
+  tecla Delete também remove), ou esvazie a tabela de uma vez (o texto continua; *Interpretar texto* lê de novo).
+- **▲ Subir / ▼ Descer** (ou Alt + ↑/↓): muda a ordem dos trechos selecionados, juntos. Confrontante, divisa e testada vão com o trecho,
+  e a prévia e a conferência são refeitas na hora. As linhas são numeradas à esquerda.
+- **Linhas de detalhe (vista atual)** passam a ser o padrão do desenho (no Desenhar Perímetro e no Gerar Lote). Fora de uma vista de
+  planta, o perímetro é desenhado com linhas de modelo.
+
 ## Ajustes da versão 1.7.1
 
 - **Grade só no fundo**: as linhas da grade de coordenadas não passam mais por cima do desenho – param antes da área dos lotes
@@ -316,26 +362,38 @@ uma **certidão/memorial em PDF ou imagem** (*Importar certidão ou memorial*, v
   nas certidões): confere a distância, com tolerância de 10 cm ou 0,5%.
 - *Fechar o polígono* liga o último vértice ao primeiro; o vértice inicial repetido no fim do texto é ignorado. *Inverter sentido*
   percorre os vértices ao contrário.
+- Nas duas tabelas: **Remover selecionados** (Ctrl ou Shift + clique para vários; ou a tecla Delete), **Remover todos** e **▲ Subir /
+  ▼ Descer** (Alt + ↑/↓) para corrigir a ordem. Na de coordenadas, o azimute e a distância escritos no texto acompanham o vértice de
+  onde o trecho parte, então a conferência continua valendo depois de reordenar.
 - O desenho fica no plano topográfico local do projeto (distâncias horizontais reais), como o resto do GeoPoint.
 
-*Posição do desenho*
+*Desenho e posição*
+- **Linhas de detalhe (vista atual)** – o padrão: as linhas aparecem só na vista onde foram desenhadas. *Linhas de modelo* aparecem
+  em todas as plantas do nível. Fora de uma vista de planta, só linhas de modelo.
 - **Na posição das coordenadas** – com a referência do projeto definida, o lote cai exatamente onde as coordenadas indicam, junto dos
   outros lotes georreferenciados;
 - **Clicar onde fica o primeiro vértice** – e, se o projeto ainda não tem referência, *Usar o primeiro vértice como ponto de
   referência do projeto* (o topo da vista é o norte): o projeto fica georreferenciado por essas coordenadas;
 - **Começar no ponto de referência do projeto** (aba de azimutes).
-*Confrontantes* – as duas tabelas têm as colunas **Testada** e **Confrontante** (na de coordenadas, o confrontante da divisa que vai do
+*Confrontantes* – as duas tabelas têm as colunas **Testada**, **Divisa** e **Confrontante** (na de coordenadas, o da divisa que vai do
 vértice ao próximo). Vêm preenchidas quando o texto diz "confrontando com…", "limitando-se com…", "fazendo divisa com…" (pelo
-proprietário quando diz "lote 06 de propriedade de…"; ruas e avenidas marcadas como testada) e podem ser digitadas ou corrigidas.
+proprietário quando diz "lote 06 de propriedade de…"; ruas e avenidas marcadas como testada; a divisa – Frente, Fundos, Lado direito,
+Lado esquerdo – pelo texto ou pelo quadro de confrontações) e podem ser digitadas ou corrigidas. A correção de um nome lido do documento
+fica aprendida para as próximas leituras.
 
 As linhas criadas ficam selecionadas, prontas para *Reconhecer Lotes*. Os **confrontantes ficam guardados com as linhas** e entram no
 lote quando o *Reconhecer Lotes* cria o lote desse contorno (as divisas que já tinham confrontante não mudam). Tudo é desfeito com um
 *Desfazer*.
 
-*Importar certidão ou memorial (PDF ou imagem)*
+*Importar certidão ou memorial (PDF, foto ou imagem)*
 - **PDF digital** (gerado pelo cartório ou pelo sistema): o texto é lido do próprio PDF – os números saem exatos. **PDF escaneado, foto
-  do celular ou imagem** (JPG, PNG, TIF): o texto é reconhecido pelo **OCR do Windows**, no próprio computador (nada é enviado pela
-  internet). Precisa do idioma *Português (Brasil)* instalado no Windows (Configurações › Hora e idioma › Idioma); sem ele, o GeoPoint avisa.
+  do celular ou imagem** (JPG, PNG, TIF): o texto é reconhecido por **OCR no próprio computador** (nada é enviado pela internet): o
+  **Tesseract**, instalado junto com o GeoPoint, com a imagem preparada (ampliada, contraste e nitidez) e mais de uma tentativa se a
+  leitura não fechar; o **OCR do Windows** fica de reserva (precisa do idioma *Português (Brasil)* no Windows). O Tesseract usa o Visual
+  C++ 2015–2022 (x64), que já vem com o Revit.
+- **Antes de ler uma foto**, o GeoPoint avalia a qualidade (tamanho, luz, contraste, foco, sombra) e avisa se ela pode não ser lida
+  direito. Para fotografar: de frente, sem sombra, com a página inteira e boa luz.
+- Dá para escolher **vários arquivos** de uma vez: o de melhor leitura é o desenhado e os outros servem de conferência (*Diagnóstico*).
 - O GeoPoint lê **só a descrição do perímetro** (de "DESCRIÇÃO DA PROPRIEDADE", "Partindo do vértice…", "Inicia-se…" ou "limites e
   confrontações" até "fechando assim uma área de…"), trecho a trecho: **de qual vértice para qual**, as **coordenadas**, a **distância**,
   o **azimute** (quando há) e o **confrontante**. Partes, registros, CPF, selos e emolumentos são ignorados – nada disso vai para o
@@ -347,8 +405,12 @@ lote quando o *Reconhecer Lotes* cria o lote desse contorno (as divisas que já 
   **fuso do projeto** (23 S na região), com aviso para conferir se o imóvel é da região.
 - Erros comuns de OCR são corrigidos nos números (O no lugar de 0, l no lugar de 1, espaços dentro do número e do ângulo, grau lido
   como "o").
-- **Aba Documento** (ao lado da prévia): as páginas, com os números que entraram no desenho **destacados em amarelo**; zoom (− / + /
-  Largura) e *Abrir o arquivo*. Arraste a divisória para alargar o painel.
+- **Aba Documento** (ao lado da prévia): as páginas, com o que foi lido **em cores** (coordenadas em azul, azimutes em laranja,
+  distâncias e área em verde, confrontantes em roxo); clique numa linha da tabela para ir até ela no documento. Zoom (− / + / Largura) e
+  *Abrir o arquivo*. Arraste a divisória para alargar o painel.
+- **Aba Diagnóstico**: as etapas da leitura (onde parou, se parou), a conferência do perímetro (fechamento, trechos × texto, área e
+  perímetro × documento, quadro de confrontações, confrontantes, fuso/datum) e as tentativas de OCR. *Copiar diagnóstico* gera um
+  relatório sem a imagem e com CPF, documentos e nomes mascarados – bom para enviar quando um documento não for lido.
 - O **confrontante de cada divisa** aparece nas colunas *Testada* e *Confrontante* das tabelas (ver *Confrontantes* acima).
 - **Conferência**: as coordenadas são conferidas com as distâncias (e os azimutes, quando há) de cada trecho, e o resultado mostra a
   **área e o perímetro do desenho × os da certidão** – diferença acima de 1% indica número lido errado. (Distâncias de certidão costumam
@@ -464,10 +526,14 @@ As edificações aparecem no **memorial** (seção *ÁREA EDIFICADA* com as dist
   projeção, fuso, meridiano central, EPSG, **escala** e **escala gráfica**), o espaço da **imagem de localização**, o espaço da **logomarca do
   escritório** e o **título** com a **FOLHA**;
 - **folhas numeradas por projeto** (FOLHA 01, 02, 03…; uma prancha substituída mantém o número);
-- **imagem de satélite**: espaço sem título no carimbo. Em *Imagem de satélite › Imagens…*, escolha o arquivo ou cole o print: a
-  **imagem geral** (todas as pranchas) e, se quiser, uma **imagem para cada fase** (a fase sem imagem própria usa a geral). A imagem fica
-  guardada no projeto e entra recortada para preencher o espaço, sem distorcer. Sem imagem, o espaço fica em branco;
-- **prévia** da prancha selecionada (mesmo encaixe, carimbo e anotações), com avisos de legibilidade;
+- **imagem de satélite**: espaço sem título no carimbo. **Clique no espaço da imagem na prévia** (ou em *Galeria…*): abre a **galeria
+  do projeto** (adicione arquivos ou cole o print), escolha a imagem, arraste para enquadrar, aproxime com a roda do mouse e, se quiser,
+  ligue o **contorno do lote** por cima (tamanho no controle; Ctrl + arrastar move). Depois: *Usar nesta prancha*, *Usar em todas as
+  pranchas da fase* (as **fixadas** não mudam), *Usar como imagem geral* ou *Sem imagem nesta prancha*. Cada prancha usa a sua imagem,
+  senão a padrão da fase, senão a geral. As imagens ficam guardadas no projeto. Com a prancha já gerada aberta, o botão **Imagem de
+  Localização** faz o mesmo: clique no espaço da imagem e escolha;
+- **prévia** da prancha selecionada (mesmo encaixe, carimbo, anotações e imagem), com avisos de legibilidade e a **revisão automática**
+  (grade sobre textos ou desenho, imagem com menos de 150 dpi no espaço, convenções × desenho);
 - **pranchas já geradas**: a tabela mostra se você **editou** a prancha e você escolhe *Substituir*, *Manter a atual* ou *Nova versão ao lado*;
 - **conferência antes de emitir** e avisos de legibilidade (textos sem espaço, tabela reduzida, desenho apertado);
 - se preferir o carimbo do escritório como família, informe-o em Configurações: o GeoPoint coloca o mapa, a grade, o norte e a tabela.
@@ -584,8 +650,9 @@ Atalhos de teclado*; pesquise "GeoPoint" ou filtre por *Ferramentas externas*). 
   ao mesmo tempo, sincronize antes.
 - **Textos encavalados ou pequenos demais** – aumente a escala da vista (ex.: de 1:200 para 1:250) ou reduza o texto nas
   Configurações; a prévia do *Anotar Lotes* e das *Pranchas* mostra o resultado antes de gerar.
-- **Certidão lida com erro** – confira os números destacados na aba *Documento*; foto torta ou escura piora o OCR (fotografe de frente,
-  com boa luz). Corrija na tabela antes de desenhar.
+- **Certidão lida com erro** – veja a aba *Diagnóstico* (em qual etapa parou) e os números destacados na aba *Documento*; foto torta,
+  escura ou com sombra piora o OCR (fotografe de frente, com boa luz). Corrija na tabela antes de desenhar. Se um modelo de documento não
+  for lido, use *Copiar diagnóstico* e envie o relatório (sai sem a imagem e com os dados pessoais mascarados).
 - **Errei uma operação** – use *Desfazer* do Revit ou *Ajuda › Restaurar uma cópia de segurança*.
 - **Registros de erro** – `%AppData%\GeoPoint\logs` (ou *Ajuda › Gerar arquivo de diagnóstico*).
 
@@ -620,7 +687,8 @@ ou do INCRA/SIGEF.
 | **Ponto de referência do lote** | Vértice cuja coordenada aparece com chamada no mapa (P-01 por padrão; escolha outro nas Pranchas). |
 | **Modelo de prancha** | Papel, margens, blocos do carimbo, grade, norte, estilos de texto e logomarca; fica na biblioteca de modelos. |
 | **Prancha geral / prancha do lote** | Geral: vários lotes, sem números de vértice nem coordenadas. Do lote: numeração própria, azimutes e tabela de coordenadas. |
-| **Imagem de satélite (localização)** | Print do local no satélite guardado no projeto: a geral vale para todas as pranchas e a de cada fase só para as pranchas dela. |
+| **Imagem de satélite (localização)** | Print do local no satélite guardado na galeria do projeto e escolhido para cada prancha (ou o padrão da fase, ou o geral), com enquadramento. |
+| **Tesseract** | Programa de OCR (reconhecimento de texto) instalado junto com o GeoPoint: lê fotos e PDFs escaneados no próprio computador. |
 | **Certidão (inteiro teor)** | Documento do cartório com a descrição do imóvel; o *Desenhar Perímetro* lê dela o perímetro e os confrontantes. |
 | **OCR** | Reconhecimento de texto em imagem (PDF escaneado ou foto), feito pelo próprio Windows. |
 | **Recuos (área edificável)** | Onde se pode construir no lote, descontando o recuo de cada divisa. |

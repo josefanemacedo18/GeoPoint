@@ -100,7 +100,7 @@ public class V161Tests
     [InlineData("Sistema UTM, Zona 24S, Datum SIRGAS 2000", 24, true)]
     [InlineData("Meridiano Central 45° W", 23, null)]
     [InlineData("MC -51, hemisfério norte", 22, false)]
-    [InlineData("coordenadas E 236184,12/N 9296962,23 – UTM", null, null)]
+    [InlineData("coordenadas E 237184,12/N 9294962,23 – UTM", null, null)]
     public void ReadZone_FromText(string text, int? zone, bool? south)
     {
         var (z, s) = CertidaoParser.ReadZone(text);

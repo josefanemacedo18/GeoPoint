@@ -32,10 +32,17 @@ public static class SheetRegistry
         var g = new GeneratedSheet
         {
             Key = spec.Key, SheetId = sheet.UniqueId, ViewIds = { view.UniqueId }, Title = spec.Title, FaseId = s.Project.Fase.Id,
+            LotIds = spec.LotIds.ToList(),
         };
         g.Fingerprint = Fingerprint(s.Doc, g);
         s.Project.Sheets.Add(g);
         return g;
+    }
+
+    /// <summary>Atualiza a impressão digital (depois de o GeoPoint trocar algo na prancha, ela continua "não editada").</summary>
+    public static void Refresh(GpSession s, GeneratedSheet g)
+    {
+        try { g.Fingerprint = Fingerprint(s.Doc, g); } catch { }
     }
 
     /// <summary>Apaga a prancha e as vistas copiadas dela. Dentro de transação.</summary>

@@ -51,8 +51,8 @@
                     <GroupBox Header="Linhas e cadastro">
                         <StackPanel>
                             <StackPanel Orientation="Horizontal">
-                                <RadioButton x:Name="ModelLines" GroupName="l" IsChecked="True" Content="Linhas de modelo"/>
-                                <RadioButton x:Name="DetailLines" GroupName="l" Margin="12,0,0,0" Content="Linhas de detalhe"/>
+                                <RadioButton x:Name="DetailLines" GroupName="l" IsChecked="True" Content="Linhas de detalhe (vista atual)"/>
+                                <RadioButton x:Name="ModelLines" GroupName="l" Margin="12,0,0,0" Content="Linhas de modelo"/>
                             </StackPanel>
                             <StackPanel x:Name="RepeatPanel" Orientation="Horizontal" Margin="0,4,0,0">
                                 <Label Content="Quantidade lado a lado:"/>

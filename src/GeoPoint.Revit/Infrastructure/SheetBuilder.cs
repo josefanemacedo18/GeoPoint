@@ -22,8 +22,8 @@ public sealed class SheetBuildOptions
     public bool Anotacoes { get; set; } = true;
     public bool Vias { get; set; } = true;
     public bool NorteParaCima { get; set; } = true;
-    /// <summary>Imagem de satélite guardada no projeto para as pranchas (a da fase ou a geral); null = espaço em branco.</summary>
-    public (string Id, byte[] Jpeg)? LocationImage { get; set; }
+    /// <summary>Imagem de satélite de cada prancha (a dela, da fase ou a geral, com o enquadramento); null = espaço em branco.</summary>
+    public Func<SheetSpec, (string Id, byte[] Jpeg, SheetImageChoice Choice)?>? ImageFor { get; set; }
     public string NumberPrefix { get; set; } = "GP";
     public string Font { get; set; } = "Arial";
 }
@@ -206,8 +206,11 @@ public sealed class SheetBuilder
                 try { buildings.Add(GeoPoint.Core.Urban.BuildingAnalyzer.Analyze(ctx.Report(l), b)); } catch { }
         var content = SheetContent.Build(_ctx, _fmt, spec, lots, def, vias: _o.Vias && _s.Project.Vias.Count > 0, edificacoes: buildings.Count > 0);
         var images = new HashSet<string>();
-        // Espaço da imagem de localização: a imagem de satélite guardada no projeto (a da fase ou a geral), ou em branco.
-        bool croqui = _o.LocationImage is not null;
+        // Espaço da imagem de localização: a imagem de satélite da prancha (dela, da fase ou a geral), ou em branco.
+        _img = _o.ImageFor?.Invoke(spec);
+        _imgLots = spec.LotIds.ToList();
+        _imgIds = new List<string>();
+        bool croqui = _img is not null;
         if (croqui) images.Add("croqui");
         // Logomarca do escritório (embutida no modelo): gravada na pasta de cache para o Revit inserir.
         string? logo = null;
@@ -254,7 +257,7 @@ public sealed class SheetBuilder
                 textHoles.Add(SheetRenderer.HoleOf(SheetPreview.Corners(b).Select(ToPaper)));
         var northDir = NorthOnPaper(view);
         bool geo = def.Kind == CrsKind.Geographic;
-        var prims = SheetRenderer.Render(new SheetRenderInput
+        var input = new SheetRenderInput
         {
             Template = tpl, Content = content, Scale = scale, Folha = folha.ToString("00"), SheetNumber = sheet.SheetNumber, Date = DateTime.Today,
             CrsAt = q => _ctx.Coords.ToCrs(ToModel(q), def) is { } c ? (geo ? (c.Lon, c.Lat) : (c.East, c.North)) : null,
@@ -263,7 +266,17 @@ public sealed class SheetBuilder
             Palette = Hatcher.Palette, Images = images, LogoAspect = logo is null ? 0 : tpl.LogoAspect(),
             GridHoles = textHoles,
             GridShapes = DrawingShapes(view, buildings, ToPaper),
-        });
+        };
+        var prims = SheetRenderer.Render(input);
+
+        // ---- Revisão automática (grade × textos e desenho, resolução da imagem, convenções × desenho).
+        try
+        {
+            int? cropPx = _img is { } im0 && ImageHeader.Size(im0.Jpeg) is { W: > 0, H: > 0 } sz && SheetRenderer.CroquiRect(tpl) is PaperRect cr0
+                ? LocationImages.Crop(sz.W, sz.H, cr0.Width / cr0.Height, im0.Choice).W : null;
+            foreach (var w in SheetReview.Check(input, prims, Array.Empty<SheetPrim>(), cropPx, spec.Hatch, true)) Warnings.Add($"{spec.Title}: {w}");
+        }
+        catch (Exception ex) { Logger.Error("Revisão da prancha", ex); }
 
         // ---- Grade na vista, recortada pelos textos e mandada para trás das hachuras e do desenho.
         DrawGridInView(view, prims.OfType<PLine>().Where(l => l.Style == PLineStyle.Grade), ToModel, tpl.GridColor);
@@ -281,6 +294,12 @@ public sealed class SheetBuilder
         _doc.Regenerate();
         var g = SheetRegistry.Register(_s, spec, sheet, view);
         g.Folha = folha;
+        // Espaço da imagem (para trocar a imagem depois, pelo comando Imagem de Localização) e o que foi colocado nele.
+        if (!customTitleBlock && SheetRenderer.CroquiRect(tpl) is PaperRect cr)
+        {
+            g.CroquiX0 = cr.X0; g.CroquiY0 = cr.Y0; g.CroquiX1 = cr.X1; g.CroquiY1 = cr.Y1;
+            g.CroquiIds.AddRange(_imgIds);
+        }
         return sheet;
     }
 
@@ -439,9 +458,13 @@ public sealed class SheetBuilder
                     case PText t:
                         Text(sheet, t);
                         break;
+                    case PImage im when im.Key == "croqui":
+                        if (croqui && _img is { } img)
+                            _imgIds.AddRange(SheetImagePlacer.Place(_doc, sheet, im.Rect, img.Id, img.Jpeg, img.Choice,
+                                img.Choice.ShowOutline ? LocationImageService.OutlineFor(_s, _imgLots) : null, Warnings));
+                        break;
                     case PImage im:
-                        string? path = im.Key == "croqui" ? (croqui ? CroquiFile(im.Rect) : null) : im.Key == "logo" ? logo : null;
-                        if (path is not null) PlaceImage(sheet, im.Rect, path);
+                        if (im.Key == "logo" && logo is not null) PlaceImage(sheet, im.Rect, logo);
                         break;
                 }
             }
@@ -694,18 +717,9 @@ public sealed class SheetBuilder
         Line(sheet, new Vec2(r.X0, r.Y1), new Vec2(r.X0, r.Y0), style);
     }
 
-    /// <summary>A imagem de satélite recortada na proporção exata do espaço (preenche o espaço inteiro, sem distorcer).</summary>
-    private string? CroquiFile(PaperRect r)
-    {
-        if (_o.LocationImage is not { } img || r.Width <= 0 || r.Height <= 0) return null;
-        try { return ImageCodec.CroppedFile(img.Jpeg, img.Id, r.Width / r.Height); }
-        catch (Exception ex)
-        {
-            Logger.Error("Imagem de satélite da prancha", ex);
-            Warnings.Add("Não foi possível preparar a imagem de satélite: " + ex.Message);
-            return null;
-        }
-    }
+    private (string Id, byte[] Jpeg, SheetImageChoice Choice)? _img;
+    private List<string> _imgLots = new();
+    private List<string> _imgIds = new();
 
     private void PlaceImage(ViewSheet sheet, PaperRect r, string path)
     {

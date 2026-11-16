@@ -56,7 +56,7 @@ public static class SheetPreview
 
     public static SheetComposition Compose(ProjectContext ctx, IReadOnlyList<LotRecord> lots, SheetSpec spec, SheetTemplate tpl,
         double annoTextMm = 2.0, int fixedScale = 0, IReadOnlyList<(byte R, byte G, byte B)>? palette = null, Func<LotReport, string>? labelOf = null,
-        CrsDef? crs = null, bool croqui = false)
+        CrsDef? crs = null, bool croqui = false, int? croquiPx = null)
     {
         palette ??= new[] { ((byte)220, (byte)60, (byte)50), ((byte)40, (byte)90, (byte)210), ((byte)30, (byte)150, (byte)80), ((byte)225, (byte)140, (byte)20) };
         var fmt = new ValueFormatter(ctx.Settings.Format);
@@ -156,6 +156,7 @@ public static class SheetPreview
         };
         if (!fit.Fits) comp.Warnings.Add($"O desenho não coube folgado; escala 1:{fit.Scale}.");
         if (plan.Conflicts > 0) comp.Warnings.Add($"{plan.Conflicts} texto(s) sem espaço livre.");
+        comp.Warnings.AddRange(SheetReview.Check(input, comp.Sheet, comp.Map, croquiPx, spec.Hatch, true));
         return comp;
     }
 

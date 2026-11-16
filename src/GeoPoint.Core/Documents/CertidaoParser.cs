@@ -16,8 +16,15 @@ public sealed class CertidaoTrecho
     public double? Distance { get; set; }
     public double? Azimuth { get; set; }
     public string Confrontante { get; set; } = "";
+    /// <summary>Divisa escrita no texto ("Frente", "Fundos", "Lado direito", "Lado esquerdo"); vazio = não informada.</summary>
+    public string Lado { get; set; } = "";
+    /// <summary>O texto do trecho não repete o confrontante: veio do trecho anterior ("deste segue com 292°… até o vértice M-06").</summary>
+    public bool Inherited { get; set; }
     public string Text { get; set; } = "";
 }
+
+/// <summary>Linha do quadro de confrontações do memorial ("Frente - RUA 07 - 24,00 m").</summary>
+public sealed record CertidaoConfrontacao(string Lado, string Confrontante, double Medida);
 
 /// <summary>Perímetro lido de uma certidão (matrícula / inteiro teor) ou memorial: vértices, trechos e confrontantes.</summary>
 public sealed class CertidaoData
@@ -33,6 +40,10 @@ public sealed class CertidaoData
     /// </summary>
     public List<string> Confrontantes { get; } = new();
     public List<CertidaoSide> Sides { get; } = new();
+    /// <summary>Quadro "CONFRONTAÇÕES" do fim do memorial (para conferir as medidas de cada divisa).</summary>
+    public List<CertidaoConfrontacao> Confrontacoes { get; } = new();
+    /// <summary>Perímetro escrito em outro lugar do documento com valor diferente (ex.: cabeçalho lido errado pelo OCR).</summary>
+    public double? PerimetroOutro { get; set; }
     /// <summary>Trechos montados das medidas dos lados (ângulos supostos de 90° na frente).</summary>
     public bool FromSides { get; set; }
     /// <summary>Área e perímetro escritos no documento (só para conferir o desenho).</summary>
@@ -76,9 +87,14 @@ public static class CertidaoParser
     private static readonly Regex TrechoEndRx = new(@";|\.\s+(?=\p{Lu})|\bdeste\b|\bda[íi]\b|\bdali\b|\bfinalmente\b|\bdo\s+(?:v[ée]rtice|ponto|marco)\b", Opt);
     private static readonly Regex ConfRx = new(
         @"(?:confrontando|confronta(?:-se)?|limitando-se|limita-se|fazendo\s+divisa|divisando|lindeiro)\s+(?:com|a)\s+(?<c>.+?)" +
-        @"(?=\s*(?:,\s*(?:com\s+(?:o\s+|um\s+)?(?:azimute|rumo)|medindo|mede|na\s+extens|com\s+(?:a\s+)?dist|e\s+dist|em\s+(?:uma\s+)?dist|at[ée]\b|fechando|segue)|;|\.\s|\n|$))", Opt);
-    private static readonly Regex AreaRx = new(@"[áa]rea\s+(?:total\s+|superficial\s+|de\s+terreno\s+|do\s+terreno\s+)?(?:de\s+|com\s+|:\s*|=\s*|igual\s+a\s+)?" + Num + @"\s*(?<u>m²|m2|metros\s+quadrados|ha\b|hectares?)", Opt);
-    private static readonly Regex PerimRx = new(@"per[íi]metro\s+(?:total\s+)?(?:de\s+|com\s+|:\s*|=\s*|igual\s+a\s+)?" + Num + @"\s*(?:m\b|metros)", Opt);
+        @"(?=\s*(?:,?\s*(?:com\s+(?:o\s+|um\s+|os\s+seguintes\s+|as\s+seguintes\s+|o\s+seguinte\s+)?(?:azimutes?|rumos?|dist)|com\s+(?:os|as)\s+seguintes)|,\s*(?:medindo|mede|na\s+extens|com\s+(?:a\s+)?dist|e\s+dist|em\s+(?:uma\s+)?dist|at[ée]\b|fechando|segue)|;|(?<!\b\p{L}{1,3})\.\s|\n|$))", Opt);
+    /// <summary>Divisa escrita antes do confrontante: "segue Fundos confrontando…", "pelo lado direito, confrontando…".</summary>
+    private static readonly Regex LadoRx = new(@"\b(?<l>frente|fundos?|lado\s+direito|lado\s+esquerdo|lateral\s+direita|lateral\s+esquerda)\b", Opt);
+    /// <summary>Linha do quadro de confrontações: "Frente - RUA 07 - 24,00 m", "Lado Esquerdo LOTE 26 - … - 25,00 m".</summary>
+    private static readonly Regex ConfLineRx = new(
+        @"^\s*(?:(?<l>frente|fundos?|lado\s+direito|lado\s+esquerdo|lateral\s+direita|lateral\s+esquerda)\s*[-–:]?\s*)?(?<c>\S.*?)\s*[-–:]\s*" + Num + @"\s*(?:m\b|metros)\s*(?:e\s*)?$", Opt);
+    private static readonly Regex AreaRx = new(@"[áa]rea\s*(?:\([^)\n]{0,60}\)\s*)?(?:total\s+|superficial\s+|de\s+terreno\s+|do\s+terreno\s+)?(?:de\s+|com\s+|:\s*|=\s*|igual\s+a\s+)?" + Num + @"\s*(?<u>m²|m2|metros\s+quadrados|ha\b|hectares?)", Opt);
+    private static readonly Regex PerimRx = new(@"per[íi]metro\s*(?:total\s+)?(?:de\s+|com\s+|:\s*|=\s*|igual\s+a\s+)?" + Num + @"\s*(?:m\b|metros)", Opt);
     private static readonly Regex ZoneRx = new(@"(?:fuso|zona)\s*(?:UTM\s*)?:?\s*(?<z>\d{1,2})\s*(?<h>[NS])?(?![\d\p{L}])|\bUTM\s*(?:zona\s*)?(?<z>\d{2})\s*(?<h>[NS])\b", Opt);
     private static readonly Regex McRx = new(@"(?:\bMC\b|meridiano\s+central)\s*:?\s*(?<mc>-?\d{2})\s*°?\s*(?<w>W|O|WGr)?", Opt);
     private static readonly Regex NorthHemiRx = new(@"hemisf[ée]rio\s+norte", Opt);
@@ -138,7 +154,21 @@ public static class CertidaoParser
         var areaM = DescEndRx.Match(flat) is { Success: true } end && AreaRx.Match(end.Value) is { Success: true } ae ? ae : AreaRx.Match(flat);
         if (areaM.Success && CoordinateTableReader.Num(areaM.Groups["v"].Value) is double av)
             d.Area = areaM.Groups["u"].Value.StartsWith("h", StringComparison.OrdinalIgnoreCase) ? av * 10000 : av;
-        if (PerimRx.Match(flat) is { Success: true } p && CoordinateTableReader.Num(p.Groups["v"].Value) is double pv) d.Perimetro = pv;
+        // Perímetro: o escrito na própria descrição ("ponto inicial … perímetro de 98,00 m") vale mais que o do cabeçalho.
+        var perims = PerimRx.Matches(flat).Cast<Match>().Select(m => (m.Index, V: CoordinateTableReader.Num(m.Groups["v"].Value))).Where(x => x.V is > 0).ToList();
+        int descAt = desc.Length > 0 ? flat.IndexOf(desc, StringComparison.Ordinal) : -1;
+        var inDesc = descAt >= 0 ? perims.Where(x => x.Index >= descAt && x.Index < descAt + desc.Length).ToList() : new();
+        var main = inDesc.Count > 0 ? inDesc[^1] : perims.FirstOrDefault();
+        if (main.V is double pv)
+        {
+            d.Perimetro = pv;
+            var other = perims.FirstOrDefault(x => x.V is double o && Math.Abs(o - pv) > 0.005);
+            if (other.V is double ov) d.PerimetroOutro = ov;
+        }
+        // Quadro de confrontações (conferência das medidas de cada divisa) e a divisa dos trechos que não a dizem.
+        d.Confrontacoes.AddRange(ReadConfrontacoes(text));
+        foreach (var t in d.Trechos.Where(t => t.Lado.Length == 0 && t.Confrontante.Length > 0))
+            if (BestConfrontacao(d.Confrontacoes, t.Confrontante) is { } q) t.Lado = q.Lado;
 
         // ---- Fuso (ou meridiano central) e hemisfério.
         (d.UtmZone, bool? south) = ReadZone(flat);
@@ -186,17 +216,97 @@ public static class CertidaoParser
             string beforeArrival = desc[start..a.Index];
             var from = FromRx.Matches(beforeArrival).Cast<Match>().LastOrDefault();
             var conf = ConfRx.Match(seg);
-            res.Add(new CertidaoTrecho
+            // Divisa ("Frente", "Fundos"…) escrita antes do confrontante.
+            var lado = LadoRx.Match(conf.Success ? seg[..conf.Index] : beforeArrival);
+            var t = new CertidaoTrecho
             {
                 From = from is not null ? CleanVertexName(from.Groups["n"].Value) : prevTo,
                 To = CleanVertexName(a.Groups["n"].Value),
                 Distance = MemorialTextParser.FirstDistance(seg),
                 Azimuth = MemorialTextParser.FirstAzimuth(seg),
                 Confrontante = conf.Success ? CleanConfrontante(conf.Groups["c"].Value) : "",
+                Lado = lado.Success ? LadoName(lado.Groups["l"].Value) : "",
                 Text = seg.Trim(),
-            });
+            };
+            // "deste segue com 292°12'38" e 12,00m até o vértice M-06": o mesmo confrontante e a mesma divisa do trecho anterior.
+            if (t.Confrontante.Length == 0 && t.Lado.Length == 0 && res.Count > 0 && res[^1].Confrontante.Length > 0 &&
+                !Regex.IsMatch(beforeArrival, @"confront|limit|divisa|lindeiro", Opt))
+            {
+                t.Confrontante = res[^1].Confrontante;
+                t.Lado = res[^1].Lado;
+                t.Inherited = true;
+            }
+            res.Add(t);
             prevTo = res[^1].To;
             start = end;
+        }
+        return res;
+    }
+
+    /// <summary>Linha do quadro de confrontações com o nome mais parecido (palavras em comum; null = nenhuma parecida).</summary>
+    public static CertidaoConfrontacao? BestConfrontacao(IEnumerable<CertidaoConfrontacao> list, string name)
+    {
+        var a = Words(name);
+        if (a.Count == 0) return null;
+        CertidaoConfrontacao? best = null;
+        double bestScore = 0;
+        foreach (var q in list)
+        {
+            var b = Words(q.Confrontante);
+            if (b.Count == 0) continue;
+            double score = (double)a.Intersect(b).Count() / Math.Max(a.Count, b.Count);
+            if (score > bestScore) { bestScore = score; best = q; }
+        }
+        return bestScore >= 0.5 ? best : null;
+    }
+
+    /// <summary>Palavras significativas de um nome (sem acento, minúsculas, sem "de/da/do", números e letras soltas).</summary>
+    public static HashSet<string> Words(string s)
+    {
+        var plain = new string(s.Normalize(System.Text.NormalizationForm.FormD).Where(ch => CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark).ToArray());
+        var stop = new HashSet<string> { "de", "da", "do", "das", "dos", "e", "lote", "lt", "quadra", "qd" };
+        return Regex.Matches(plain.ToLowerInvariant(), @"[a-z]{2,}").Select(m => m.Value).Where(w => !stop.Contains(w)).ToHashSet();
+    }
+
+    /// <summary>Nome padronizado da divisa.</summary>
+    public static string LadoName(string l)
+    {
+        l = Regex.Replace(l.Trim().ToLowerInvariant(), @"\s+", " ");
+        return l switch
+        {
+            "frente" => "Frente",
+            "fundo" or "fundos" => "Fundos",
+            "lado direito" or "lateral direita" => "Lado direito",
+            "lado esquerdo" or "lateral esquerda" => "Lado esquerdo",
+            _ => l,
+        };
+    }
+
+    /// <summary>
+    /// Quadro "CONFRONTAÇÕES" do memorial: uma linha por divisa, com a medida; linhas sem a divisa (continuação, "… - 12,00m e")
+    /// ficam com a divisa da linha anterior.
+    /// </summary>
+    public static List<CertidaoConfrontacao> ReadConfrontacoes(string text)
+    {
+        var res = new List<CertidaoConfrontacao>();
+        var head = Regex.Match(text, @"^\s*confronta[çc][õo]es\s*:?\s*$|^\s*confrontantes\s*:?\s*$", Opt | RegexOptions.Multiline);
+        if (!head.Success) return res;
+        string lado = "";
+        int blank = 0;
+        foreach (var raw in text[(head.Index + head.Length)..].Replace("\r", "").Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0) { if (++blank > 2 && res.Count > 0) break; continue; }
+            if (Regex.IsMatch(line, @"^confronta[çc][õo]es", Opt)) continue;   // título repetido pelo OCR
+            var m = ConfLineRx.Match(line);
+            if (!m.Success || CoordinateTableReader.Num(m.Groups["v"].Value) is not double v || v <= 0)
+            {
+                if (res.Count > 0) break;   // fim do quadro
+                continue;
+            }
+            blank = 0;
+            if (m.Groups["l"].Success) lado = LadoName(m.Groups["l"].Value);
+            res.Add(new CertidaoConfrontacao(lado, CleanConfrontante(m.Groups["c"].Value.Trim().Trim('-', '–', ':').Trim()), v));
         }
         return res;
     }
@@ -240,9 +350,10 @@ public static class CertidaoParser
         var names = c.Vertices.Select(v => v.Name).ToList();
         var confs = new List<string>();
         var stated = new List<Course>();
+        var matched = MatchedTrechos(names, trechos);
         for (int i = 0; i < names.Count; i++)
         {
-            var t = MatchTrecho(trechos, names[i], names[(i + 1) % names.Count], i);
+            var t = matched[i];
             confs.Add(t?.Confrontante ?? "");
             stated.Add(new Course
             {
@@ -261,12 +372,24 @@ public static class CertidaoParser
         return confs;
     }
 
-    /// <summary>Trechos de um texto qualquer (memorial colado, certidão): limpa o OCR, junta as linhas e recorta a descrição.</summary>
+    /// <summary>Trecho de cada divisa (vértice i → i+1, fechando no primeiro), pelos nomes; null = sem trecho no texto.</summary>
+    public static List<CertidaoTrecho?> MatchedTrechos(IReadOnlyList<string> names, IReadOnlyList<CertidaoTrecho> trechos) =>
+        names.Select((n, i) => MatchTrecho(trechos, n, names[(i + 1) % names.Count], i)).ToList();
+
+    /// <summary>
+    /// Trechos de um texto qualquer (memorial colado, certidão): limpa o OCR, junta as linhas, recorta a descrição e completa a divisa
+    /// pelo quadro de confrontações.
+    /// </summary>
     public static List<CertidaoTrecho> TrechosOf(string text)
     {
-        string flat = Flatten(OcrCleanup.Normalize(text ?? ""));
+        string norm = OcrCleanup.Normalize(text ?? "");
+        string flat = Flatten(norm);
         string desc = Description(flat);
-        return ReadTrechos(desc.Length > 0 ? desc : flat);
+        var res = ReadTrechos(desc.Length > 0 ? desc : flat);
+        var quadro = ReadConfrontacoes(norm);
+        foreach (var t in res.Where(t => t.Lado.Length == 0 && t.Confrontante.Length > 0))
+            if (BestConfrontacao(quadro, t.Confrontante) is { } q) t.Lado = q.Lado;
+        return res;
     }
 
     /// <summary>Fuso UTM (ou pelo meridiano central) e hemisfério escritos no texto (null = não informado).</summary>
@@ -300,6 +423,8 @@ public static class CertidaoParser
         c = Regex.Replace(c, @"^(?:o|a|os|as|um|uma)\s+", "", Opt);
         c = Regex.Replace(c, @",?\s*(?:brasileir[oa]|casad[oa]|solteir[oa]|portador|inscrit[oa]|CPF|RG)\b.*$", "", Opt).Trim().TrimEnd(',');
         if (c.Length > 90) c = c[..90].TrimEnd();
+        // Separador entre o lote e o nome: "LOTE 09- JOÃO", "LOTE 10 - ALFA" → "Lote 09 – João", "Lote 10 – Alfa".
+        c = Regex.Replace(c, @"(?<=\d)\s*[-–]\s+(?=\p{L})|(?<=\d)\s+[-–]\s*(?=\p{L})", " – ");
         return CleanName(c);
     }
 
@@ -436,7 +561,12 @@ public static class CertidaoParser
 
     // ------------------------------------------------------------------ nomes
 
-    private static bool IsAllCaps(string s) => s.Any(char.IsLetter) && s.Where(char.IsLetter).All(char.IsUpper);
+    /// <summary>Texto em maiúsculas (aceita poucas minúsculas, como o "d" de "Jd." lido pelo OCR).</summary>
+    private static bool IsAllCaps(string s)
+    {
+        var letters = s.Where(char.IsLetter).ToList();
+        return letters.Count > 0 && letters.Count(char.IsUpper) >= letters.Count * 0.85;
+    }
 
     /// <summary>Nome limpo; em maiúsculas vira "Fulano de Tal" ("RESIDENCIAL ESPERANÇA B – ÁREA PÚBLICA" → "Residencial Esperança B – Área Pública").</summary>
     public static string CleanName(string s)
@@ -458,9 +588,86 @@ public static class CertidaoParser
     }
 }
 
+/// <summary>Tipo do que foi lido (cor do destaque na revisão).</summary>
+public enum HighlightKind { Coordenada, Azimute, Distancia, Confrontante, Area }
+
+public sealed record Highlight(DocWord Word, HighlightKind Kind);
+
 /// <summary>Palavras do documento a destacar na revisão: as que têm os números usados no desenho.</summary>
 public static class DocumentHighlight
 {
+    private static bool AngleWord(DocWord w) => w.Text.Contains('°') || w.Text.Contains('º');
+
+    private static double? NumberIn(DocWord w, IEnumerable<double> vals, bool angle)
+    {
+        if (!angle && !Regex.IsMatch(w.Text, @"\d[.,]\d")) return null;
+        foreach (Match m in Regex.Matches(w.Text, angle ? @"-?\d{1,3}\s*°[^A-Za-z]*" : @"\d[\d.,]*\d"))
+        {
+            if (OcrCleanup.Number(m.Value) is not double v) continue;
+            foreach (var x in vals)
+                if (angle ? PerimeterText.AngleDiff(x, v) < 1.5 / 3600 || PerimeterText.AngleDiff(Math.Abs(x), Math.Abs(v)) < 1.5 / 3600
+                          : Math.Abs(x - v) < 0.0006 + Math.Abs(x) * 1e-9)
+                    return x;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Destaques por tipo: coordenadas (UTM ou geográficas), azimutes, distâncias, área e as palavras dos confrontantes (só em
+    /// sequências de duas ou mais palavras do nome, para não pintar um "Silva" solto no rodapé).
+    /// </summary>
+    public static List<Highlight> Classify(IReadOnlyList<DocWord> words, IEnumerable<double> coords, IEnumerable<double> geoAngles,
+        IEnumerable<double> azimuths, IEnumerable<double> distances, IEnumerable<double> areas, IEnumerable<string> confrontantes)
+    {
+        var co = coords.Where(v => !double.IsNaN(v) && Math.Abs(v) >= 1).ToList();
+        var ga = geoAngles.Where(v => !double.IsNaN(v)).ToList();
+        var az = azimuths.Where(v => !double.IsNaN(v)).ToList();
+        var di = distances.Where(v => !double.IsNaN(v) && v > 0).ToList();
+        var ar = areas.Where(v => !double.IsNaN(v) && v > 0).ToList();
+        var res = new List<Highlight>();
+        var taken = new HashSet<DocWord>();
+        foreach (var w in words)
+        {
+            HighlightKind? k = null;
+            if (AngleWord(w))
+            {
+                if (NumberIn(w, az, true) is not null) k = HighlightKind.Azimute;
+                else if (NumberIn(w, ga, true) is not null) k = HighlightKind.Coordenada;
+            }
+            else if (NumberIn(w, co, false) is not null) k = HighlightKind.Coordenada;
+            else if (NumberIn(w, di, false) is not null) k = HighlightKind.Distancia;
+            else if (NumberIn(w, ar, false) is not null) k = HighlightKind.Area;
+            if (k is HighlightKind kk) { res.Add(new Highlight(w, kk)); taken.Add(w); }
+        }
+        // Confrontantes: sequências de palavras do nome na ordem de leitura.
+        var names = confrontantes.Where(c => c.Trim().Length > 0).Select(CertidaoParser.Words).Where(x => x.Count > 0).ToList();
+        if (names.Count == 0) return res;
+        var all = names.SelectMany(x => x).ToHashSet();
+        var ordered = words.OrderBy(w => w.Page).ThenBy(w => Math.Round(w.CenterY / Math.Max(1, w.Height))).ThenBy(w => w.X0).ToList();
+        var run = new List<DocWord>();
+        void Flush()
+        {
+            var ws = run.SelectMany(w => CertidaoParser.Words(w.Text)).ToHashSet();
+            if (run.Count >= 2 || names.Any(n => n.Count == 1 && n.SetEquals(ws)))
+                foreach (var w in run.Where(w => !taken.Contains(w))) res.Add(new Highlight(w, HighlightKind.Confrontante));
+            run.Clear();
+        }
+        foreach (var w in ordered)
+        {
+            var ws = CertidaoParser.Words(w.Text);
+            bool hit = ws.Count > 0 && ws.All(all.Contains);
+            bool connector = ws.Count == 0 && Regex.IsMatch(w.Text, @"^(?:d[aeo]s?|e|[-–]|\d+[-–]?)$", RegexOptions.IgnoreCase);
+            if (hit || (connector && run.Count > 0)) run.Add(w);
+            else Flush();
+        }
+        Flush();
+        return res;
+    }
+
+    /// <summary>Primeira palavra com o valor (para rolar a revisão até ela ao clicar numa linha da tabela).</summary>
+    public static DocWord? FindValue(IEnumerable<DocWord> words, double value, bool angle) =>
+        words.FirstOrDefault(w => AngleWord(w) == angle && NumberIn(w, new[] { value }, angle) is not null);
+
     public static List<DocWord> Find(IEnumerable<DocWord> words, IEnumerable<double> angles, IEnumerable<double> values)
     {
         var angs = angles.Where(a => !double.IsNaN(a)).ToList();
